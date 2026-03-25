@@ -1,0 +1,30 @@
+{
+  "name": "claude-chrome",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Chrome extension embedding Claude Code CLI with full browser context via MCP",
+  "scripts": {
+    "build": "webpack --mode production",
+    "dev": "webpack --mode development --watch",
+    "build:host": "cd native-host && npm run build",
+    "install:host": "node native-host/dist/install.js",
+    "setup": "npm install && cd native-host && npm install && npm run build",
+    "package": "npm run build && npm run build:host"
+  },
+  "devDependencies": {
+    "@anthropic-ai/sdk": "^0.39.0",
+    "@types/chrome": "^0.0.287",
+    "copy-webpack-plugin": "^12.0.2",
+    "css-loader": "^7.1.2",
+    "style-loader": "^4.0.0",
+    "ts-loader": "^9.5.1",
+    "typescript": "^5.7.0",
+    "webpack": "^5.97.0",
+    "webpack-cli": "^6.0.0"
+  },
+  "dependencies": {
+    "@xterm/addon-fit": "^0.10.0",
+    "@xterm/addon-webgl": "^0.18.0",
+    "@xterm/xterm": "^5.5.0"
+  }
+}

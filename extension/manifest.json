@@ -1,0 +1,43 @@
+{
+  "manifest_version": 3,
+  "name": "ClaudeChrome",
+  "version": "0.1.0",
+  "description": "Claude Code CLI in a browser side panel with full browser context access",
+  "permissions": [
+    "sidePanel",
+    "webRequest",
+    "storage",
+    "cookies",
+    "scripting",
+    "tabs",
+    "activeTab"
+  ],
+  "host_permissions": ["<all_urls>"],
+  "side_panel": {
+    "default_path": "side-panel/panel.html"
+  },
+  "background": {
+    "service_worker": "service-worker.js",
+    "type": "module"
+  },
+  "content_scripts": [
+    {
+      "matches": ["<all_urls>"],
+      "js": ["content/injector.js"],
+      "run_at": "document_start"
+    }
+  ],
+  "content_security_policy": {
+    "extension_pages": "script-src 'self' 'wasm-unsafe-eval'; object-src 'self'; connect-src ws://localhost:* ws://127.0.0.1:*"
+  },
+  "action": {
+    "default_title": "Open ClaudeChrome"
+  },
+  "icons": {},
+  "web_accessible_resources": [
+    {
+      "resources": ["content/page-script.js"],
+      "matches": ["<all_urls>"]
+    }
+  ]
+}

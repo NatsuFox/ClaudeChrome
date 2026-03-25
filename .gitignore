@@ -1,0 +1,8 @@
+node_modules/
+dist/
+native-host/dist/
+native-host/node_modules/
+.playwright-mcp/
+docs/
+*.js.map
+.DS_Store

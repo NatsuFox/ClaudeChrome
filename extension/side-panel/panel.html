@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>ClaudeChrome</title>
+  <link rel="stylesheet" href="xterm.css">
+  <link rel="stylesheet" href="panel.css">
+</head>
+<body>
+  <button id="panel-edge-toggle" class="edge-toggle panel-edge-toggle" type="button" title="Expand ClaudeChrome panel">
+    Open
+  </button>
+
+  <div id="panel-shell">
+    <div id="toolbar">
+      <div class="toolbar-cluster toolbar-status-cluster">
+        <span id="status-indicator" class="disconnected"></span>
+        <span id="status-text">Disconnected</span>
+        <span id="focused-binding" class="toolbar-chip">No focused pane</span>
+      </div>
+
+      <div class="toolbar-cluster toolbar-action-cluster">
+        <button id="btn-new-workspace" title="Create a new workspace">+ Workspace</button>
+        <button id="btn-add-shell-pane" title="Add a shell pane to the active workspace">+ Shell</button>
+        <button id="btn-add-claude-pane" title="Add a Claude pane to the active workspace">+ Claude</button>
+        <button id="btn-add-codex-pane" title="Add a Codex pane to the active workspace">+ Codex</button>
+      </div>
+
+      <div class="toolbar-cluster toolbar-connection-cluster">
+        <label id="ws-port-label" for="ws-port">Port</label>
+        <input id="ws-port" type="number" min="1" max="65535" inputmode="numeric" value="9999">
+        <button id="btn-apply-port" title="Save port and reconnect">Apply</button>
+        <button id="btn-reconnect" title="Reconnect">↻</button>
+      </div>
+
+      <div class="toolbar-cluster toolbar-layout-cluster">
+        <button id="btn-toggle-panel" type="button" title="Fold this panel to the browser edge">Fold Panel</button>
+      </div>
+    </div>
+
+    <div id="shell">
+      <div id="workspace-stage"></div>
+      <button id="workspace-rail-edge-toggle" class="edge-toggle workspace-edge-toggle" type="button" title="Expand workspace sidebar">
+        Tabs
+      </button>
+      <div id="workspace-rail-resizer" aria-hidden="true"></div>
+      <aside id="workspace-rail"></aside>
+    </div>
+  </div>
+
+  <script src="panel.js"></script>
+</body>
+</html>

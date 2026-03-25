@@ -1,0 +1,352 @@
+import { buildAgentLaunch, type AgentType } from './agent-runtime.js';
+import { ContextStore } from './context-store.js';
+import { PtyBridge } from './pty-bridge.js';
+
+type ProcessState = 'starting' | 'running' | 'error';
+
+type AgentSession = {
+  sessionId: string;
+  agentType: AgentType;
+  title: string;
+  bindingTabId: number;
+  createdAt: number;
+  lastActiveAt: number;
+  processState: ProcessState;
+  statusMessage?: string;
+  pty: PtyBridge | null;
+  outputBuffer: string;
+  flushTimer: ReturnType<typeof setTimeout> | null;
+  cols: number;
+  rows: number;
+  cwd: string;
+};
+
+export interface SessionSnapshot {
+  sessionId: string;
+  agentType: AgentType;
+  title: string;
+  binding: {
+    kind: 'tab';
+    tabId: number;
+  };
+  boundTab: ReturnType<ContextStore['getTab']>;
+  status: 'starting' | 'connected' | 'error' | 'tab_unavailable';
+  statusMessage?: string;
+  createdAt: number;
+  lastActiveAt: number;
+}
+
+export interface CreateSessionOptions {
+  sessionId: string;
+  agentType: AgentType;
+  title: string;
+  bindingTabId: number;
+  cols: number;
+  rows: number;
+  cwd: string;
+}
+
+export interface SessionManagerOptions {
+  contextStore: ContextStore;
+  runtimeDir: string;
+  mcpBridgeScript: string;
+  storeSocketPath: string;
+  broadcast: (message: object) => void;
+}
+
+const FLUSH_INTERVAL_MS = 16;
+
+function displayAgentName(agentType: AgentType): string {
+  switch (agentType) {
+    case 'codex':
+      return 'Codex';
+    case 'shell':
+      return 'Shell';
+    default:
+      return 'Claude';
+  }
+}
+
+function systemNotice(text: string): string {
+  return `\r\n\x1b[36m[ClaudeChrome] ${text}\x1b[0m\r\n`;
+}
+
+export class SessionManager {
+  private readonly contextStore: ContextStore;
+  private readonly runtimeDir: string;
+  private readonly mcpBridgeScript: string;
+  private readonly storeSocketPath: string;
+  private readonly broadcast: (message: object) => void;
+  private readonly sessions = new Map<string, AgentSession>();
+
+  constructor(options: SessionManagerOptions) {
+    this.contextStore = options.contextStore;
+    this.runtimeDir = options.runtimeDir;
+    this.mcpBridgeScript = options.mcpBridgeScript;
+    this.storeSocketPath = options.storeSocketPath;
+    this.broadcast = options.broadcast;
+  }
+
+  hasSession(sessionId: string): boolean {
+    return this.sessions.has(sessionId);
+  }
+
+  getBindingTabId(sessionId: string): number | null {
+    return this.sessions.get(sessionId)?.bindingTabId ?? null;
+  }
+
+  getSnapshot(sessionId: string): SessionSnapshot | null {
+    const session = this.sessions.get(sessionId);
+    return session ? this.toSnapshot(session) : null;
+  }
+
+  listSnapshots(): SessionSnapshot[] {
+    return Array.from(this.sessions.values()).map((session) => this.toSnapshot(session));
+  }
+
+  broadcastSnapshot(): void {
+    this.broadcast({ type: 'session_snapshot', sessions: this.listSnapshots() });
+  }
+
+  createSession(options: CreateSessionOptions): SessionSnapshot {
+    const existing = this.sessions.get(options.sessionId);
+    if (existing) {
+      existing.title = options.title;
+      existing.bindingTabId = options.bindingTabId;
+      existing.cwd = options.cwd;
+      existing.lastActiveAt = Date.now();
+      this.broadcastSnapshot();
+      return this.toSnapshot(existing);
+    }
+
+    const session: AgentSession = {
+      sessionId: options.sessionId,
+      agentType: options.agentType,
+      title: options.title,
+      bindingTabId: options.bindingTabId,
+      createdAt: Date.now(),
+      lastActiveAt: Date.now(),
+      processState: 'starting',
+      statusMessage: `Starting ${displayAgentName(options.agentType)}...`,
+      pty: null,
+      outputBuffer: '',
+      flushTimer: null,
+      cols: options.cols,
+      rows: options.rows,
+      cwd: options.cwd,
+    };
+
+    this.sessions.set(session.sessionId, session);
+    this.launchSession(session);
+    this.broadcastSnapshot();
+    return this.toSnapshot(session);
+  }
+
+  writeToSession(sessionId: string, data: string): void {
+    const session = this.sessions.get(sessionId);
+    if (!session?.pty) return;
+    session.lastActiveAt = Date.now();
+    session.pty.write(data);
+  }
+
+  resizeSession(sessionId: string, cols: number, rows: number): void {
+    const session = this.sessions.get(sessionId);
+    if (!session) return;
+    session.cols = cols;
+    session.rows = rows;
+    session.pty?.resize(cols, rows);
+  }
+
+  bindSessionToTab(sessionId: string, tabId: number): void {
+    const session = this.sessions.get(sessionId);
+    if (!session) return;
+    session.bindingTabId = tabId;
+    session.lastActiveAt = Date.now();
+    session.statusMessage = `Bound to tab ${tabId}`;
+    this.broadcastSnapshot();
+  }
+
+  restartSession(sessionId: string, cwd?: string, agentType?: AgentType): void {
+    const session = this.sessions.get(sessionId);
+    if (!session) return;
+    if (agentType) {
+      session.agentType = agentType;
+    }
+    if (cwd) {
+      session.cwd = cwd;
+    }
+    session.lastActiveAt = Date.now();
+    session.statusMessage = `Restarting ${displayAgentName(session.agentType)}...`;
+
+    const previous = session.pty;
+    session.pty = null;
+    previous?.kill();
+    this.flushOutput(session);
+    this.launchSession(session);
+    this.broadcastSnapshot();
+  }
+
+  closeSession(sessionId: string): void {
+    const session = this.sessions.get(sessionId);
+    if (!session) return;
+    this.sessions.delete(sessionId);
+    if (session.flushTimer) {
+      clearTimeout(session.flushTimer);
+      session.flushTimer = null;
+    }
+    const previous = session.pty;
+    session.pty = null;
+    previous?.kill();
+    this.broadcastSnapshot();
+  }
+
+  noteTabUpdated(tabId: number): void {
+    if (!Array.from(this.sessions.values()).some((session) => session.bindingTabId === tabId)) {
+      return;
+    }
+    this.broadcastSnapshot();
+  }
+
+  shutdown(): void {
+    for (const session of this.sessions.values()) {
+      if (session.flushTimer) {
+        clearTimeout(session.flushTimer);
+      }
+      const previous = session.pty;
+      session.pty = null;
+      previous?.kill();
+    }
+    this.sessions.clear();
+  }
+
+  private launchSession(session: AgentSession): void {
+    const bridge = new PtyBridge();
+    session.pty = bridge;
+    session.processState = 'starting';
+    session.outputBuffer = '';
+    if (session.flushTimer) {
+      clearTimeout(session.flushTimer);
+      session.flushTimer = null;
+    }
+
+    bridge.on('data', (data: string) => {
+      if (session.pty !== bridge) return;
+      this.queueOutput(session, data);
+    });
+
+    bridge.on('exit', (code: number) => {
+      if (session.pty !== bridge) return;
+      session.pty = null;
+      this.flushOutput(session);
+      this.handleProcessExit(session, code);
+    });
+
+    try {
+      const launch = buildAgentLaunch({
+        sessionId: session.sessionId,
+        agentType: session.agentType,
+        cwd: session.cwd,
+        cols: session.cols,
+        rows: session.rows,
+        runtimeDir: this.runtimeDir,
+        mcpBridgeScript: this.mcpBridgeScript,
+        storeSocketPath: this.storeSocketPath,
+      });
+      bridge.spawn(launch);
+      session.processState = 'running';
+      session.statusMessage = `${displayAgentName(session.agentType)} ready`;
+    } catch (error) {
+      session.pty = null;
+      session.processState = 'error';
+      session.statusMessage = error instanceof Error ? error.message : String(error);
+    }
+  }
+
+  private handleProcessExit(session: AgentSession, code: number): void {
+    const previousAgent = session.agentType;
+    const previousName = displayAgentName(previousAgent);
+
+    if (previousAgent !== 'shell') {
+      session.agentType = 'shell';
+      session.statusMessage = `${previousName} exited with code ${code}; switched to Shell`;
+      this.launchSession(session);
+      if (session.processState !== 'error') {
+        session.statusMessage = `${previousName} exited with code ${code}; fallback shell active`;
+        this.emitSystemNotice(session, `${previousName} exited with code ${code}; switched to bash shell.`);
+      }
+    } else {
+      session.statusMessage = `Shell exited with code ${code}; restarted shell`;
+      this.launchSession(session);
+      if (session.processState !== 'error') {
+        session.statusMessage = 'Shell restarted after exit';
+        this.emitSystemNotice(session, `Shell exited with code ${code}; started a fresh bash shell.`);
+      }
+    }
+
+    this.broadcastSnapshot();
+  }
+
+  private queueOutput(session: AgentSession, data: string): void {
+    session.outputBuffer += data;
+    if (session.flushTimer) return;
+    session.flushTimer = setTimeout(() => {
+      this.flushOutput(session);
+    }, FLUSH_INTERVAL_MS);
+  }
+
+  private flushOutput(session: AgentSession): void {
+    if (!session.outputBuffer) {
+      session.flushTimer = null;
+      return;
+    }
+
+    const payload = Buffer.from(session.outputBuffer).toString('base64');
+    session.outputBuffer = '';
+    session.flushTimer = null;
+    this.broadcast({
+      type: 'session_output',
+      sessionId: session.sessionId,
+      data: payload,
+    });
+  }
+
+  private emitSystemNotice(session: AgentSession, text: string): void {
+    this.broadcast({
+      type: 'session_output',
+      sessionId: session.sessionId,
+      data: Buffer.from(systemNotice(text)).toString('base64'),
+    });
+  }
+
+  private toSnapshot(session: AgentSession): SessionSnapshot {
+    const boundTab = this.contextStore.getTab(session.bindingTabId);
+    let status: SessionSnapshot['status'];
+    let statusMessage = session.statusMessage;
+
+    if (session.processState === 'error') {
+      status = 'error';
+    } else if (session.processState === 'starting') {
+      status = 'starting';
+    } else if (!boundTab || !boundTab.available) {
+      status = 'tab_unavailable';
+      statusMessage = statusMessage || 'Bound tab unavailable';
+    } else {
+      status = 'connected';
+    }
+
+    return {
+      sessionId: session.sessionId,
+      agentType: session.agentType,
+      title: session.title,
+      binding: {
+        kind: 'tab',
+        tabId: session.bindingTabId,
+      },
+      boundTab,
+      status,
+      statusMessage,
+      createdAt: session.createdAt,
+      lastActiveAt: session.lastActiveAt,
+    };
+  }
+}
