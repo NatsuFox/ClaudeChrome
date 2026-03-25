@@ -278,6 +278,8 @@ const IMPLEMENTED_SESSION_TOOLS = [
   'browser__search_responses',
   'browser__get_console_logs',
   'browser__get_page_info',
+  'browser__get_page_text',
+  'browser__get_page_html',
   'browser__status',
   'browser__binding_status',
   'browser__capabilities',
@@ -322,6 +324,47 @@ function getSessionContext(sessionId: string | undefined) {
   };
 }
 
+const PAGE_INFO_PREVIEW_CHARS = 1200;
+const DEFAULT_PAGE_PAYLOAD_CHARS = 40_000;
+const MAX_PAGE_PAYLOAD_CHARS = 400_000;
+
+function clampPagePayloadChars(value: unknown): number {
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric)) {
+    return DEFAULT_PAGE_PAYLOAD_CHARS;
+  }
+  return Math.min(MAX_PAGE_PAYLOAD_CHARS, Math.max(256, Math.floor(numeric)));
+}
+
+function summarizePageInfo(pageInfo: StoredPageInfo | null) {
+  if (!pageInfo) {
+    return null;
+  }
+
+  return {
+    url: pageInfo.url,
+    title: pageInfo.title,
+    faviconUrl: pageInfo.faviconUrl,
+    lastSeenAt: pageInfo.lastSeenAt,
+    scripts: [...pageInfo.scripts],
+    meta: { ...pageInfo.meta },
+    content: {
+      hasVisibleText: Boolean(pageInfo.visibleText),
+      visibleTextChars: pageInfo.visibleText?.length ?? 0,
+      visibleTextPreview: pageInfo.visibleText?.slice(0, PAGE_INFO_PREVIEW_CHARS) ?? '',
+      hasHtml: Boolean(pageInfo.html),
+      htmlChars: pageInfo.html?.length ?? 0,
+    },
+  };
+}
+
+function makeMissingPageInfoError(sessionId: string, tabId: number) {
+  return makeError('not_captured_yet', 'No page info has been captured for the bound tab yet.', {
+    sessionId,
+    boundTabId: tabId,
+  });
+}
+
 function getCapabilities(context: ReturnType<typeof getSessionContext>) {
   const hasContext = !('error' in context) && context.snapshot.status !== 'tab_unavailable';
   return {
@@ -330,7 +373,7 @@ function getCapabilities(context: ReturnType<typeof getSessionContext>) {
     families: {
       page: {
         available: true,
-        tools: ['browser__get_page_info'],
+        tools: ['browser__get_page_info', 'browser__get_page_text', 'browser__get_page_html'],
       },
       network: {
         available: true,
@@ -472,9 +515,61 @@ function handleStoreQuery(sessionId: string | undefined, tool: string, params: a
         pattern: params.pattern,
         limit: params.limit,
       });
-    case 'get_page_info':
+    case 'get_page_info': {
       if ('error' in context) return context.error;
-      return contextStore.getPageInfo(context.tabId) || contextStore.getTab(context.tabId);
+      if (!context.pageInfo) {
+        return makeMissingPageInfoError(context.sessionId, context.tabId);
+      }
+      const pageSummary = summarizePageInfo(context.pageInfo)!;
+      return {
+        ok: true,
+        sessionId: context.sessionId,
+        tabId: context.tabId,
+        ...pageSummary,
+      };
+    }
+    case 'get_page_text': {
+      if ('error' in context) return context.error;
+      if (!context.pageInfo) {
+        return makeMissingPageInfoError(context.sessionId, context.tabId);
+      }
+      const text = context.pageInfo.visibleText ?? '';
+      const maxChars = clampPagePayloadChars(params.max_chars);
+      const returnedText = text.slice(0, maxChars);
+      return {
+        ok: true,
+        sessionId: context.sessionId,
+        tabId: context.tabId,
+        url: context.pageInfo.url,
+        title: context.pageInfo.title,
+        lastSeenAt: context.pageInfo.lastSeenAt,
+        chars: text.length,
+        returnedChars: returnedText.length,
+        truncated: text.length > maxChars,
+        text: returnedText,
+      };
+    }
+    case 'get_page_html': {
+      if ('error' in context) return context.error;
+      if (!context.pageInfo) {
+        return makeMissingPageInfoError(context.sessionId, context.tabId);
+      }
+      const html = context.pageInfo.html ?? '';
+      const maxChars = clampPagePayloadChars(params.max_chars);
+      const returnedHtml = html.slice(0, maxChars);
+      return {
+        ok: true,
+        sessionId: context.sessionId,
+        tabId: context.tabId,
+        url: context.pageInfo.url,
+        title: context.pageInfo.title,
+        lastSeenAt: context.pageInfo.lastSeenAt,
+        chars: html.length,
+        returnedChars: returnedHtml.length,
+        truncated: html.length > maxChars,
+        html: returnedHtml,
+      };
+    }
     case 'get_status':
       if ('error' in context) return context.error;
       return {
@@ -530,7 +625,7 @@ function handleStoreQuery(sessionId: string | undefined, tool: string, params: a
         sessionStatus: context.snapshot.status,
         sessionStatusMessage: context.snapshot.statusMessage ?? null,
         boundTab: context.tab,
-        pageInfo: context.pageInfo,
+        pageInfo: summarizePageInfo(context.pageInfo),
       };
     case 'get_capabilities':
       if ('error' in context) return context.error;

@@ -112,7 +112,7 @@ async function main() {
 
   server.tool(
     'browser__get_page_info',
-    'Get current page URL, title, and metadata for the browser tab bound to this session',
+    'Get current page identity and direct-capture summary for the browser tab bound to this session',
     {},
     async () => {
       const result = await queryStore('get_page_info', {});
@@ -122,20 +122,24 @@ async function main() {
 
   server.tool(
     'browser__get_page_text',
-    'Get visible page text from the browser tab bound to this session',
-    {},
-    async () => {
-      const result = await queryStore('get_page_text', {});
+    'Get visible page text captured directly from the live DOM in the browser tab bound to this session',
+    {
+      max_chars: z.number().optional().describe('Maximum number of characters to return (default 40000)'),
+    },
+    async (params) => {
+      const result = await queryStore('get_page_text', params);
       return { content: [{ type: 'text', text: JSON.stringify(result, null, 2) }] };
     }
   );
 
   server.tool(
     'browser__get_page_html',
-    'Get live page HTML from the browser tab bound to this session',
-    {},
-    async () => {
-      const result = await queryStore('get_page_html', {});
+    'Get live page HTML captured directly from the browser tab bound to this session',
+    {
+      max_chars: z.number().optional().describe('Maximum number of characters to return (default 40000)'),
+    },
+    async (params) => {
+      const result = await queryStore('get_page_html', params);
       return { content: [{ type: 'text', text: JSON.stringify(result, null, 2) }] };
     }
   );
