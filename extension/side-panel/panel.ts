@@ -2,6 +2,7 @@ import { ChunkAssembler } from '../shared/chunker';
 import type {
   ActivateTabResultMessage,
   AgentType,
+  CollapseSidePanelResultMessage,
   GetCurrentWindowActiveTabResultMessage,
   SessionBindTabMessage,
   SessionCreateMessage,
@@ -35,8 +36,11 @@ const PANEL_STATE_STORAGE_KEY = 'panelStateV2';
 const WS_PORT_STORAGE_KEY = 'wsPort';
 const MAX_PANES_PER_WORKSPACE = 6;
 const MIN_PANE_RATIO = 0.14;
-const MIN_RAIL_WIDTH = 120;
+const MIN_RAIL_WIDTH = 96;
 const MAX_RAIL_WIDTH = 320;
+const RAIL_AUTO_COLLAPSE_WIDTH = 56;
+const PANEL_AUTO_COLLAPSE_WIDTH = 72;
+const PANEL_AUTO_COLLAPSE_ARM_WIDTH = 144;
 
 const statusIndicator = document.getElementById('status-indicator')!;
 const statusText = document.getElementById('status-text')!;
@@ -44,7 +48,6 @@ const focusedBinding = document.getElementById('focused-binding')!;
 const workspaceStage = document.getElementById('workspace-stage')!;
 const workspaceRailResizer = document.getElementById('workspace-rail-resizer')!;
 const workspaceRail = document.getElementById('workspace-rail')!;
-const panelEdgeToggle = document.getElementById('panel-edge-toggle') as HTMLButtonElement;
 const workspaceRailEdgeToggle = document.getElementById('workspace-rail-edge-toggle') as HTMLButtonElement;
 const portInput = document.getElementById('ws-port') as HTMLInputElement;
 const btnApplyPort = document.getElementById('btn-apply-port')!;
@@ -63,6 +66,9 @@ const pendingSessionCreates = new Set<string>();
 let panelState = createDefaultState(DEFAULT_WS_PORT);
 let activePaneId: string | null = null;
 let ws: WebSocket | null = null;
+let lastViewportWidth = window.innerWidth;
+let panelAutoCollapseArmed = window.innerWidth >= PANEL_AUTO_COLLAPSE_ARM_WIDTH;
+let panelCloseInFlight = false;
 
 function agentLabel(agentType: AgentType): string {
   switch (agentType) {
@@ -106,20 +112,11 @@ function applyRailWidth(): void {
 }
 
 function applyLayoutState(): void {
-  document.body.classList.toggle('panel-collapsed', panelState.panelCollapsed);
+  document.body.classList.remove('panel-collapsed');
   document.body.classList.toggle('rail-collapsed', panelState.railCollapsed);
 
-  btnTogglePanel.textContent = panelState.panelCollapsed ? 'Open Panel' : 'Fold Panel';
-  btnTogglePanel.title = panelState.panelCollapsed
-    ? 'Expand ClaudeChrome back into view'
-    : 'Fold this panel to the browser edge';
-  btnTogglePanel.setAttribute('aria-pressed', String(panelState.panelCollapsed));
-
-  panelEdgeToggle.textContent = panelState.panelCollapsed ? 'Open' : 'Fold';
-  panelEdgeToggle.title = panelState.panelCollapsed
-    ? 'Expand ClaudeChrome back into view'
-    : 'Fold this panel to the browser edge';
-  panelEdgeToggle.setAttribute('aria-expanded', String(!panelState.panelCollapsed));
+  btnTogglePanel.textContent = 'Close Panel';
+  btnTogglePanel.title = 'Close the Chrome side panel for this window';
 
   workspaceRailEdgeToggle.textContent = panelState.railCollapsed ? 'Tabs' : 'Hide';
   workspaceRailEdgeToggle.title = panelState.railCollapsed
@@ -160,6 +157,14 @@ function runtimeMessage<T>(message: object): Promise<T> {
   });
 }
 
+function notifyPanelOpened(): void {
+  chrome.runtime.sendMessage({ type: 'panel_opened' }, () => void chrome.runtime.lastError);
+}
+
+function notifyPanelClosed(): void {
+  chrome.runtime.sendMessage({ type: 'panel_closed' }, () => void chrome.runtime.lastError);
+}
+
 async function loadState(): Promise<void> {
   const stored = await storageGet<Record<string, unknown | null>>({
     [PANEL_STATE_STORAGE_KEY]: null,
@@ -173,6 +178,7 @@ async function loadState(): Promise<void> {
   panelState = rawState ? ensureValidState(rawState, portInput.value) : createDefaultState(portInput.value);
   panelState.wsPort = portInput.value;
   panelState.railWidth = clampRailWidth(panelState.railWidth);
+  panelState.panelCollapsed = false;
 
   const activeWorkspace = getWorkspace(panelState, panelState.activeWorkspaceId);
   activePaneId = activeWorkspace?.paneIds[0] || panelState.panes[0]?.paneId || null;
@@ -238,7 +244,6 @@ function connect(): void {
     socket.onopen = () => {
       if (ws !== socket) return;
       setStatus('connected', `Connected: ${wsUrl}`);
-      chrome.runtime.sendMessage({ type: 'panel_opened' }, () => void chrome.runtime.lastError);
       sendToHost({ type: 'session_list_request' });
       ensurePaneSessions();
     };
@@ -294,6 +299,9 @@ function handleHostMessage(message: SessionOutputMessage | SessionSnapshotMessag
       setStatus(next.status, next.message);
       break;
     }
+    case 'browser_command':
+      chrome.runtime.sendMessage(message, () => void chrome.runtime.lastError);
+      break;
     default:
       break;
   }
@@ -490,24 +498,29 @@ function fitVisibleTerminals(): void {
 
 function scheduleFit(): void {
   requestAnimationFrame(() => {
-    if (!panelState.panelCollapsed) {
-      fitVisibleTerminals();
-    }
+    fitVisibleTerminals();
     updateFocusedBindingChip();
   });
 }
 
-function setPanelCollapsed(collapsed: boolean): void {
-  if (panelState.panelCollapsed === collapsed) {
+async function closeBrowserSidePanel(): Promise<void> {
+  if (panelCloseInFlight) {
     return;
   }
-  panelState.panelCollapsed = collapsed;
-  void saveState();
-  render();
-}
 
-function togglePanelCollapsed(): void {
-  setPanelCollapsed(!panelState.panelCollapsed);
+  panelCloseInFlight = true;
+  try {
+    const response = await runtimeMessage<CollapseSidePanelResultMessage>({ type: 'collapse_side_panel' });
+    if (!response.ok) {
+      throw new Error(response.error || 'Failed to close the side panel.');
+    }
+  } catch (error) {
+    setStatus('error', error instanceof Error ? error.message : String(error));
+  } finally {
+    panelCloseInFlight = false;
+    panelAutoCollapseArmed = false;
+    lastViewportWidth = window.innerWidth;
+  }
 }
 
 function setRailCollapsed(collapsed: boolean): void {
@@ -571,20 +584,50 @@ function attachSplitterHandlers(splitter: HTMLDivElement, workspaceId: string, t
 function attachRailResizeHandler(): void {
   workspaceRailResizer.addEventListener('pointerdown', (event) => {
     event.preventDefault();
+    workspaceRailResizer.setPointerCapture(event.pointerId);
     document.body.classList.add('rail-resizing');
     const startX = event.clientX;
     const startWidth = panelState.railWidth;
+    let nextWidth = startWidth;
+    let collapsedByDrag = false;
 
     const onMove = (moveEvent: PointerEvent) => {
       const delta = startX - moveEvent.clientX;
-      panelState.railWidth = clampRailWidth(startWidth + delta);
+      nextWidth = Math.max(0, Math.round(startWidth + delta));
+
+      if (nextWidth <= RAIL_AUTO_COLLAPSE_WIDTH) {
+        collapsedByDrag = true;
+        if (!panelState.railCollapsed) {
+          panelState.railCollapsed = true;
+          applyLayoutState();
+          scheduleFit();
+        }
+        return;
+      }
+
+      collapsedByDrag = false;
+      if (panelState.railCollapsed) {
+        panelState.railCollapsed = false;
+        applyLayoutState();
+      }
+
+      panelState.railWidth = clampRailWidth(nextWidth);
       applyRailWidth();
     };
 
     const onUp = () => {
       document.body.classList.remove('rail-resizing');
+      workspaceRailResizer.releasePointerCapture(event.pointerId);
       window.removeEventListener('pointermove', onMove);
       window.removeEventListener('pointerup', onUp);
+
+      if (collapsedByDrag) {
+        panelState.railCollapsed = true;
+      } else {
+        panelState.railCollapsed = false;
+        panelState.railWidth = clampRailWidth(nextWidth);
+      }
+
       void saveState();
       scheduleFit();
     };
@@ -592,6 +635,24 @@ function attachRailResizeHandler(): void {
     window.addEventListener('pointermove', onMove);
     window.addEventListener('pointerup', onUp);
   });
+}
+
+function handleViewportResize(): void {
+  const nextWidth = window.innerWidth;
+  const shrinking = nextWidth < lastViewportWidth;
+
+  if (nextWidth >= PANEL_AUTO_COLLAPSE_ARM_WIDTH) {
+    panelAutoCollapseArmed = true;
+  }
+
+  lastViewportWidth = nextWidth;
+
+  if (!panelCloseInFlight && panelAutoCollapseArmed && shrinking && nextWidth <= PANEL_AUTO_COLLAPSE_WIDTH) {
+    void closeBrowserSidePanel();
+    return;
+  }
+
+  scheduleFit();
 }
 
 function renderWorkspaceRail(): void {
@@ -925,11 +986,7 @@ btnAddCodexPane.addEventListener('click', () => {
 });
 
 btnTogglePanel.addEventListener('click', () => {
-  togglePanelCollapsed();
-});
-
-panelEdgeToggle.addEventListener('click', () => {
-  setPanelCollapsed(false);
+  void closeBrowserSidePanel();
 });
 
 workspaceRailEdgeToggle.addEventListener('click', () => {
@@ -940,16 +997,19 @@ chrome.runtime.onMessage.addListener((message) => {
   if (message.type === 'context_update') {
     sendToHost(message);
   }
+  if (message.type === 'browser_command_result') {
+    sendToHost(message);
+  }
 });
 
-window.addEventListener('resize', () => {
-  scheduleFit();
-});
+window.addEventListener('resize', handleViewportResize);
+window.addEventListener('pagehide', notifyPanelClosed);
 
 attachRailResizeHandler();
 
 void (async () => {
   await loadState();
   render();
+  notifyPanelOpened();
   connect();
 })();

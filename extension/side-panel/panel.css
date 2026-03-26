@@ -56,6 +56,7 @@ select:hover {
   display: flex;
   flex-direction: column;
   height: 100%;
+  background: linear-gradient(180deg, rgba(17, 19, 28, 0.98), rgba(14, 16, 24, 1));
   transition: transform 180ms ease;
   will-change: transform;
 }
@@ -195,8 +196,16 @@ body.panel-collapsed #shell {
   flex: 1 1 auto;
   min-height: 0;
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 8px minmax(120px, var(--rail-width));
+  grid-template-columns: minmax(0, 1fr) 8px minmax(96px, var(--rail-width));
+  background: rgba(17, 19, 28, 0.96);
   transition: grid-template-columns 180ms ease, opacity 140ms ease;
+}
+
+body.rail-resizing #shell,
+body.rail-resizing #workspace-rail,
+body.rail-resizing #workspace-stage,
+body.rail-resizing #workspace-rail-resizer {
+  transition: none;
 }
 
 body.rail-collapsed #shell {
@@ -207,6 +216,7 @@ body.rail-collapsed #shell {
   min-width: 0;
   min-height: 0;
   padding: 8px;
+  background: linear-gradient(180deg, rgba(26, 27, 38, 0.94), rgba(18, 20, 30, 0.98));
 }
 
 #workspace-rail-resizer {
@@ -499,29 +509,8 @@ body.rail-collapsed #workspace-rail {
   transition: opacity 160ms ease, transform 180ms ease, background 160ms ease;
 }
 
-.panel-edge-toggle {
-  top: 74px;
-  right: 0;
-  width: var(--panel-peek-width);
-  min-height: 96px;
-  writing-mode: vertical-rl;
-  text-orientation: mixed;
-}
-
-body:not(.panel-collapsed) .panel-edge-toggle {
-  opacity: 0;
-  pointer-events: none;
-  transform: translateX(12px);
-}
-
-body.panel-collapsed .panel-edge-toggle {
-  opacity: 1;
-  pointer-events: auto;
-  transform: translateX(0);
-}
-
 .workspace-edge-toggle {
-  top: 18px;
+  top: 56px;
   right: 0;
   min-height: 68px;
   width: 28px;
