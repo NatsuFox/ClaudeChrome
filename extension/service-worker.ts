@@ -4,6 +4,7 @@ import type {
   PageInfo,
   TabSummary,
 } from './shared/types';
+import { dispatchCommand } from './command-dispatcher';
 
 type TabContextState = {
   tab: TabSummary;
@@ -12,9 +13,27 @@ type TabContextState = {
   consoleLogs: ConsoleEntry[];
 };
 
+type SidePanelCloseOptions = {
+  tabId?: number;
+  windowId?: number;
+};
+
+type SidePanelApi = typeof chrome.sidePanel & {
+  close?: (options: SidePanelCloseOptions) => Promise<void> | void;
+  onClosed?: {
+    addListener: (listener: (info: SidePanelCloseOptions) => void) => void;
+  };
+  onOpened?: {
+    addListener: (listener: (info: SidePanelCloseOptions) => void) => void;
+  };
+};
+
 const tabContexts = new Map<number, TabContextState>();
 const MAX_REQUESTS = 5000;
 const MAX_CONSOLE = 2000;
+const SIDE_PANEL_PATH = 'side-panel/panel.html';
+const sidePanelApi = chrome.sidePanel as SidePanelApi;
+const openPanelWindows = new Set<number>();
 
 let reqCounter = 0;
 
@@ -126,6 +145,98 @@ function injectIntoTab(tabId: number): void {
     },
     () => void chrome.runtime.lastError
   );
+}
+
+function enableSidePanelForTab(tabId: number): void {
+  chrome.sidePanel.setOptions({ tabId, enabled: true }, () => void chrome.runtime.lastError);
+}
+
+function markPanelOpen(windowId: number | null | undefined): void {
+  if (typeof windowId === 'number') {
+    openPanelWindows.add(windowId);
+  }
+}
+
+function markPanelClosed(windowId: number | null | undefined): void {
+  if (typeof windowId === 'number') {
+    openPanelWindows.delete(windowId);
+  }
+}
+
+function disableActionClickToggle(): void {
+  chrome.sidePanel.setPanelBehavior({ openPanelOnActionClick: false }, () => void chrome.runtime.lastError);
+}
+
+function repairSidePanelAvailability(): void {
+  disableActionClickToggle();
+  chrome.sidePanel.setOptions({ path: SIDE_PANEL_PATH, enabled: true }, () => void chrome.runtime.lastError);
+  chrome.tabs.query({}, (tabs) => {
+    tabs.forEach((tab) => {
+      if (tab.id != null) {
+        enableSidePanelForTab(tab.id);
+      }
+    });
+  });
+}
+
+function openSidePanelForTab(tab: chrome.tabs.Tab): void {
+  if (tab.id == null) return;
+
+  enableSidePanelForTab(tab.id);
+
+  const onOpened = () => {
+    const error = chrome.runtime.lastError;
+    if (error) {
+      console.error(`[ClaudeChrome] Failed to open side panel: ${error.message}`);
+      markPanelClosed(tab.windowId);
+      return;
+    }
+    markPanelOpen(tab.windowId);
+  };
+
+  if (tab.windowId != null) {
+    chrome.sidePanel.open({ windowId: tab.windowId }, onOpened);
+    return;
+  }
+
+  chrome.sidePanel.open({ tabId: tab.id }, onOpened);
+}
+
+function closeSidePanelForWindow(windowId: number): void {
+  if (typeof sidePanelApi.close !== 'function') {
+    return;
+  }
+
+  Promise.resolve(sidePanelApi.close({ windowId }))
+    .then(() => {
+      markPanelClosed(windowId);
+    })
+    .catch((error) => {
+      const message = error instanceof Error ? error.message : String(error);
+      if (message.includes('No active side panel')) {
+        markPanelClosed(windowId);
+        return;
+      }
+      console.error(`[ClaudeChrome] Failed to close side panel before toggle: ${message}`);
+    });
+}
+
+function toggleSidePanelForTab(tab: chrome.tabs.Tab): void {
+  if (tab.id == null) {
+    return;
+  }
+
+  updateTabFromChromeTab(tab);
+  if (isInjectableUrl(tab.url)) {
+    injectIntoTab(tab.id);
+  }
+
+  if (tab.windowId != null && openPanelWindows.has(tab.windowId) && typeof sidePanelApi.close === 'function') {
+    closeSidePanelForWindow(tab.windowId);
+    return;
+  }
+
+  openSidePanelForTab(tab);
 }
 
 function evictOldRequests(context: TabContextState): void {
@@ -346,8 +457,68 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   }
 
   if (msg.type === 'panel_opened') {
+    chrome.tabs.query({ active: true, lastFocusedWindow: true }, (tabs) => {
+      markPanelOpen(tabs[0]?.windowId);
+    });
     refreshCurrentWindowActiveTab();
     return;
+  }
+
+  if (msg.type === 'panel_closed') {
+    chrome.tabs.query({ active: true, lastFocusedWindow: true }, (tabs) => {
+      markPanelClosed(tabs[0]?.windowId);
+    });
+    return;
+  }
+
+  if (msg.type === 'collapse_side_panel') {
+    chrome.tabs.query({ active: true, lastFocusedWindow: true }, (tabs) => {
+      const activeTab = tabs[0];
+      if (!activeTab?.id || activeTab.windowId == null) {
+        sendResponse({
+          type: 'collapse_side_panel_result',
+          ok: false,
+          error: 'No active browser window is available to collapse the side panel.',
+        });
+        return;
+      }
+
+      if (typeof sidePanelApi.close !== 'function') {
+        sendResponse({
+          type: 'collapse_side_panel_result',
+          ok: false,
+          error: 'This Chrome build does not support programmatic side panel closing.',
+        });
+        return;
+      }
+
+      Promise.resolve(sidePanelApi.close({ windowId: activeTab.windowId }))
+        .then(() => {
+          markPanelClosed(activeTab.windowId);
+          sendResponse({
+            type: 'collapse_side_panel_result',
+            ok: true,
+          });
+        })
+        .catch((error) => {
+          const message = error instanceof Error ? error.message : String(error);
+          if (message.includes('No active side panel')) {
+            markPanelClosed(activeTab.windowId);
+            sendResponse({
+              type: 'collapse_side_panel_result',
+              ok: true,
+            });
+            return;
+          }
+
+          sendResponse({
+            type: 'collapse_side_panel_result',
+            ok: false,
+            error: message,
+          });
+        });
+    });
+    return true;
   }
 
   if (msg.type === 'get_current_window_active_tab') {
@@ -373,19 +544,44 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     });
     return true;
   }
-});
 
-chrome.action.onClicked.addListener((tab) => {
-  if (!tab.id) return;
-  updateTabFromChromeTab(tab);
-  if (isInjectableUrl(tab.url)) {
-    injectIntoTab(tab.id);
+  if (msg.type === 'browser_command') {
+    const { id, tabId, command, params } = msg;
+    dispatchCommand(command as string, tabId as number, params as Record<string, unknown>)
+      .then((result) => {
+        chrome.runtime.sendMessage(
+          { type: 'browser_command_result', id, result },
+          () => void chrome.runtime.lastError
+        );
+      })
+      .catch((err) => {
+        chrome.runtime.sendMessage(
+          {
+            type: 'browser_command_result',
+            id,
+            error: err instanceof Error ? err.message : String(err),
+          },
+          () => void chrome.runtime.lastError
+        );
+      });
+    return true;
   }
-  chrome.sidePanel.open({ tabId: tab.id });
 });
 
 chrome.tabs.onActivated.addListener(({ tabId }) => {
   refreshTab(tabId);
+});
+
+chrome.action.onClicked.addListener((tab) => {
+  toggleSidePanelForTab(tab);
+});
+
+sidePanelApi.onOpened?.addListener((info) => {
+  markPanelOpen(info.windowId);
+});
+
+sidePanelApi.onClosed?.addListener((info) => {
+  markPanelClosed(info.windowId);
 });
 
 chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
@@ -422,4 +618,14 @@ chrome.tabs.onReplaced.addListener((addedTabId, removedTabId) => {
   refreshTab(addedTabId);
 });
 
+chrome.runtime.onInstalled.addListener(() => {
+  repairSidePanelAvailability();
+  refreshCurrentWindowActiveTab();
+});
+
+chrome.runtime.onStartup.addListener(() => {
+  repairSidePanelAvailability();
+});
+
+repairSidePanelAvailability();
 refreshCurrentWindowActiveTab();

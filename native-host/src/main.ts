@@ -64,6 +64,30 @@ function broadcast(message: object): void {
   }
 }
 
+type PendingCommand = {
+  resolve: (r: unknown) => void;
+  reject: (e: Error) => void;
+  timer: ReturnType<typeof setTimeout>;
+};
+const pendingCommands = new Map<string, PendingCommand>();
+
+function dispatchBrowserCommand(
+  tabId: number,
+  command: string,
+  params: Record<string, unknown>,
+  timeoutMs = 20_000
+): Promise<unknown> {
+  return new Promise((resolve, reject) => {
+    const id = crypto.randomUUID();
+    const timer = setTimeout(() => {
+      pendingCommands.delete(id);
+      reject(new Error(`browser_command timeout (${timeoutMs}ms): ${command}`));
+    }, timeoutMs);
+    pendingCommands.set(id, { resolve, reject, timer });
+    broadcast({ type: 'browser_command', id, tabId, command, params });
+  });
+}
+
 function sendStatus(client: WebSocket, status: 'connected' | 'disconnected' | 'error' | 'connecting', message: string): void {
   if (client.readyState !== WebSocket.OPEN) return;
   client.send(JSON.stringify({ type: 'status', status, message }));
@@ -136,6 +160,19 @@ function handleClientMessage(msg: any): void {
     case 'context_update':
       handleContextUpdate(msg);
       break;
+    case 'browser_command_result': {
+      const pending = pendingCommands.get(msg.id);
+      if (pending) {
+        clearTimeout(pending.timer);
+        pendingCommands.delete(msg.id);
+        if (msg.error) {
+          pending.reject(new Error(msg.error));
+        } else {
+          pending.resolve(msg.result);
+        }
+      }
+      break;
+    }
     default:
       break;
   }
@@ -213,7 +250,7 @@ function startIpcServer(socketPath: string): void {
     // Ignore stale socket cleanup failures.
   }
 
-  ipcServer = net.createServer((conn) => {
+  ipcServer = net.createServer({ allowHalfOpen: true }, (conn) => {
     const meta = socketMeta(conn);
     let data = '';
 
@@ -246,14 +283,24 @@ function startIpcServer(socketPath: string): void {
 
     conn.on('end', () => {
       try {
-        const { sessionId, tool, params } = JSON.parse(data.trim());
-        const result = handleStoreQuery(sessionId, tool, params);
-        appendConnectionLog('ipc_query', {
-          ...meta,
-          sessionId,
-          tool,
-        });
-        reply(result);
+        const parsed = JSON.parse(data.trim());
+        const { kind, sessionId, tool, command, params, timeoutMs } = parsed;
+
+        if (kind === 'command') {
+          const tabId = sessionManager.getBindingTabId(sessionId);
+          if (tabId == null) {
+            reply({ error: `No session or tab binding for session: ${sessionId}` });
+            return;
+          }
+          appendConnectionLog('ipc_command', { ...meta, sessionId, command });
+          dispatchBrowserCommand(tabId, command as string, (params ?? {}) as Record<string, unknown>, timeoutMs as number | undefined)
+            .then((result) => reply({ ok: true, result }))
+            .catch((err) => reply({ error: err instanceof Error ? err.message : String(err) }));
+        } else {
+          const result = handleStoreQuery(sessionId, tool, params);
+          appendConnectionLog('ipc_query', { ...meta, sessionId, tool });
+          reply(result);
+        }
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
         reply({ error: message });

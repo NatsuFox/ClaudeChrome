@@ -9,7 +9,8 @@
     "build:host": "cd native-host && npm run build",
     "install:host": "node native-host/dist/install.js",
     "setup": "npm install && cd native-host && npm install && npm run build",
-    "package": "npm run build && npm run build:host"
+    "package": "npm run build && npm run build:host",
+    "test": "npm run build && npm run build:host && node scripts/test-commands.js && node scripts/test-dispatcher.js"
   },
   "devDependencies": {
     "@anthropic-ai/sdk": "^0.39.0",

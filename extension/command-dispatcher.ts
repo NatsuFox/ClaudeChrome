@@ -1,0 +1,317 @@
+// command-dispatcher.ts
+// Implements all Tier 1 browser commands for the bidirectional command protocol.
+// Runs in the service worker context (isolated world, full Chrome API access).
+
+export async function dispatchCommand(
+  command: string,
+  tabId: number,
+  params: Record<string, unknown>
+): Promise<unknown> {
+  switch (command) {
+    case 'screenshot':        return cmdScreenshot(tabId, params);
+    case 'navigate':          return cmdNavigate(tabId, params);
+    case 'reload':            return cmdReload(tabId, params);
+    case 'get_page_content':  return cmdGetPageContent(tabId, params);
+    case 'find_elements':     return cmdFindElements(tabId, params);
+    case 'evaluate_js':       return cmdEvaluateJs(tabId, params);
+    case 'click':             return cmdClick(tabId, params);
+    case 'type':              return cmdType(tabId, params);
+    case 'scroll':            return cmdScroll(tabId, params);
+    case 'wait_for':          return cmdWaitFor(tabId, params);
+    case 'get_cookies':       return cmdGetCookies(tabId, params);
+    case 'get_storage':       return cmdGetStorage(tabId, params);
+    default:
+      throw new Error(`Unknown browser command: ${command}`);
+  }
+}
+
+// --- Screenshot ---
+
+async function cmdScreenshot(
+  tabId: number,
+  params: Record<string, unknown>
+): Promise<{ dataUrl: string; format: string }> {
+  const format = (params.format === 'jpeg' ? 'jpeg' : 'png') as 'png' | 'jpeg';
+  const quality = typeof params.quality === 'number' ? params.quality : 90;
+  const tab = await chrome.tabs.get(tabId);
+  const windowId = tab.windowId;
+  const dataUrl = await chrome.tabs.captureVisibleTab(windowId, { format, quality });
+  return { dataUrl, format };
+}
+
+// --- Navigation ---
+
+async function cmdNavigate(
+  tabId: number,
+  params: Record<string, unknown>
+): Promise<{ url: string; status: string }> {
+  const url = String(params.url);
+  const waitForLoad = params.wait_for_load !== false;
+  await chrome.tabs.update(tabId, { url });
+  if (waitForLoad) {
+    await waitForTabLoad(tabId);
+  }
+  const tab = await chrome.tabs.get(tabId);
+  return { url: tab.url ?? url, status: tab.status ?? 'unknown' };
+}
+
+async function cmdReload(
+  tabId: number,
+  params: Record<string, unknown>
+): Promise<{ status: string }> {
+  const bypassCache = params.bypass_cache === true;
+  await chrome.tabs.reload(tabId, { bypassCache });
+  await waitForTabLoad(tabId);
+  return { status: 'complete' };
+}
+
+function waitForTabLoad(tabId: number, timeoutMs = 15_000): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const deadline = Date.now() + timeoutMs;
+    function check() {
+      chrome.tabs.get(tabId, (tab) => {
+        if (chrome.runtime.lastError) {
+          return reject(new Error(chrome.runtime.lastError.message ?? 'Tab unavailable'));
+        }
+        if (tab.status === 'complete') return resolve();
+        if (Date.now() > deadline) return reject(new Error(`Navigation timeout after ${timeoutMs}ms`));
+        setTimeout(check, 150);
+      });
+    }
+    setTimeout(check, 150);
+  });
+}
+
+// --- Live Page Content ---
+
+async function cmdGetPageContent(
+  tabId: number,
+  params: Record<string, unknown>
+): Promise<{ url: string; title: string; text: string; html?: string }> {
+  const maxChars = Math.min(typeof params.max_chars === 'number' ? params.max_chars : 200_000, 500_000);
+  const includeHtml = params.include_html === true;
+  const [result] = await chrome.scripting.executeScript({
+    target: { tabId },
+    func: (max: number, html: boolean) => ({
+      url: location.href,
+      title: document.title,
+      text: (document.body?.innerText ?? '').slice(0, max),
+      html: html ? (document.documentElement?.outerHTML ?? '').slice(0, max) : undefined,
+    }),
+    args: [maxChars, includeHtml],
+  });
+  return result.result as { url: string; title: string; text: string; html?: string };
+}
+
+async function cmdFindElements(
+  tabId: number,
+  params: Record<string, unknown>
+): Promise<{ elements: Array<{ tag: string; id: string; text: string; rect: object }> }> {
+  const selector = String(params.selector ?? '*');
+  const limit = typeof params.limit === 'number' ? params.limit : 50;
+  const [result] = await chrome.scripting.executeScript({
+    target: { tabId },
+    func: (sel: string, lim: number) => {
+      const nodes = Array.from(document.querySelectorAll(sel)).slice(0, lim);
+      return {
+        elements: nodes.map(el => ({
+          tag: el.tagName.toLowerCase(),
+          id: el.id ?? '',
+          text: ((el as HTMLElement).innerText ?? '').slice(0, 500),
+          rect: el.getBoundingClientRect().toJSON(),
+        })),
+      };
+    },
+    args: [selector, limit],
+  });
+  return result.result as { elements: Array<{ tag: string; id: string; text: string; rect: object }> };
+}
+
+// --- JavaScript Evaluation ---
+
+async function cmdEvaluateJs(
+  tabId: number,
+  params: Record<string, unknown>
+): Promise<{ result: unknown; error?: string }> {
+  const expression = String(params.expression ?? '');
+  const [res] = await chrome.scripting.executeScript({
+    target: { tabId },
+    func: (expr: string) => {
+      try {
+        // Use indirect eval so it runs in the page's global scope
+        const result = (0, eval)(expr); // eslint-disable-line no-eval
+        // Attempt serialization; fall back to string
+        try { JSON.stringify(result); } catch { return { result: String(result) }; }
+        return { result };
+      } catch (e) {
+        return { result: null, error: String(e) };
+      }
+    },
+    args: [expression],
+  });
+  return res.result as { result: unknown; error?: string };
+}
+
+// --- Interaction ---
+
+async function cmdClick(
+  tabId: number,
+  params: Record<string, unknown>
+): Promise<{ clicked: boolean; error?: string }> {
+  const selector = typeof params.selector === 'string' ? params.selector : undefined;
+  const x = typeof params.x === 'number' ? params.x : undefined;
+  const y = typeof params.y === 'number' ? params.y : undefined;
+  const [result] = await chrome.scripting.executeScript({
+    target: { tabId },
+    func: (sel?: string, cx?: number, cy?: number) => {
+      let el: Element | null = null;
+      if (sel) {
+        el = document.querySelector(sel);
+        if (!el) return { clicked: false, error: `Element not found: ${sel}` };
+      } else if (cx !== undefined && cy !== undefined) {
+        el = document.elementFromPoint(cx, cy);
+        if (!el) return { clicked: false, error: `No element at (${cx}, ${cy})` };
+      } else {
+        return { clicked: false, error: 'selector or x/y required' };
+      }
+      (el as HTMLElement).click();
+      return { clicked: true };
+    },
+    args: [selector, x, y],
+  });
+  return result.result as { clicked: boolean; error?: string };
+}
+
+async function cmdType(
+  tabId: number,
+  params: Record<string, unknown>
+): Promise<{ typed: boolean; error?: string }> {
+  const selector = String(params.selector ?? '');
+  const text = String(params.text ?? '');
+  const clear = params.clear === true;
+  const [result] = await chrome.scripting.executeScript({
+    target: { tabId },
+    func: (sel: string, txt: string, clr: boolean) => {
+      const el = document.querySelector(sel) as HTMLInputElement | null;
+      if (!el) return { typed: false, error: `Element not found: ${sel}` };
+      el.focus();
+      if (clr) el.value = '';
+      el.value += txt;
+      el.dispatchEvent(new Event('input', { bubbles: true }));
+      el.dispatchEvent(new Event('change', { bubbles: true }));
+      return { typed: true };
+    },
+    args: [selector, text, clear],
+  });
+  return result.result as { typed: boolean; error?: string };
+}
+
+async function cmdScroll(
+  tabId: number,
+  params: Record<string, unknown>
+): Promise<{ scrolled: boolean }> {
+  const selector = typeof params.selector === 'string' ? params.selector : undefined;
+  const x = typeof params.x === 'number' ? params.x : 0;
+  const y = typeof params.y === 'number' ? params.y : 0;
+  const behavior = params.behavior === 'smooth' ? 'smooth' : 'instant';
+  const [result] = await chrome.scripting.executeScript({
+    target: { tabId },
+    func: (sel: string | undefined, sx: number, sy: number, beh: string) => {
+      if (sel) {
+        const el = document.querySelector(sel);
+        el?.scrollIntoView({ behavior: beh as ScrollBehavior });
+      } else {
+        window.scrollTo({ left: sx, top: sy, behavior: beh as ScrollBehavior });
+      }
+      return { scrolled: true };
+    },
+    args: [selector, x, y, behavior],
+  });
+  return result.result as { scrolled: boolean };
+}
+
+// --- Wait For Condition ---
+
+async function cmdWaitFor(
+  tabId: number,
+  params: Record<string, unknown>
+): Promise<{ satisfied: boolean; elapsed: number }> {
+  const condition = String(params.condition ?? 'load');
+  const value = typeof params.value === 'string' ? params.value : '';
+  const timeoutMs = typeof params.timeout_ms === 'number' ? params.timeout_ms : 10_000;
+  const start = Date.now();
+  const deadline = start + timeoutMs;
+
+  while (Date.now() < deadline) {
+    const tab = await chrome.tabs.get(tabId).catch(() => null);
+    if (!tab) break;
+
+    if (condition === 'load' && tab.status === 'complete') {
+      return { satisfied: true, elapsed: Date.now() - start };
+    }
+    if (condition === 'url' && (tab.url ?? '').includes(value)) {
+      return { satisfied: true, elapsed: Date.now() - start };
+    }
+    if (condition === 'title' && (tab.title ?? '').includes(value)) {
+      return { satisfied: true, elapsed: Date.now() - start };
+    }
+    if (condition === 'selector') {
+      const [res] = await chrome.scripting.executeScript({
+        target: { tabId },
+        func: (sel: string) => !!document.querySelector(sel),
+        args: [value],
+      }).catch(() => [{ result: false }]);
+      if (res.result) return { satisfied: true, elapsed: Date.now() - start };
+    }
+    await new Promise(r => setTimeout(r, 200));
+  }
+  return { satisfied: false, elapsed: timeoutMs };
+}
+
+// --- Cookies ---
+
+async function cmdGetCookies(
+  _tabId: number,
+  params: Record<string, unknown>
+): Promise<{ cookies: chrome.cookies.Cookie[] }> {
+  const details: chrome.cookies.GetAllDetails = {};
+  if (typeof params.url === 'string') details.url = params.url;
+  if (typeof params.name === 'string') details.name = params.name;
+  if (typeof params.domain === 'string') details.domain = params.domain;
+  const cookies = await chrome.cookies.getAll(details);
+  return { cookies };
+}
+
+// --- Storage ---
+
+async function cmdGetStorage(
+  tabId: number,
+  params: Record<string, unknown>
+): Promise<{ localStorage?: Record<string, string>; sessionStorage?: Record<string, string> }> {
+  const storageType = String(params.storage_type ?? 'both');
+  const keys = Array.isArray(params.keys) ? params.keys as string[] : null;
+  const [result] = await chrome.scripting.executeScript({
+    target: { tabId },
+    func: (type: string, ks: string[] | null) => {
+      function dump(store: Storage): Record<string, string> {
+        const out: Record<string, string> = {};
+        const keyList = ks ?? Object.keys(store);
+        for (const k of keyList) {
+          const v = store.getItem(k);
+          if (v !== null) out[k] = v;
+        }
+        return out;
+      }
+      return {
+        localStorage: type !== 'session' ? dump(localStorage) : undefined,
+        sessionStorage: type !== 'local' ? dump(sessionStorage) : undefined,
+      };
+    },
+    args: [storageType, keys],
+  });
+  return result.result as { localStorage?: Record<string, string>; sessionStorage?: Record<string, string> };
+}
+
+
+
+

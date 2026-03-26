@@ -198,6 +198,20 @@ export interface PanelOpenedMessage {
   type: 'panel_opened';
 }
 
+export interface PanelClosedMessage {
+  type: 'panel_closed';
+}
+
+export interface CollapseSidePanelMessage {
+  type: 'collapse_side_panel';
+}
+
+export interface CollapseSidePanelResultMessage {
+  type: 'collapse_side_panel_result';
+  ok: boolean;
+  error?: string;
+}
+
 export interface GetCurrentWindowActiveTabMessage {
   type: 'get_current_window_active_tab';
 }
@@ -219,9 +233,29 @@ export interface ActivateTabResultMessage {
   error?: string;
 }
 
+// Bidirectional command protocol
+export interface BrowserCommandMessage {
+  type: 'browser_command';
+  id: string;       // UUID correlation ID echoed in result
+  tabId: number;
+  command: string;
+  params: Record<string, unknown>;
+}
+
+export interface BrowserCommandResultMessage {
+  type: 'browser_command_result';
+  id: string;
+  result?: unknown;
+  error?: string;
+}
+
 export type ExtensionMessage =
   | ActivateTabMessage
   | ActivateTabResultMessage
+  | BrowserCommandMessage
+  | BrowserCommandResultMessage
+  | CollapseSidePanelMessage
+  | CollapseSidePanelResultMessage
   | CapturedBodyMessage
   | ChunkMessage
   | ConsoleEntryMessage
@@ -231,6 +265,7 @@ export type ExtensionMessage =
   | GetCurrentWindowActiveTabMessage
   | GetCurrentWindowActiveTabResultMessage
   | PageInfoMessage
+  | PanelClosedMessage
   | PanelOpenedMessage
   | SessionBindTabMessage
   | SessionCloseMessage
