@@ -2,7 +2,7 @@ import { buildAgentLaunch, type AgentType } from './agent-runtime.js';
 import { ContextStore } from './context-store.js';
 import { PtyBridge } from './pty-bridge.js';
 
-type ProcessState = 'starting' | 'running' | 'error';
+type ProcessState = 'starting' | 'running' | 'error' | 'exited';
 
 type AgentSession = {
   sessionId: string;
@@ -15,6 +15,7 @@ type AgentSession = {
   statusMessage?: string;
   pty: PtyBridge | null;
   outputBuffer: string;
+  shellInputBuffer: string;
   flushTimer: ReturnType<typeof setTimeout> | null;
   cols: number;
   rows: number;
@@ -30,7 +31,7 @@ export interface SessionSnapshot {
     tabId: number;
   };
   boundTab: ReturnType<ContextStore['getTab']>;
-  status: 'starting' | 'connected' | 'error' | 'tab_unavailable';
+  status: 'starting' | 'connected' | 'error' | 'exited' | 'tab_unavailable';
   statusMessage?: string;
   createdAt: number;
   lastActiveAt: number;
@@ -130,6 +131,7 @@ export class SessionManager {
       statusMessage: `Starting ${displayAgentName(options.agentType)}...`,
       pty: null,
       outputBuffer: '',
+      shellInputBuffer: '',
       flushTimer: null,
       cols: options.cols,
       rows: options.rows,
@@ -146,6 +148,7 @@ export class SessionManager {
     const session = this.sessions.get(sessionId);
     if (!session?.pty) return;
     session.lastActiveAt = Date.now();
+    this.inspectShellInput(session, data);
     session.pty.write(data);
   }
 
@@ -197,6 +200,7 @@ export class SessionManager {
     const previous = session.pty;
     session.pty = null;
     previous?.kill();
+    this.broadcast({ type: 'session_closed', sessionId });
     this.broadcastSnapshot();
   }
 
@@ -224,6 +228,7 @@ export class SessionManager {
     session.pty = bridge;
     session.processState = 'starting';
     session.outputBuffer = '';
+    session.shellInputBuffer = '';
     if (session.flushTimer) {
       clearTimeout(session.flushTimer);
       session.flushTimer = null;
@@ -263,27 +268,59 @@ export class SessionManager {
   }
 
   private handleProcessExit(session: AgentSession, code: number): void {
-    const previousAgent = session.agentType;
-    const previousName = displayAgentName(previousAgent);
+    const agentName = displayAgentName(session.agentType);
+    session.processState = 'exited';
+    session.lastActiveAt = Date.now();
+    session.shellInputBuffer = '';
+    session.statusMessage = `${agentName} exited with code ${code}`;
+    this.sessions.delete(session.sessionId);
+    this.broadcast({ type: 'session_closed', sessionId: session.sessionId });
+    this.broadcastSnapshot();
+  }
 
-    if (previousAgent !== 'shell') {
-      session.agentType = 'shell';
-      session.statusMessage = `${previousName} exited with code ${code}; switched to Shell`;
-      this.launchSession(session);
-      if (session.processState !== 'error') {
-        session.statusMessage = `${previousName} exited with code ${code}; fallback shell active`;
-        this.emitSystemNotice(session, `${previousName} exited with code ${code}; switched to bash shell.`);
-      }
-    } else {
-      session.statusMessage = `Shell exited with code ${code}; restarted shell`;
-      this.launchSession(session);
-      if (session.processState !== 'error') {
-        session.statusMessage = 'Shell restarted after exit';
-        this.emitSystemNotice(session, `Shell exited with code ${code}; started a fresh bash shell.`);
-      }
+  private inspectShellInput(session: AgentSession, data: string): void {
+    if (session.agentType !== 'shell') {
+      session.shellInputBuffer = '';
+      return;
     }
 
-    this.broadcastSnapshot();
+    for (const char of data) {
+      if (char === '\u0003' || char === '\u0004') {
+        session.shellInputBuffer = '';
+        continue;
+      }
+      if (char === '\b' || char === '\u007f') {
+        session.shellInputBuffer = session.shellInputBuffer.slice(0, -1);
+        continue;
+      }
+      if (char === '\r' || char === '\n') {
+        this.maybeWarnAboutDetachedShellLaunch(session, session.shellInputBuffer);
+        session.shellInputBuffer = '';
+        continue;
+      }
+      if (char >= ' ' && char !== '\u007f') {
+        session.shellInputBuffer += char;
+      }
+    }
+  }
+
+  private maybeWarnAboutDetachedShellLaunch(session: AgentSession, commandLine: string): void {
+    const trimmed = commandLine.trim();
+    if (!trimmed) {
+      return;
+    }
+
+    const tokens = trimmed.split(/\s+/);
+    const command = tokens[0] === 'exec' ? tokens[1] : tokens[0];
+    if (command !== 'claude' && command !== 'codex') {
+      return;
+    }
+
+    const agentName = command === 'codex' ? 'Codex' : 'Claude';
+    this.emitSystemNotice(
+      session,
+      `${agentName} started from a Shell pane will not bind to the current Chrome tab. Open a dedicated ${agentName} pane instead.`,
+    );
   }
 
   private queueOutput(session: AgentSession, data: string): void {
@@ -325,6 +362,8 @@ export class SessionManager {
 
     if (session.processState === 'error') {
       status = 'error';
+    } else if (session.processState === 'exited') {
+      status = 'exited';
     } else if (session.processState === 'starting') {
       status = 'starting';
     } else if (!boundTab || !boundTab.available) {

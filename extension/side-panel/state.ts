@@ -156,6 +156,11 @@ export function ensureValidState(state: PersistedPanelState, fallbackPort: strin
   nextState.workspaces = nextState.workspaces.filter((workspace) => workspace.paneIds.length > 0);
   nextState.panes = nextState.panes.filter((pane) => nextState.workspaces.some((workspace) => workspace.workspaceId === pane.workspaceId));
 
+  if (nextState.workspaces.length === 0 && nextState.panes.length === 0) {
+    nextState.activeWorkspaceId = '';
+    return nextState;
+  }
+
   if (nextState.workspaces.length === 0 || nextState.panes.length === 0) {
     return createDefaultState(fallbackPort);
   }

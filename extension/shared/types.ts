@@ -98,6 +98,11 @@ export interface SessionSnapshotMessage {
   sessions: SessionSnapshot[];
 }
 
+export interface SessionClosedMessage {
+  type: 'session_closed';
+  sessionId: string;
+}
+
 // Browser context update from extension → native host
 export interface ContextUpdate {
   type: 'context_update';
@@ -269,6 +274,7 @@ export type ExtensionMessage =
   | PanelOpenedMessage
   | SessionBindTabMessage
   | SessionCloseMessage
+  | SessionClosedMessage
   | SessionCreateMessage
   | SessionInputMessage
   | SessionListRequestMessage

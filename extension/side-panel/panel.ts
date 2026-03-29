@@ -294,6 +294,10 @@ function handleHostMessage(message: SessionOutputMessage | SessionSnapshotMessag
       applySessionSnapshot(message.sessions);
       break;
     }
+    case 'session_closed': {
+      removePaneForSession(message.sessionId, false);
+      break;
+    }
     case 'status': {
       const next = message as StatusMessage;
       setStatus(next.status, next.message);
@@ -321,8 +325,14 @@ function applySessionSnapshot(snapshots: SessionSnapshot[]): void {
     }
   });
 
+  snapshots
+    .filter((snapshot) => snapshot.status === 'exited')
+    .forEach((snapshot) => {
+      removePaneForSession(snapshot.sessionId, true);
+    });
+
   const knownSessionIds = new Set(panelState.panes.map((pane) => pane.sessionId));
-  const unknownSnapshots = snapshots.filter((snapshot) => !knownSessionIds.has(snapshot.sessionId));
+  const unknownSnapshots = snapshots.filter((snapshot) => snapshot.status !== 'exited' && !knownSessionIds.has(snapshot.sessionId));
   if (unknownSnapshots.length > 0) {
     const workspace = createWorkspace(panelState.workspaces.length);
     workspace.title = `Recovered ${panelState.workspaces.length + 1}`;
@@ -404,11 +414,15 @@ function focusPane(paneId: string, shouldFocusTerminal = true): void {
   }
 }
 
-function activeWorkspaceOrThrow() {
-  const workspace = getWorkspace(panelState, panelState.activeWorkspaceId);
-  if (!workspace) {
-    throw new Error('No active workspace');
+function ensureActiveWorkspace() {
+  let workspace = getWorkspace(panelState, panelState.activeWorkspaceId);
+  if (workspace) {
+    return workspace;
   }
+
+  workspace = createWorkspace(panelState.workspaces.length);
+  panelState.workspaces.push(workspace);
+  panelState.activeWorkspaceId = workspace.workspaceId;
   return workspace;
 }
 
@@ -887,6 +901,34 @@ function render(): void {
   scheduleFit();
 }
 
+function removePaneForSession(sessionId: string, notifyHost: boolean): void {
+  const pane = panelState.panes.find((entry) => entry.sessionId === sessionId);
+  if (!pane) {
+    return;
+  }
+
+  const workspace = getWorkspace(panelState, pane.workspaceId);
+
+  if (notifyHost) {
+    sendToHost({ type: 'session_close', sessionId: pane.sessionId });
+  }
+
+  disposeTerminalView(pane.sessionId);
+  pendingSessionCreates.delete(pane.sessionId);
+  sessionSnapshots.delete(pane.sessionId);
+
+  removePane(panelState, pane.paneId);
+  if (workspace && workspace.paneIds.length === 0) {
+    removeWorkspace(panelState, workspace.workspaceId);
+  }
+
+  const activeWorkspace = getWorkspace(panelState, panelState.activeWorkspaceId) || panelState.workspaces[0];
+  panelState.activeWorkspaceId = activeWorkspace?.workspaceId || '';
+  activePaneId = activeWorkspace?.paneIds[0] || null;
+  void saveState();
+  render();
+}
+
 function closePane(paneId: string): void {
   if (panelState.panes.length <= 1) {
     return;
@@ -894,27 +936,11 @@ function closePane(paneId: string): void {
 
   const pane = getPane(panelState, paneId);
   if (!pane) return;
-  const workspace = getWorkspace(panelState, pane.workspaceId);
-  if (!workspace) return;
-
-  sendToHost({ type: 'session_close', sessionId: pane.sessionId });
-  disposeTerminalView(pane.sessionId);
-  sessionSnapshots.delete(pane.sessionId);
-
-  removePane(panelState, paneId);
-  if (workspace.paneIds.length === 0) {
-    removeWorkspace(panelState, workspace.workspaceId);
-  }
-
-  const activeWorkspace = getWorkspace(panelState, panelState.activeWorkspaceId) || panelState.workspaces[0];
-  panelState.activeWorkspaceId = activeWorkspace.workspaceId;
-  activePaneId = activeWorkspace.paneIds[0] || null;
-  void saveState();
-  render();
+  removePaneForSession(pane.sessionId, true);
 }
 
 function addPane(agentType: AgentType): void {
-  const workspace = activeWorkspaceOrThrow();
+  const workspace = ensureActiveWorkspace();
   if (workspace.paneIds.length >= MAX_PANES_PER_WORKSPACE) {
     setStatus('error', `Workspace pane limit is ${MAX_PANES_PER_WORKSPACE}.`);
     return;
