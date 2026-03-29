@@ -135,6 +135,7 @@ function handleClientMessage(msg: any): void {
         cols: msg.cols,
         rows: msg.rows,
         cwd: DEFAULT_CWD,
+        launchArgs: typeof msg.launchArgs === 'string' ? msg.launchArgs : undefined,
       });
       break;
     case 'session_input': {
@@ -146,7 +147,12 @@ function handleClientMessage(msg: any): void {
       sessionManager.resizeSession(msg.sessionId, msg.cols, msg.rows);
       break;
     case 'session_restart':
-      sessionManager.restartSession(msg.sessionId, DEFAULT_CWD, msg.agentType as AgentType | undefined);
+      sessionManager.restartSession(
+        msg.sessionId,
+        DEFAULT_CWD,
+        msg.agentType as AgentType | undefined,
+        typeof msg.launchArgs === 'string' ? msg.launchArgs : undefined,
+      );
       break;
     case 'session_close':
       sessionManager.closeSession(msg.sessionId);

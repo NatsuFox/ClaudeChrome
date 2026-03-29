@@ -181,7 +181,7 @@ body.panel-collapsed #shell {
 
 #btn-reconnect,
 #btn-apply-port,
-#btn-new-workspace,
+#btn-launch-defaults,
 #btn-add-shell-pane,
 #btn-add-claude-pane,
 #btn-add-codex-pane,
@@ -269,8 +269,8 @@ body.rail-collapsed #workspace-rail {
 
 .workspace-rail-header {
   display: flex;
-  align-items: center;
-  justify-content: space-between;
+  flex-direction: column;
+  align-items: stretch;
   gap: 8px;
   margin-left: 10px;
   margin-bottom: 2px;
@@ -283,9 +283,23 @@ body.rail-collapsed #workspace-rail {
   color: var(--text-muted);
 }
 
-.workspace-rail-collapse {
-  padding: 4px 8px;
+.workspace-rail-header-actions {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 6px;
+}
+
+.workspace-rail-button {
+  padding: 5px 8px;
   font-size: 10px;
+}
+
+.workspace-rail-color {
+  background: linear-gradient(135deg, rgba(255, 255, 255, 0.04), var(--workspace-accent, rgba(122, 162, 247, 0.2)));
+}
+
+.workspace-rail-collapse {
+  padding: 5px 8px;
 }
 
 .workspace-tab {

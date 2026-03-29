@@ -1,4 +1,4 @@
-import type { AgentType } from '../shared/types';
+import type { AgentLaunchConfig, AgentType } from '../shared/types';
 
 export interface WorkspaceTab {
   workspaceId: string;
@@ -16,12 +16,14 @@ export interface PaneLayout {
   sizeRatio: number;
   agentType: AgentType;
   bindingTabId: number | null;
+  launchOverrides: AgentLaunchConfig;
 }
 
 export interface PersistedPanelState {
   activeWorkspaceId: string;
   workspaces: WorkspaceTab[];
   panes: PaneLayout[];
+  launchDefaults: AgentLaunchConfig;
   wsPort: string;
   railWidth: number;
   railCollapsed: boolean;
@@ -30,6 +32,13 @@ export interface PersistedPanelState {
 
 const ACCENT_COLORS = ['#7aa2f7', '#9ece6a', '#e0af68', '#f7768e', '#7dcfff', '#bb9af7'];
 const DEFAULT_RAIL_WIDTH = 152;
+
+function createEmptyLaunchConfig(): AgentLaunchConfig {
+  return {
+    claude: '',
+    codex: '',
+  };
+}
 
 function colorForIndex(index: number): string {
   return ACCENT_COLORS[index % ACCENT_COLORS.length];
@@ -67,6 +76,7 @@ export function createPane(workspaceId: string, agentType: AgentType, index: num
     sizeRatio: 1,
     agentType,
     bindingTabId: null,
+    launchOverrides: createEmptyLaunchConfig(),
   };
 }
 
@@ -78,6 +88,7 @@ export function createDefaultState(wsPort: string): PersistedPanelState {
     activeWorkspaceId: workspace.workspaceId,
     workspaces: [workspace],
     panes: [pane],
+    launchDefaults: createEmptyLaunchConfig(),
     wsPort,
     railWidth: DEFAULT_RAIL_WIDTH,
     railCollapsed: false,
@@ -146,7 +157,17 @@ export function ensureValidState(state: PersistedPanelState, fallbackPort: strin
   const nextState: PersistedPanelState = {
     activeWorkspaceId: state.activeWorkspaceId,
     workspaces: state.workspaces.map((workspace) => ({ ...workspace, paneIds: [...workspace.paneIds] })),
-    panes: state.panes.map((pane) => ({ ...pane })),
+    panes: state.panes.map((pane) => ({
+      ...pane,
+      launchOverrides: {
+        ...createEmptyLaunchConfig(),
+        ...(pane.launchOverrides || {}),
+      },
+    })),
+    launchDefaults: {
+      ...createEmptyLaunchConfig(),
+      ...(state.launchDefaults || {}),
+    },
     wsPort: state.wsPort || fallbackPort,
     railWidth: typeof state.railWidth === 'number' ? state.railWidth : DEFAULT_RAIL_WIDTH,
     railCollapsed: typeof state.railCollapsed === 'boolean' ? state.railCollapsed : false,

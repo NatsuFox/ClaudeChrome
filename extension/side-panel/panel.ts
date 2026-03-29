@@ -1,9 +1,11 @@
 import { ChunkAssembler } from '../shared/chunker';
 import type {
   ActivateTabResultMessage,
+  AgentLaunchConfig,
   AgentType,
   CollapseSidePanelResultMessage,
   GetCurrentWindowActiveTabResultMessage,
+  LaunchConfigAgentType,
   SessionBindTabMessage,
   SessionCreateMessage,
   SessionInputMessage,
@@ -52,7 +54,7 @@ const workspaceRailEdgeToggle = document.getElementById('workspace-rail-edge-tog
 const portInput = document.getElementById('ws-port') as HTMLInputElement;
 const btnApplyPort = document.getElementById('btn-apply-port')!;
 const btnReconnect = document.getElementById('btn-reconnect')!;
-const btnNewWorkspace = document.getElementById('btn-new-workspace')!;
+const btnLaunchDefaults = document.getElementById('btn-launch-defaults')!;
 const btnAddShellPane = document.getElementById('btn-add-shell-pane')!;
 const btnAddClaudePane = document.getElementById('btn-add-claude-pane')!;
 const btnAddCodexPane = document.getElementById('btn-add-codex-pane')!;
@@ -70,6 +72,13 @@ let lastViewportWidth = window.innerWidth;
 let panelAutoCollapseArmed = window.innerWidth >= PANEL_AUTO_COLLAPSE_ARM_WIDTH;
 let panelCloseInFlight = false;
 
+function emptyLaunchConfig(): AgentLaunchConfig {
+  return {
+    claude: '',
+    codex: '',
+  };
+}
+
 function agentLabel(agentType: AgentType): string {
   switch (agentType) {
     case 'codex':
@@ -79,6 +88,28 @@ function agentLabel(agentType: AgentType): string {
     default:
       return 'Claude';
   }
+}
+
+function launchConfigAgentType(agentType: AgentType): LaunchConfigAgentType | null {
+  if (agentType === 'claude' || agentType === 'codex') {
+    return agentType;
+  }
+  return null;
+}
+
+function getEffectiveLaunchArgs(pane: PaneLayout, agentType: AgentType = pane.agentType): string | undefined {
+  const launchAgent = launchConfigAgentType(agentType);
+  if (!launchAgent) {
+    return undefined;
+  }
+
+  const override = pane.launchOverrides[launchAgent].trim();
+  if (override) {
+    return override;
+  }
+
+  const fallback = panelState.launchDefaults[launchAgent].trim();
+  return fallback || undefined;
 }
 
 function setStatus(state: 'connected' | 'disconnected' | 'connecting' | 'error', message?: string): void {
@@ -176,6 +207,16 @@ async function loadState(): Promise<void> {
 
   const rawState = stored[PANEL_STATE_STORAGE_KEY] as PersistedPanelState | null;
   panelState = rawState ? ensureValidState(rawState, portInput.value) : createDefaultState(portInput.value);
+  panelState.launchDefaults = {
+    ...emptyLaunchConfig(),
+    ...panelState.launchDefaults,
+  };
+  panelState.panes.forEach((pane) => {
+    pane.launchOverrides = {
+      ...emptyLaunchConfig(),
+      ...pane.launchOverrides,
+    };
+  });
   panelState.wsPort = portInput.value;
   panelState.railWidth = clampRailWidth(panelState.railWidth);
   panelState.panelCollapsed = false;
@@ -426,6 +467,122 @@ function ensureActiveWorkspace() {
   return workspace;
 }
 
+const workspaceColorInput = document.createElement('input');
+workspaceColorInput.type = 'color';
+workspaceColorInput.tabIndex = -1;
+workspaceColorInput.setAttribute('aria-hidden', 'true');
+workspaceColorInput.style.position = 'fixed';
+workspaceColorInput.style.opacity = '0';
+workspaceColorInput.style.pointerEvents = 'none';
+workspaceColorInput.style.inlineSize = '1px';
+workspaceColorInput.style.blockSize = '1px';
+workspaceColorInput.style.inset = '-10px auto auto -10px';
+document.body.appendChild(workspaceColorInput);
+
+let workspaceColorTargetId: string | null = null;
+
+workspaceColorInput.addEventListener('input', () => {
+  if (!workspaceColorTargetId) {
+    return;
+  }
+  const workspace = getWorkspace(panelState, workspaceColorTargetId);
+  if (!workspace) {
+    return;
+  }
+  workspace.accentColor = workspaceColorInput.value;
+  void saveState();
+  render();
+});
+
+workspaceColorInput.addEventListener('change', () => {
+  workspaceColorTargetId = null;
+});
+
+function restartPaneSession(pane: PaneLayout, agentType: AgentType = pane.agentType): void {
+  const view = getOrCreateTerminalView(pane.sessionId);
+  view.writeln(`\x1b[33m[ClaudeChrome] Restarting ${agentLabel(agentType)}\x1b[0m`);
+  sendToHost({
+    type: 'session_restart',
+    sessionId: pane.sessionId,
+    agentType,
+    launchArgs: getEffectiveLaunchArgs(pane, agentType),
+  });
+}
+
+function editLaunchDefaults(): void {
+  const nextClaude = window.prompt('Default startup arguments for Claude panes.', panelState.launchDefaults.claude);
+  if (nextClaude === null) {
+    return;
+  }
+  const nextCodex = window.prompt('Default startup arguments for Codex panes.', panelState.launchDefaults.codex);
+  if (nextCodex === null) {
+    return;
+  }
+
+  panelState.launchDefaults.claude = nextClaude.trim();
+  panelState.launchDefaults.codex = nextCodex.trim();
+  void saveState();
+  render();
+}
+
+function editPaneLaunchArgs(pane: PaneLayout): void {
+  const launchAgent = launchConfigAgentType(pane.agentType);
+  if (!launchAgent) {
+    setStatus('error', 'Startup arguments are only supported for Claude and Codex panes.');
+    return;
+  }
+
+  const defaultArgs = panelState.launchDefaults[launchAgent].trim() || '(none)';
+  const nextValue = window.prompt(
+    `${agentLabel(pane.agentType)} startup arguments for this pane. Leave blank to use the global default.\nGlobal default: ${defaultArgs}`,
+    pane.launchOverrides[launchAgent],
+  );
+  if (nextValue === null) {
+    return;
+  }
+
+  pane.launchOverrides[launchAgent] = nextValue.trim();
+  void saveState();
+  render();
+
+  if (sessionSnapshots.has(pane.sessionId) && window.confirm(`Restart this ${agentLabel(pane.agentType)} pane now to apply the updated startup arguments?`)) {
+    restartPaneSession(pane);
+  }
+}
+
+function renameActiveWorkspace(): void {
+  const workspace = getWorkspace(panelState, panelState.activeWorkspaceId);
+  if (!workspace) {
+    return;
+  }
+
+  const nextTitle = window.prompt('Workspace name', workspace.title);
+  if (nextTitle === null) {
+    return;
+  }
+
+  const trimmed = nextTitle.trim();
+  if (!trimmed) {
+    setStatus('error', 'Workspace name cannot be empty.');
+    return;
+  }
+
+  workspace.title = trimmed;
+  void saveState();
+  render();
+}
+
+function editActiveWorkspaceColor(): void {
+  const workspace = getWorkspace(panelState, panelState.activeWorkspaceId);
+  if (!workspace) {
+    return;
+  }
+
+  workspaceColorTargetId = workspace.workspaceId;
+  workspaceColorInput.value = workspace.accentColor;
+  workspaceColorInput.click();
+}
+
 async function requestCurrentActiveTab(): Promise<GetCurrentWindowActiveTabResultMessage['tab']> {
   const response = await runtimeMessage<GetCurrentWindowActiveTabResultMessage>({ type: 'get_current_window_active_tab' });
   if (response.error) {
@@ -472,6 +629,7 @@ async function ensurePaneSession(pane: PaneLayout): Promise<void> {
       },
       cols: Math.max(size.cols, 80),
       rows: Math.max(size.rows, 24),
+      launchArgs: getEffectiveLaunchArgs(pane),
     };
     sendToHost(createMessage);
     await saveState();
@@ -672,6 +830,7 @@ function handleViewportResize(): void {
 function renderWorkspaceRail(): void {
   workspaceRail.replaceChildren();
 
+  const activeWorkspace = getWorkspace(panelState, panelState.activeWorkspaceId);
   const header = document.createElement('div');
   header.className = 'workspace-rail-header';
 
@@ -679,8 +838,41 @@ function renderWorkspaceRail(): void {
   title.className = 'workspace-rail-title';
   title.textContent = 'Workspaces';
 
+  const actions = document.createElement('div');
+  actions.className = 'workspace-rail-header-actions';
+
+  const addButton = document.createElement('button');
+  addButton.className = 'workspace-rail-button';
+  addButton.type = 'button';
+  addButton.textContent = '+ Workspace';
+  addButton.title = 'Create a new workspace';
+  addButton.addEventListener('click', () => {
+    addWorkspace();
+  });
+
+  const renameButton = document.createElement('button');
+  renameButton.className = 'workspace-rail-button';
+  renameButton.type = 'button';
+  renameButton.textContent = 'Rename';
+  renameButton.title = 'Rename the active workspace';
+  renameButton.disabled = !activeWorkspace;
+  renameButton.addEventListener('click', () => {
+    renameActiveWorkspace();
+  });
+
+  const colorButton = document.createElement('button');
+  colorButton.className = 'workspace-rail-button workspace-rail-color';
+  colorButton.type = 'button';
+  colorButton.textContent = 'Color';
+  colorButton.title = 'Change the active workspace accent color';
+  colorButton.disabled = !activeWorkspace;
+  colorButton.style.setProperty('--workspace-accent', activeWorkspace?.accentColor || 'transparent');
+  colorButton.addEventListener('click', () => {
+    editActiveWorkspaceColor();
+  });
+
   const collapseButton = document.createElement('button');
-  collapseButton.className = 'workspace-rail-collapse';
+  collapseButton.className = 'workspace-rail-button workspace-rail-collapse';
   collapseButton.type = 'button';
   collapseButton.textContent = 'Hide';
   collapseButton.title = 'Collapse the workspace sidebar';
@@ -688,8 +880,13 @@ function renderWorkspaceRail(): void {
     setRailCollapsed(true);
   });
 
+  actions.appendChild(addButton);
+  actions.appendChild(renameButton);
+  actions.appendChild(colorButton);
+  actions.appendChild(collapseButton);
+
   header.appendChild(title);
-  header.appendChild(collapseButton);
+  header.appendChild(actions);
   workspaceRail.appendChild(header);
 
   panelState.workspaces.forEach((workspace) => {
@@ -766,15 +963,8 @@ function renderWorkspaceStage(): void {
         return;
       }
       pane.agentType = nextAgent;
-      const restartMessage: SessionRestartMessage = {
-        type: 'session_restart',
-        sessionId: pane.sessionId,
-        agentType: nextAgent,
-      };
-      const view = getOrCreateTerminalView(pane.sessionId);
-      view.clear();
-      view.writeln(`\x1b[33m[ClaudeChrome] Restarting as ${agentLabel(nextAgent)}\x1b[0m`);
-      sendToHost(restartMessage);
+      getOrCreateTerminalView(pane.sessionId).clear();
+      restartPaneSession(pane, nextAgent);
       void saveState();
       render();
     });
@@ -844,18 +1034,29 @@ function renderWorkspaceStage(): void {
       }
     });
 
+    const launchAgent = launchConfigAgentType(pane.agentType);
+    let btnArgs: HTMLButtonElement | null = null;
+    if (launchAgent) {
+      btnArgs = document.createElement('button');
+      btnArgs.textContent = pane.launchOverrides[launchAgent].trim() ? 'Args*' : 'Args';
+      btnArgs.title = pane.launchOverrides[launchAgent].trim()
+        ? `This pane overrides the global ${agentLabel(pane.agentType)} startup arguments.`
+        : `This pane is using the global ${agentLabel(pane.agentType)} startup arguments.`;
+      btnArgs.addEventListener('click', (event) => {
+        event.stopPropagation();
+        editPaneLaunchArgs(pane);
+      });
+    }
+
     const btnRestart = document.createElement('button');
     btnRestart.textContent = 'Restart';
     btnRestart.addEventListener('click', (event) => {
       event.stopPropagation();
-      const view = getOrCreateTerminalView(pane.sessionId);
-      view.writeln(`\x1b[33m[ClaudeChrome] Restarting ${agentLabel(pane.agentType)}\x1b[0m`);
-      sendToHost({ type: 'session_restart', sessionId: pane.sessionId });
+      restartPaneSession(pane);
     });
 
     const btnClose = document.createElement('button');
     btnClose.textContent = 'Close';
-    btnClose.disabled = panelState.panes.length <= 1;
     btnClose.addEventListener('click', (event) => {
       event.stopPropagation();
       closePane(pane.paneId);
@@ -865,6 +1066,9 @@ function renderWorkspaceStage(): void {
     actions.appendChild(status);
     actions.appendChild(btnGo);
     actions.appendChild(btnBind);
+    if (btnArgs) {
+      actions.appendChild(btnArgs);
+    }
     actions.appendChild(btnRestart);
     actions.appendChild(btnClose);
 
@@ -930,10 +1134,6 @@ function removePaneForSession(sessionId: string, notifyHost: boolean): void {
 }
 
 function closePane(paneId: string): void {
-  if (panelState.panes.length <= 1) {
-    return;
-  }
-
   const pane = getPane(panelState, paneId);
   if (!pane) return;
   removePaneForSession(pane.sessionId, true);
@@ -995,8 +1195,8 @@ portInput.addEventListener('keydown', (event) => {
   }
 });
 
-btnNewWorkspace.addEventListener('click', () => {
-  addWorkspace();
+btnLaunchDefaults.addEventListener('click', () => {
+  editLaunchDefaults();
 });
 
 btnAddShellPane.addEventListener('click', () => {

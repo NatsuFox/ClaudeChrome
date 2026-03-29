@@ -5,6 +5,12 @@ export interface NMMessage {
 }
 
 export type AgentType = 'claude' | 'codex' | 'shell';
+export type LaunchConfigAgentType = 'claude' | 'codex';
+
+export interface AgentLaunchConfig {
+  claude: string;
+  codex: string;
+}
 
 export type SessionRuntimeStatus =
   | 'starting'
@@ -63,12 +69,14 @@ export interface SessionCreateMessage {
   binding: SessionBinding;
   cols: number;
   rows: number;
+  launchArgs?: string;
 }
 
 export interface SessionRestartMessage {
   type: 'session_restart';
   sessionId: string;
   agentType?: AgentType;
+  launchArgs?: string;
 }
 
 export interface SessionCloseMessage {

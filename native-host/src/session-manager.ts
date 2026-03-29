@@ -20,6 +20,7 @@ type AgentSession = {
   cols: number;
   rows: number;
   cwd: string;
+  launchArgs: string;
 };
 
 export interface SessionSnapshot {
@@ -45,6 +46,7 @@ export interface CreateSessionOptions {
   cols: number;
   rows: number;
   cwd: string;
+  launchArgs?: string;
 }
 
 export interface SessionManagerOptions {
@@ -115,6 +117,7 @@ export class SessionManager {
       existing.title = options.title;
       existing.bindingTabId = options.bindingTabId;
       existing.cwd = options.cwd;
+      existing.launchArgs = options.launchArgs || '';
       existing.lastActiveAt = Date.now();
       this.broadcastSnapshot();
       return this.toSnapshot(existing);
@@ -136,6 +139,7 @@ export class SessionManager {
       cols: options.cols,
       rows: options.rows,
       cwd: options.cwd,
+      launchArgs: options.launchArgs || '',
     };
 
     this.sessions.set(session.sessionId, session);
@@ -169,7 +173,7 @@ export class SessionManager {
     this.broadcastSnapshot();
   }
 
-  restartSession(sessionId: string, cwd?: string, agentType?: AgentType): void {
+  restartSession(sessionId: string, cwd?: string, agentType?: AgentType, launchArgs?: string): void {
     const session = this.sessions.get(sessionId);
     if (!session) return;
     if (agentType) {
@@ -177,6 +181,9 @@ export class SessionManager {
     }
     if (cwd) {
       session.cwd = cwd;
+    }
+    if (launchArgs !== undefined) {
+      session.launchArgs = launchArgs;
     }
     session.lastActiveAt = Date.now();
     session.statusMessage = `Restarting ${displayAgentName(session.agentType)}...`;
@@ -256,6 +263,7 @@ export class SessionManager {
         runtimeDir: this.runtimeDir,
         mcpBridgeScript: this.mcpBridgeScript,
         storeSocketPath: this.storeSocketPath,
+        launchArgs: session.launchArgs,
       });
       bridge.spawn(launch);
       session.processState = 'running';

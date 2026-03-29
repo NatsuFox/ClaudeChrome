@@ -13,6 +13,7 @@ export interface AgentLaunchOptions {
   runtimeDir: string;
   mcpBridgeScript: string;
   storeSocketPath: string;
+  launchArgs?: string;
 }
 
 function escapeTomlBasicString(value: string): string {
@@ -39,6 +40,76 @@ function ensureSessionDir(runtimeDir: string, sessionId: string): string {
   const sessionDir = path.join(runtimeDir, 'sessions', sessionId);
   fs.mkdirSync(sessionDir, { recursive: true });
   return sessionDir;
+}
+
+function splitCommandLine(value: string | undefined): string[] {
+  if (!value?.trim()) {
+    return [];
+  }
+
+  const args: string[] = [];
+  let current = '';
+  let quote: 'single' | 'double' | null = null;
+  let escaping = false;
+
+  for (const char of value.trim()) {
+    if (escaping) {
+      current += char;
+      escaping = false;
+      continue;
+    }
+
+    if (char === '\\') {
+      escaping = true;
+      continue;
+    }
+
+    if (quote === 'single') {
+      if (char === "'") {
+        quote = null;
+      } else {
+        current += char;
+      }
+      continue;
+    }
+
+    if (quote === 'double') {
+      if (char === '"') {
+        quote = null;
+      } else {
+        current += char;
+      }
+      continue;
+    }
+
+    if (char === "'") {
+      quote = 'single';
+      continue;
+    }
+
+    if (char === '"') {
+      quote = 'double';
+      continue;
+    }
+
+    if (/\s/.test(char)) {
+      if (current) {
+        args.push(current);
+        current = '';
+      }
+      continue;
+    }
+
+    current += char;
+  }
+
+  if (escaping) {
+    current += '\\';
+  }
+  if (current) {
+    args.push(current);
+  }
+  return args;
 }
 
 function buildClaudeLaunch(options: AgentLaunchOptions): PtySpawnOptions {
@@ -69,6 +140,7 @@ function buildClaudeLaunch(options: AgentLaunchOptions): PtySpawnOptions {
       'user,project,local',
       '--mcp-config',
       configPath,
+      ...splitCommandLine(options.launchArgs),
     ],
     options.cwd,
     env,
@@ -92,6 +164,7 @@ function buildCodexLaunch(options: AgentLaunchOptions): PtySpawnOptions {
       `mcp_servers.claudechrome-browser.args=["${bridgeScript}"]`,
       '-c',
       `mcp_servers.claudechrome-browser.env={CLAUDECHROME_STORE_SOCKET="${storeSocket}",CLAUDECHROME_SESSION_ID="${sessionId}"}`,
+      ...splitCommandLine(options.launchArgs),
     ],
     options.cwd,
     env,
