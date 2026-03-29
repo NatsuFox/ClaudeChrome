@@ -1,0 +1,719 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta
+      name="description"
+      content="ClaudeChrome helps teams debug web apps, validate flows, reproduce real browser issues, and investigate user-facing bugs with Claude, Codex, and shell panes directly inside Chrome."
+    />
+    <meta name="robots" content="index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1" />
+    <meta name="theme-color" content="#f8f4ee" />
+    <title>ClaudeChrome | Debug the Web With Browser-Aware Agents</title>
+    <link rel="stylesheet" href="./styles.css" />
+    <script src="./app.js" defer></script>
+  </head>
+  <body>
+    <div class="scroll-progress" aria-hidden="true"><span data-scroll-progress></span></div>
+
+    <div class="page-shell">
+      <header class="site-header glass-panel">
+        <a class="brand" href="#top" aria-label="ClaudeChrome home">
+          <span class="brand-mark">CC</span>
+          <span class="brand-lockup">
+            <strong>ClaudeChrome</strong>
+            <small>Debug the web with browser-aware agents</small>
+          </span>
+        </a>
+
+        <button
+          class="nav-toggle"
+          type="button"
+          aria-expanded="false"
+          aria-controls="site-nav"
+          aria-label="Toggle navigation"
+        >
+          <span></span>
+          <span></span>
+        </button>
+
+        <nav class="site-nav" id="site-nav" aria-label="Primary navigation">
+          <a href="#top" data-nav-link>
+            <span class="nav-stack">
+              <span class="nav-label">Intro</span>
+              <span class="nav-sub">首页</span>
+            </span>
+          </a>
+          <a href="#surface" data-nav-link>
+            <span class="nav-stack">
+              <span class="nav-label">Product</span>
+              <span class="nav-sub">产品</span>
+            </span>
+          </a>
+          <a href="#use-cases" data-nav-link>
+            <span class="nav-stack">
+              <span class="nav-label">Use Cases</span>
+              <span class="nav-sub">场景</span>
+            </span>
+          </a>
+          <a href="#workflows" data-nav-link>
+            <span class="nav-stack">
+              <span class="nav-label">Workflows</span>
+              <span class="nav-sub">流程</span>
+            </span>
+          </a>
+          <a href="#demos" data-nav-link>
+            <span class="nav-stack">
+              <span class="nav-label">Demos</span>
+              <span class="nav-sub">演示</span>
+            </span>
+          </a>
+          <a href="#faq" data-nav-link>
+            <span class="nav-stack">
+              <span class="nav-label">FAQ</span>
+              <span class="nav-sub">问答</span>
+            </span>
+          </a>
+          <a class="nav-cta repo-link" href="https://github.com/NatsuFox/ClaudeChrome" target="_blank" rel="noreferrer">
+            <span class="github-link-icon" aria-hidden="true">
+              <svg viewBox="0 0 24 24" role="presentation">
+                <path d="M12 .75A11.25 11.25 0 0 0 .75 12a11.25 11.25 0 0 0 7.7 10.69c.56.1.76-.24.76-.54 0-.27-.01-.98-.02-1.92-3.13.68-3.8-1.51-3.8-1.51-.5-1.29-1.24-1.63-1.24-1.63-1.02-.7.08-.68.08-.68 1.13.08 1.72 1.15 1.72 1.15 1 .1 1.94 1.22 1.94 1.22.9 1.53 2.37 1.09 2.95.83.09-.72.35-1.21.63-1.49-2.5-.28-5.13-1.25-5.13-5.56 0-1.23.44-2.23 1.15-3.02-.12-.28-.5-1.4.11-2.92 0 0 .94-.3 3.08 1.15a10.63 10.63 0 0 1 5.6 0c2.14-1.45 3.08-1.15 3.08-1.15.61 1.52.23 2.64.11 2.92.72.79 1.15 1.79 1.15 3.02 0 4.32-2.63 5.28-5.14 5.56.36.31.68.91.68 1.84 0 1.33-.01 2.4-.01 2.73 0 .3.2.65.77.54A11.25 11.25 0 0 0 23.25 12 11.25 11.25 0 0 0 12 .75Z"></path>
+              </svg>
+            </span>
+            <span class="nav-stack">
+              <span class="nav-label">GitHub</span>
+              <span class="nav-sub">Repo</span>
+            </span>
+          </a>
+        </nav>
+      </header>
+
+      <main>
+        <section class="hero" id="top" data-section="Intro">
+          <div class="hero-intro glass-panel section-animate" data-stage-copy>
+            <p class="eyebrow">
+              <span class="eyebrow-cn">Product positioning</span>
+              <span class="eyebrow-sep">·</span>
+              <span class="eyebrow-en">A practical browser workspace for real debugging and validation</span>
+            </p>
+
+            <h1 class="lead-sentence">让 Claude 和 Codex 真正看见用户正在使用的浏览器。</h1>
+            <p class="lead-english">
+              ClaudeChrome puts Claude, Codex, and shell panes directly inside Chrome so teams can debug broken flows, validate releases,
+              reproduce support tickets, and inspect real browser behavior without juggling separate terminals, tabs, and tools.
+            </p>
+
+            <div class="hero-copy-grid">
+              <div class="hero-copy-block">
+                <h2>Use it when the bug only makes sense in the browser.</h2>
+                <p>
+                  When a login loop, checkout regression, or front-end runtime error only becomes clear with the page in front of you,
+                  ClaudeChrome keeps the agent inside that context instead of forcing a manual relay between browser and terminal.
+                </p>
+              </div>
+              <div class="hero-copy-block hero-copy-block-alt">
+                <h2>Useful for engineering, QA, support, and release validation.</h2>
+                <p>
+                  Open a workspace, bind a pane to the exact tab you care about, inspect what the page is doing, and keep moving without
+                  losing the context that usually disappears the moment you switch tools.
+                </p>
+              </div>
+            </div>
+
+            <div class="hero-actions">
+              <a class="button primary" href="#use-cases">Explore real use cases</a>
+              <a class="button secondary" href="#demos">See demo-ready recording slots</a>
+            </div>
+
+            <p class="command-label">
+              <span>Fast local setup</span>
+              <span class="command-label-en">The landing page stays product-led, but the repo can still be up and running quickly.</span>
+            </p>
+            <div class="hero-terminal" data-command-terminal>
+              <div class="terminal-toolbar">
+                <div class="terminal-dots" aria-hidden="true"><span></span><span></span><span></span></div>
+                <div class="terminal-tabs" role="tablist" aria-label="ClaudeChrome command groups">
+                  <button class="terminal-tab is-active" type="button" role="tab" aria-selected="true" data-command-tab="setup">setup</button>
+                  <button class="terminal-tab" type="button" role="tab" aria-selected="false" data-command-tab="build">build</button>
+                  <button class="terminal-tab" type="button" role="tab" aria-selected="false" data-command-tab="host">host</button>
+                </div>
+                <button class="copy-button" type="button" aria-label="Copy active command" data-command-copy>
+                  <span data-copy-label>Copy</span>
+                </button>
+              </div>
+              <div class="terminal-body">
+                <div class="command-panel is-active" data-command-panel="setup" data-clipboard="npm run setup">
+                  <span class="prompt">$</span>
+                  <code>npm run setup</code>
+                </div>
+                <div class="command-panel" data-command-panel="build" data-clipboard="npm run build && npm run build:host">
+                  <span class="prompt">$</span>
+                  <code>npm run build &amp;&amp; npm run build:host</code>
+                </div>
+                <div class="command-panel" data-command-panel="host" data-clipboard="cd native-host && npm run start">
+                  <span class="prompt">$</span>
+                  <code>cd native-host &amp;&amp; npm run start</code>
+                </div>
+              </div>
+            </div>
+
+            <div class="hero-metrics">
+              <article class="interactive-card">
+                <strong>Faster bug triage</strong>
+                <span>Keep the page, the agent, and the terminal in one place</span>
+                <small>Investigate request failures, console issues, and broken UI state without switching context.</small>
+              </article>
+              <article class="interactive-card">
+                <strong>Flow validation</strong>
+                <span>Walk real onboarding, auth, billing, and dashboard journeys</span>
+                <small>Useful before release, during QA signoff, and while verifying staging behavior.</small>
+              </article>
+              <article class="interactive-card">
+                <strong>Support reproduction</strong>
+                <span>Work against the same page state your users are dealing with</span>
+                <small>Bind a pane to the relevant tab, inspect what happened, and preserve the investigative thread.</small>
+              </article>
+              <article class="interactive-card">
+                <strong>Organized investigations</strong>
+                <span>Use workspaces and multiple panes for parallel checks</span>
+                <small>Compare environments, split responsibilities, or keep separate investigations from collapsing together.</small>
+              </article>
+            </div>
+          </div>
+
+          <div class="hero-stage glass-panel section-animate delay-1" data-stage-scene>
+            <div class="stage-header">
+              <p class="eyebrow">
+                <span class="eyebrow-cn">Product surface</span>
+                <span class="eyebrow-sep">·</span>
+                <span class="eyebrow-en">A believable operator view, not a decorative mockup</span>
+              </p>
+              <h2>See the app the way a team would actually use it.</h2>
+              <p class="section-english">
+                ClaudeChrome is most compelling when you picture it in daily work: a live browser page, a side panel with active panes,
+                and one operator moving through real problems instead of abstract architecture diagrams.
+              </p>
+            </div>
+
+            <div class="stage-scene">
+              <article class="browser-frame interactive-card">
+                <div class="browser-bar">
+                  <div class="browser-dots" aria-hidden="true"><span></span><span></span><span></span></div>
+                  <div class="browser-address">https://app.example.dev/checkout</div>
+                  <div class="browser-state">investigating live flow</div>
+                </div>
+                <div class="browser-body">
+                  <div class="browser-page">
+                    <div class="page-ribbon">What the team is checking right now</div>
+                    <div class="page-grid">
+                      <article>
+                        <span class="mini-label">Checkout issue</span>
+                        <strong>Find the request that failed</strong>
+                        <p>See the exact response path that turned a working purchase flow into a support ticket.</p>
+                      </article>
+                      <article>
+                        <span class="mini-label">UI regression</span>
+                        <strong>Confirm what the page actually rendered</strong>
+                        <p>Read visible text and browser state instead of trusting screenshots or vague reports.</p>
+                      </article>
+                      <article>
+                        <span class="mini-label">Support</span>
+                        <strong>Reproduce the customer path</strong>
+                        <p>Stay on the same live tab while the pane investigates console, page content, and runtime behavior.</p>
+                      </article>
+                      <article>
+                        <span class="mini-label">QA signoff</span>
+                        <strong>Validate the fix before shipping</strong>
+                        <p>Re-run the flow, confirm the changed state, and keep the whole check inside one place.</p>
+                      </article>
+                    </div>
+                  </div>
+
+                  <aside class="sidepanel-frame">
+                    <div class="sidepanel-toolbar">
+                      <div class="status-pill is-live"><span></span>Connected</div>
+                      <div class="toolbar-actions">
+                        <span>+ Workspace</span>
+                        <span>+ Claude</span>
+                        <span>+ Codex</span>
+                      </div>
+                    </div>
+
+                    <div class="workspace-strip">
+                      <div class="workspace-chip is-active">
+                        <strong>Checkout regression</strong>
+                        <small>2 panes · tab 42</small>
+                      </div>
+                      <div class="workspace-chip">
+                        <strong>SSO ticket reproduction</strong>
+                        <small>1 pane · tab 57</small>
+                      </div>
+                    </div>
+
+                    <div class="pane-stack">
+                      <article class="pane-card pane-claude">
+                        <header>
+                          <span class="pane-badge">Claude</span>
+                          <span class="pane-binding">Bound to Checkout · #42</span>
+                        </header>
+                        <div class="pane-body">
+                          <div class="pane-line"><span class="pane-prompt">$</span><code>browser__get_requests</code></div>
+                          <div class="pane-output">POST /api/checkout returned 402. Retry path and pricing payload now visible.</div>
+                        </div>
+                      </article>
+
+                      <article class="pane-card pane-codex">
+                        <header>
+                          <span class="pane-badge">Codex</span>
+                          <span class="pane-binding">Bound to customer path</span>
+                        </header>
+                        <div class="pane-body">
+                          <div class="pane-line"><span class="pane-prompt">$</span><code>browser__get_page_text</code></div>
+                          <div class="pane-output">Billing step text captured. Error banner matches user report exactly.</div>
+                        </div>
+                      </article>
+                    </div>
+                  </aside>
+                </div>
+              </article>
+
+              <div class="scene-notes">
+                <article class="note-card interactive-card">
+                  <p class="card-label">Debugging</p>
+                  <h3>Triaging browser-only bugs gets easier.</h3>
+                  <p>
+                    When a front-end bug depends on the current tab, its requests, and its rendered state, ClaudeChrome keeps those clues
+                    attached to the agent session instead of scattering them across windows.
+                  </p>
+                </article>
+                <article class="note-card interactive-card">
+                  <p class="card-label">Validation</p>
+                  <h3>Flow checks become more repeatable.</h3>
+                  <p>
+                    Use a pane to walk an onboarding, auth, or payment flow while continuously checking what the browser is actually doing.
+                  </p>
+                </article>
+                <article class="note-card interactive-card">
+                  <p class="card-label">Support</p>
+                  <h3>Customer reports stop being vague narratives.</h3>
+                  <p>
+                    Bind a pane to the relevant page, inspect the behavior, and turn “it broke for me” into a reproducible, evidence-backed investigation.
+                  </p>
+                </article>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <section class="story glass-panel section-animate delay-2" id="use-cases" data-section="Use Cases">
+          <div class="section-copy story-copy">
+            <p class="eyebrow">
+              <span class="eyebrow-cn">Real-world use cases</span>
+              <span class="eyebrow-sep">·</span>
+              <span class="eyebrow-en">The product is strongest when tied to actual jobs-to-be-done</span>
+            </p>
+            <h2>Where ClaudeChrome earns its keep.</h2>
+            <p class="section-english">
+              This page should make the product feel immediately usable. These are the practical scenarios that justify opening ClaudeChrome in the first place.
+            </p>
+          </div>
+
+          <div class="chapter-grid">
+            <article class="chapter-card interactive-card">
+              <span class="chapter-index">01</span>
+              <p class="card-label">Front-end debugging</p>
+              <h3>Investigate regressions that only reveal themselves in a live tab.</h3>
+              <p>
+                Useful for runtime errors, broken state transitions, visual regressions, and API mismatches that are obvious in the browser but awkward to explain in a terminal-only workflow.
+              </p>
+            </article>
+
+            <article class="chapter-card interactive-card">
+              <span class="chapter-index">02</span>
+              <p class="card-label">Auth and onboarding</p>
+              <h3>Walk login, signup, invite, and permission flows with the browser in view.</h3>
+              <p>
+                This matters when the success or failure of a flow depends on redirects, cookies, page text, or client-side state that a normal terminal session cannot see directly.
+              </p>
+            </article>
+
+            <article class="chapter-card interactive-card">
+              <span class="chapter-index">03</span>
+              <p class="card-label">Checkout and billing</p>
+              <h3>Validate high-stakes revenue paths before and after changes ship.</h3>
+              <p>
+                Use ClaudeChrome to inspect requests, confirm rendered totals, and reproduce a broken payment step without losing the browser context that explains the failure.
+              </p>
+            </article>
+
+            <article class="chapter-card interactive-card">
+              <span class="chapter-index">04</span>
+              <p class="card-label">Support reproduction</p>
+              <h3>Turn vague customer tickets into concrete investigations.</h3>
+              <p>
+                Keep a pane bound to the page that matches the customer path, inspect the browser state, and document exactly what the user saw when the issue occurred.
+              </p>
+            </article>
+
+            <article class="chapter-card interactive-card">
+              <span class="chapter-index">05</span>
+              <p class="card-label">Staging vs. production</p>
+              <h3>Compare environments side by side without collapsing your mental context.</h3>
+              <p>
+                Multiple panes and workspaces make it easier to keep separate tabs, separate flows, and separate investigative threads organized while you compare behavior.
+              </p>
+            </article>
+
+            <article class="chapter-card interactive-card">
+              <span class="chapter-index">06</span>
+              <p class="card-label">Release confidence</p>
+              <h3>Run final browser checks before saying “ship it.”</h3>
+              <p>
+                ClaudeChrome is valuable right before release, when one more pass through the real browser can prevent a small front-end issue from becoming a public problem.
+              </p>
+            </article>
+          </div>
+        </section>
+
+        <section class="visual-reserve" id="surface" data-section="Product">
+          <div class="glass-panel section-animate delay-3 reserve-shell">
+            <div class="section-copy reserve-copy">
+              <p class="eyebrow">
+                <span class="eyebrow-cn">Proof-ready media</span>
+                <span class="eyebrow-sep">·</span>
+                <span class="eyebrow-en">Reserve visual slots for product proof, not generic decoration</span>
+              </p>
+              <h2>Make future screenshots tell real product stories.</h2>
+              <p class="section-english">
+                These slots are reserved so the page can absorb authentic product media later: real UI captures, operator walkthroughs, and `.cast` recordings anchored in practical workflows.
+              </p>
+            </div>
+
+            <div class="reserve-grid">
+              <article class="shot-card interactive-card">
+                <div class="shot-frame">
+                  <div class="shot-overlay">
+                    <span class="shot-badge">Hero screenshot</span>
+                    <strong>Full browser window with the side panel in action</strong>
+                    <p>Show the product in the exact setting where it matters: a real app page, a real pane, and a visible investigation context.</p>
+                  </div>
+                </div>
+                <div class="shot-meta">
+                  <span class="path-label">Suggested path</span>
+                  <code>src/ui/assets/claudechrome-hero.png</code>
+                </div>
+              </article>
+
+              <article class="shot-card interactive-card">
+                <div class="shot-frame shot-frame-alt">
+                  <div class="shot-overlay">
+                    <span class="shot-badge">Use-case screenshot</span>
+                    <strong>Pane workflow around a real issue</strong>
+                    <p>Capture a high-value scenario such as checkout debugging, SSO reproduction, or onboarding validation.</p>
+                  </div>
+                </div>
+                <div class="shot-meta">
+                  <span class="path-label">Suggested path</span>
+                  <code>src/ui/assets/claudechrome-workflow.png</code>
+                </div>
+              </article>
+
+              <article class="shot-card interactive-card">
+                <div class="shot-frame shot-frame-diagram">
+                  <div class="shot-overlay">
+                    <span class="shot-badge">Before / after proof</span>
+                    <strong>Visual story of a problem, investigation, and fix</strong>
+                    <p>Use this slot for a compact, buyer-friendly proof asset instead of a system architecture diagram.</p>
+                  </div>
+                </div>
+                <div class="shot-meta">
+                  <span class="path-label">Suggested path</span>
+                  <code>src/ui/assets/claudechrome-proof.png</code>
+                </div>
+              </article>
+            </div>
+          </div>
+        </section>
+
+        <section class="architecture" id="workflows" data-section="Workflows">
+          <div class="glass-panel section-animate architecture-shell">
+            <div class="section-copy architecture-copy">
+              <p class="eyebrow">
+                <span class="eyebrow-cn">Common workflows</span>
+                <span class="eyebrow-sep">·</span>
+                <span class="eyebrow-en">The daily loops that make the product sticky</span>
+              </p>
+              <h2>Practical loops teams can run with ClaudeChrome.</h2>
+              <p class="section-english">
+                Product positioning gets stronger when the page names the exact workflows a team can adopt on day one.
+              </p>
+            </div>
+
+            <div class="evidence-grid workflow-grid">
+              <article class="evidence-card interactive-card">
+                <p class="card-label">Regression triage</p>
+                <h3>Open the failing page, bind a pane, inspect what broke.</h3>
+                <p>Keep requests, page content, and agent reasoning tied to the same browser context while you narrow down the issue.</p>
+              </article>
+              <article class="evidence-card interactive-card">
+                <p class="card-label">Flow walkthroughs</p>
+                <h3>Validate login, onboarding, and billing paths before release.</h3>
+                <p>Use one pane per task or environment so signoff work stays organized instead of turning into tab chaos.</p>
+              </article>
+              <article class="evidence-card interactive-card">
+                <p class="card-label">Support investigations</p>
+                <h3>Reproduce what customers describe while keeping an evidence trail.</h3>
+                <p>The product is especially valuable when the problem is visible in the browser but hard to communicate through logs alone.</p>
+              </article>
+              <article class="evidence-card interactive-card">
+                <p class="card-label">Environment comparison</p>
+                <h3>Keep staging, production, and local checks side by side.</h3>
+                <p>Multi-pane workspaces let you compare states without losing which browser tab each session is talking about.</p>
+              </article>
+              <article class="evidence-card interactive-card">
+                <p class="card-label">Human-supervised action</p>
+                <h3>Guide an agent through browser work without giving up operator control.</h3>
+                <p>Inspect first, act when needed, and verify again while the human stays in charge of the broader investigation.</p>
+              </article>
+              <article class="evidence-card interactive-card">
+                <p class="card-label">Release readiness</p>
+                <h3>Make browser validation feel like part of shipping, not a separate ritual.</h3>
+                <p>ClaudeChrome helps teams treat browser validation as part of the same operational surface where debugging and fixes already happen.</p>
+              </article>
+            </div>
+          </div>
+        </section>
+
+        <section class="demos" id="demos" data-section="Demos">
+          <div class="glass-panel section-animate delay-4 demos-shell">
+            <div class="section-copy">
+              <p class="eyebrow">
+                <span class="eyebrow-cn">Terminal recordings</span>
+                <span class="eyebrow-sep">·</span>
+                <span class="eyebrow-en">Asciinema-ready `.cast` showcase</span>
+              </p>
+              <h2>Show the product through repeatable, real workflow recordings.</h2>
+              <p class="section-english">
+                For a tool like ClaudeChrome, terminal recordings are marketing assets. They show real motion, real operator steps, and real product value without requiring a cinematic video edit first.
+              </p>
+            </div>
+
+            <div class="demo-grid">
+              <article class="demo-card interactive-card">
+                <div class="demo-shell-frame">
+                  <div class="demo-shell-top">
+                    <div class="terminal-dots" aria-hidden="true"><span></span><span></span><span></span></div>
+                    <strong>Slot 01 · Checkout regression</strong>
+                  </div>
+                  <div class="demo-shell-body">
+                    <div class="demo-line"><span class="prompt">$</span><code>npm run setup</code></div>
+                    <div class="demo-line"><span class="prompt">$</span><code>npm run build &amp;&amp; npm run build:host</code></div>
+                    <div class="demo-line"><span class="prompt">$</span><code>cd native-host &amp;&amp; npm run start</code></div>
+                  </div>
+                </div>
+                <div class="demo-copy">
+                  <p class="card-label">Record the first end-to-end story</p>
+                  <h3>Bring the product online, then reproduce a broken checkout.</h3>
+                  <p>
+                    This demo should establish the value proposition quickly: start the host, open the pane, bind to the relevant page, and show the product helping with a real customer-facing problem.
+                  </p>
+                  <div class="demo-meta-row">
+                    <code>src/ui/assets/casts/01-checkout-regression.cast</code>
+                    <button class="copy-button" type="button" data-copy-text="asciinema rec src/ui/assets/casts/01-checkout-regression.cast">
+                      <span data-copy-label>Copy record command</span>
+                    </button>
+                  </div>
+                </div>
+              </article>
+
+              <article class="demo-card interactive-card">
+                <div class="demo-shell-frame demo-shell-frame-alt">
+                  <div class="demo-shell-top">
+                    <div class="terminal-dots" aria-hidden="true"><span></span><span></span><span></span></div>
+                    <strong>Slot 02 · Support ticket reproduction</strong>
+                  </div>
+                  <div class="demo-shell-body">
+                    <div class="demo-line"><span class="prompt">$</span><code>Bind pane to ticket page</code></div>
+                    <div class="demo-line"><span class="prompt">$</span><code>Inspect page text and requests</code></div>
+                    <div class="demo-line"><span class="prompt">$</span><code>Document the failure path</code></div>
+                  </div>
+                </div>
+                <div class="demo-copy">
+                  <p class="card-label">Show the support value</p>
+                  <h3>Turn a vague bug report into a reproducible path.</h3>
+                  <p>
+                    Record a short workflow where the operator binds a pane to the customer path and uses the product to understand what the browser actually did.
+                  </p>
+                  <div class="demo-meta-row">
+                    <code>src/ui/assets/casts/02-support-repro.cast</code>
+                    <button class="copy-button" type="button" data-copy-text="asciinema rec src/ui/assets/casts/02-support-repro.cast">
+                      <span data-copy-label>Copy record command</span>
+                    </button>
+                  </div>
+                </div>
+              </article>
+
+              <article class="demo-card interactive-card">
+                <div class="demo-shell-frame demo-shell-frame-command">
+                  <div class="demo-shell-top">
+                    <div class="terminal-dots" aria-hidden="true"><span></span><span></span><span></span></div>
+                    <strong>Slot 03 · Release validation</strong>
+                  </div>
+                  <div class="demo-shell-body">
+                    <div class="demo-line"><span class="prompt">$</span><code>browser__get_requests</code></div>
+                    <div class="demo-line"><span class="prompt">$</span><code>browser__get_page_text</code></div>
+                    <div class="demo-line"><span class="prompt">$</span><code>browser__screenshot</code></div>
+                  </div>
+                </div>
+                <div class="demo-copy">
+                  <p class="card-label">Show release confidence</p>
+                  <h3>Walk a flow, inspect it, and confirm the result before shipping.</h3>
+                  <p>
+                    This is the best “buyer” demo for teams that care about QA and validation: one place to walk the browser, inspect the evidence, and confirm the final state.
+                  </p>
+                  <div class="demo-meta-row">
+                    <code>src/ui/assets/casts/03-release-validation.cast</code>
+                    <button class="copy-button" type="button" data-copy-text="asciinema rec src/ui/assets/casts/03-release-validation.cast">
+                      <span data-copy-label>Copy record command</span>
+                    </button>
+                  </div>
+                </div>
+              </article>
+            </div>
+          </div>
+        </section>
+
+        <section class="evidence glass-panel section-animate" data-section="Teams">
+          <div class="section-copy">
+            <p class="eyebrow">
+              <span class="eyebrow-cn">Who benefits most</span>
+              <span class="eyebrow-sep">·</span>
+              <span class="eyebrow-en">Position the product around teams, not internal components</span>
+            </p>
+            <h2>ClaudeChrome fits the teams that live closest to real browser behavior.</h2>
+            <p class="section-english">
+              The right product framing is not “look at our architecture.” It is “these are the people who immediately save time with this tool.”
+            </p>
+          </div>
+
+          <div class="evidence-grid">
+            <article class="evidence-card interactive-card">
+              <p class="card-label">Front-end engineers</p>
+              <h3>Debug what the browser is actually doing.</h3>
+              <p>Especially useful when the UI, requests, and runtime state matter as much as the source code.</p>
+            </article>
+            <article class="evidence-card interactive-card">
+              <p class="card-label">QA teams</p>
+              <h3>Keep validation and evidence in one operator surface.</h3>
+              <p>Walk test scenarios, capture the result, and keep a reliable record of how the browser behaved.</p>
+            </article>
+            <article class="evidence-card interactive-card">
+              <p class="card-label">Support engineers</p>
+              <h3>Reproduce difficult customer paths more quickly.</h3>
+              <p>Turn browser issues into inspectable investigations instead of long back-and-forth tickets.</p>
+            </article>
+            <article class="evidence-card interactive-card">
+              <p class="card-label">Product engineers</p>
+              <h3>Check launch-critical flows before and after release.</h3>
+              <p>Good for onboarding, pricing, billing, settings, and the parts of the product that break publicly first.</p>
+            </article>
+            <article class="evidence-card interactive-card">
+              <p class="card-label">Consultants and agencies</p>
+              <h3>Show clients a visible, high-signal investigation process.</h3>
+              <p>The product helps turn diagnosis and validation into something presentable, not just something done offscreen.</p>
+            </article>
+            <article class="evidence-card interactive-card">
+              <p class="card-label">Founders and solo builders</p>
+              <h3>Move between building, checking, and fixing without tool sprawl.</h3>
+              <p>When one person does everything, ClaudeChrome reduces the friction between browser checks and implementation work.</p>
+            </article>
+          </div>
+        </section>
+
+        <section class="faq glass-panel section-animate" id="faq" data-section="FAQ">
+          <div class="section-copy">
+            <p class="eyebrow">
+              <span class="eyebrow-cn">Operator FAQ</span>
+              <span class="eyebrow-sep">·</span>
+              <span class="eyebrow-en">Answer the adoption questions first</span>
+            </p>
+            <h2>What people will ask before they try it.</h2>
+          </div>
+
+          <div class="faq-list">
+            <details class="faq-item interactive-card" open>
+              <summary>Is ClaudeChrome mainly a debugging tool?</summary>
+              <p>
+                Debugging is the clearest entry point, but the product is equally useful for QA walkthroughs, support reproduction, release validation, and any workflow where the browser itself carries the important evidence.
+              </p>
+            </details>
+            <details class="faq-item interactive-card">
+              <summary>Why not just use DevTools and a normal terminal side by side?</summary>
+              <p>
+                Because the value is not just having both tools open. It is keeping the agent session attached to the relevant browser tab so the investigation thread stays coherent while you move between inspection and action.
+              </p>
+            </details>
+            <details class="faq-item interactive-card">
+              <summary>Do I need a full automation setup to benefit from it?</summary>
+              <p>
+                No. ClaudeChrome is useful earlier than that. It helps the moment you want a browser-aware agent workspace for real pages, real flows, and real validation work.
+              </p>
+            </details>
+            <details class="faq-item interactive-card">
+              <summary>Where should screenshots and terminal recordings live?</summary>
+              <p>
+                Keep them versioned with the site. This landing page already reserves `src/ui/assets/*.png` for screenshots and `src/ui/assets/casts/*.cast` for asciinema recordings.
+              </p>
+            </details>
+          </div>
+        </section>
+
+        <section class="final-cta glass-panel section-animate">
+          <div class="final-copy">
+            <p class="eyebrow">
+              <span class="eyebrow-cn">Final CTA</span>
+              <span class="eyebrow-sep">·</span>
+              <span class="eyebrow-en">End on product value, then offer the docs</span>
+            </p>
+            <h2>ClaudeChrome is easiest to understand once you imagine using it on tomorrow’s browser problem.</h2>
+            <p>
+              Keep the page product-led. Let the GitHub repo carry the deeper implementation detail. Then use screenshots and `.cast` recordings to prove the workflows that matter most to adopters.
+            </p>
+          </div>
+          <div class="final-actions">
+            <a class="button primary" href="#use-cases">Review the use cases</a>
+            <a class="button secondary repo-link" href="https://github.com/NatsuFox/ClaudeChrome" target="_blank" rel="noreferrer">
+              <span class="github-link-icon" aria-hidden="true">
+                <svg viewBox="0 0 24 24" role="presentation">
+                  <path d="M12 .75A11.25 11.25 0 0 0 .75 12a11.25 11.25 0 0 0 7.7 10.69c.56.1.76-.24.76-.54 0-.27-.01-.98-.02-1.92-3.13.68-3.8-1.51-3.8-1.51-.5-1.29-1.24-1.63-1.24-1.63-1.02-.7.08-.68.08-.68 1.13.08 1.72 1.15 1.72 1.15 1 .1 1.94 1.22 1.94 1.22.9 1.53 2.37 1.09 2.95.83.09-.72.35-1.21.63-1.49-2.5-.28-5.13-1.25-5.13-5.56 0-1.23.44-2.23 1.15-3.02-.12-.28-.5-1.4.11-2.92 0 0 .94-.3 3.08 1.15a10.63 10.63 0 0 1 5.6 0c2.14-1.45 3.08-1.15 3.08-1.15.61 1.52.23 2.64.11 2.92.72.79 1.15 1.79 1.15 3.02 0 4.32-2.63 5.28-5.14 5.56.36.31.68.91.68 1.84 0 1.33-.01 2.4-.01 2.73 0 .3.2.65.77.54A11.25 11.25 0 0 0 23.25 12 11.25 11.25 0 0 0 12 .75Z"></path>
+                </svg>
+              </span>
+              <span>Open the GitHub repo</span>
+            </a>
+          </div>
+        </section>
+      </main>
+
+      <footer class="site-footer">
+        <div class="site-footer-inner">
+          <p>ClaudeChrome · A browser-aware workspace for debugging, QA, support reproduction, and release validation inside Chrome.</p>
+          <div class="footer-nav">
+            <a class="footer-link" href="#top">Intro</a>
+            <a class="footer-link" href="#surface">Product</a>
+            <a class="footer-link" href="#use-cases">Use Cases</a>
+            <a class="footer-link" href="#workflows">Workflows</a>
+            <a class="footer-link" href="#demos">Demos</a>
+            <a class="footer-link repo-link" href="https://github.com/NatsuFox/ClaudeChrome" target="_blank" rel="noreferrer">
+              <span class="github-link-icon" aria-hidden="true">
+                <svg viewBox="0 0 24 24" role="presentation">
+                  <path d="M12 .75A11.25 11.25 0 0 0 .75 12a11.25 11.25 0 0 0 7.7 10.69c.56.1.76-.24.76-.54 0-.27-.01-.98-.02-1.92-3.13.68-3.8-1.51-3.8-1.51-.5-1.29-1.24-1.63-1.24-1.63-1.02-.7.08-.68.08-.68 1.13.08 1.72 1.15 1.72 1.15 1 .1 1.94 1.22 1.94 1.22.9 1.53 2.37 1.09 2.95.83.09-.72.35-1.21.63-1.49-2.5-.28-5.13-1.25-5.13-5.56 0-1.23.44-2.23 1.15-3.02-.12-.28-.5-1.4.11-2.92 0 0 .94-.3 3.08 1.15a10.63 10.63 0 0 1 5.6 0c2.14-1.45 3.08-1.15 3.08-1.15.61 1.52.23 2.64.11 2.92.72.79 1.15 1.79 1.15 3.02 0 4.32-2.63 5.28-5.14 5.56.36.31.68.91.68 1.84 0 1.33-.01 2.4-.01 2.73 0 .3.2.65.77.54A11.25 11.25 0 0 0 23.25 12 11.25 11.25 0 0 0 12 .75Z"></path>
+                </svg>
+              </span>
+              <span>GitHub Repo</span>
+            </a>
+          </div>
+        </div>
+      </footer>
+    </div>
+  </body>
+</html>
