@@ -1,5 +1,16 @@
 # ClaudeChrome
 
+<p align="center">
+  <img src="assets/logo-transparent.png" alt="ClaudeChrome logo" width="180" />
+</p>
+
+<p align="center">
+  Transparent logo assets:
+  <a href="assets/logo-transparent.png"><code>assets/logo-transparent.png</code></a>
+  ·
+  <a href="assets/logo-transparent.svg"><code>assets/logo-transparent.svg</code></a>
+</p>
+
 ClaudeChrome brings local coding agents into the browser itself.
 
 It runs Claude, Codex, or a plain shell inside a Chrome side panel, binds each session to a live browser tab, and injects browser-native context into that session through a local MCP bridge. Instead of copying URLs, DOM text, request payloads, console logs, or cookies back and forth by hand, the agent can work against the tab it is attached to.
@@ -64,6 +75,8 @@ The result is a tighter loop for debugging, reverse engineering, automation, web
 
 - Run `Claude`, `Codex`, or `Shell` panes directly inside the Chrome side panel.
 - Organize work into multiple workspaces and multiple panes per workspace.
+- Rename and recolor workspace tabs from the workspace rail.
+- Set global default startup arguments for Claude and Codex, then override them per pane when needed.
 - Bind each pane to a specific browser tab and switch or rebind when needed.
 - Capture page identity, visible text, HTML, network traffic, console logs, and tab state.
 - Feed that context into a session-local MCP server so the agent sees the browser tab it is actually attached to.
