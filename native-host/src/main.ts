@@ -10,9 +10,9 @@ import * as net from 'node:net';
 
 const WS_HOST = process.env.CLAUDECHROME_WS_HOST || '127.0.0.1';
 const WS_PORT = parseInt(process.env.CLAUDECHROME_WS_PORT || '9999', 10);
-const RUNTIME_DIR = path.join(os.tmpdir(), 'claudechrome');
-const CONNECTION_LOG_PATH = path.join(RUNTIME_DIR, 'connections.log');
-const STORE_SOCKET_PATH = path.join(RUNTIME_DIR, 'store.sock');
+const RUNTIME_DIR = process.env.CLAUDECHROME_RUNTIME_DIR || path.join(os.tmpdir(), 'claudechrome');
+const CONNECTION_LOG_PATH = process.env.CLAUDECHROME_CONNECTION_LOG_PATH || path.join(RUNTIME_DIR, 'connections.log');
+const STORE_SOCKET_PATH = process.env.CLAUDECHROME_STORE_SOCKET || path.join(RUNTIME_DIR, 'store.sock');
 const MCP_BRIDGE_SCRIPT = path.resolve(__dirname, 'mcp-stdio-bridge.js');
 const PROJECT_ROOT = path.resolve(__dirname, '..', '..');
 const DEFAULT_CWD = process.env.CLAUDECHROME_CWD || PROJECT_ROOT;
@@ -333,6 +333,18 @@ const IMPLEMENTED_SESSION_TOOLS = [
   'browser__capture_stats',
   'browser__explain_unavailable',
   'browser__self_check',
+  'browser__screenshot',
+  'browser__navigate',
+  'browser__reload',
+  'browser__get_page_content',
+  'browser__find_elements',
+  'browser__evaluate_js',
+  'browser__click',
+  'browser__type',
+  'browser__scroll',
+  'browser__wait_for',
+  'browser__get_cookies',
+  'browser__get_storage',
 ] as const;
 
 function makeError(code: string, message: string, details: Record<string, unknown> = {}) {
@@ -420,7 +432,7 @@ function getCapabilities(context: ReturnType<typeof getSessionContext>) {
     families: {
       page: {
         available: true,
-        tools: ['browser__get_page_info', 'browser__get_page_text', 'browser__get_page_html'],
+        tools: ['browser__get_page_info', 'browser__get_page_text', 'browser__get_page_html', 'browser__get_page_content', 'browser__find_elements'],
       },
       network: {
         available: true,
@@ -435,14 +447,12 @@ function getCapabilities(context: ReturnType<typeof getSessionContext>) {
         tools: ['browser__status', 'browser__binding_status', 'browser__capabilities', 'browser__capture_stats', 'browser__explain_unavailable', 'browser__self_check'],
       },
       cookies: {
-        available: false,
-        code: 'not_implemented_yet',
-        reason: 'Cookie MCP tools are planned but not implemented in the current host.',
+        available: true,
+        tools: ['browser__get_cookies'],
       },
       storage: {
-        available: false,
-        code: 'not_implemented_yet',
-        reason: 'Storage MCP tools are planned but not implemented in the current host.',
+        available: true,
+        tools: ['browser__get_storage'],
       },
       debugger: {
         available: false,
@@ -450,9 +460,8 @@ function getCapabilities(context: ReturnType<typeof getSessionContext>) {
         reason: 'Inspector-mode debugger-backed tools are planned but not implemented in the current host.',
       },
       action: {
-        available: false,
-        code: 'not_implemented_yet',
-        reason: 'High-agency action tools are planned but not implemented in the current host.',
+        available: true,
+        tools: ['browser__screenshot', 'browser__navigate', 'browser__reload', 'browser__evaluate_js', 'browser__click', 'browser__type', 'browser__scroll', 'browser__wait_for'],
       },
     },
     bindingReady: hasContext,

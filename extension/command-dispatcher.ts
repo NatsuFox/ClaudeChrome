@@ -25,6 +25,10 @@ export async function dispatchCommand(
   }
 }
 
+function toScriptArg<T>(value: T | undefined): T | null {
+  return value === undefined ? null : value;
+}
+
 // --- Screenshot ---
 
 async function cmdScreenshot(
@@ -163,12 +167,12 @@ async function cmdClick(
   const y = typeof params.y === 'number' ? params.y : undefined;
   const [result] = await chrome.scripting.executeScript({
     target: { tabId },
-    func: (sel?: string, cx?: number, cy?: number) => {
+    func: (sel: string | null, cx: number | null, cy: number | null) => {
       let el: Element | null = null;
       if (sel) {
         el = document.querySelector(sel);
         if (!el) return { clicked: false, error: `Element not found: ${sel}` };
-      } else if (cx !== undefined && cy !== undefined) {
+      } else if (cx !== null && cy !== null) {
         el = document.elementFromPoint(cx, cy);
         if (!el) return { clicked: false, error: `No element at (${cx}, ${cy})` };
       } else {
@@ -177,7 +181,7 @@ async function cmdClick(
       (el as HTMLElement).click();
       return { clicked: true };
     },
-    args: [selector, x, y],
+    args: [toScriptArg(selector), toScriptArg(x), toScriptArg(y)],
   });
   return result.result as { clicked: boolean; error?: string };
 }
@@ -216,7 +220,7 @@ async function cmdScroll(
   const behavior = params.behavior === 'smooth' ? 'smooth' : 'instant';
   const [result] = await chrome.scripting.executeScript({
     target: { tabId },
-    func: (sel: string | undefined, sx: number, sy: number, beh: string) => {
+    func: (sel: string | null, sx: number, sy: number, beh: string) => {
       if (sel) {
         const el = document.querySelector(sel);
         el?.scrollIntoView({ behavior: beh as ScrollBehavior });
@@ -225,7 +229,7 @@ async function cmdScroll(
       }
       return { scrolled: true };
     },
-    args: [selector, x, y, behavior],
+    args: [toScriptArg(selector), x, y, behavior],
   });
   return result.result as { scrolled: boolean };
 }

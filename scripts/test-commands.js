@@ -217,6 +217,12 @@ async function main() {
   console.log('\n[7] Existing IPC query tools still work...');
   const caps = await ipcQuery({ sessionId: SESSION_ID, tool: 'get_capabilities', params: {} });
   assert(caps.ok === true, 'get_capabilities query succeeds');
+  assert(Array.isArray(caps.implementedTools), 'get_capabilities returns implementedTools');
+  assert(caps.implementedTools.includes('browser__click'), 'get_capabilities includes browser__click');
+  assert(caps.implementedTools.includes('browser__get_cookies'), 'get_capabilities includes browser__get_cookies');
+  assert(caps.families?.action?.available === true, 'get_capabilities marks action family available');
+  assert(caps.families?.cookies?.available === true, 'get_capabilities marks cookies family available');
+  assert(caps.families?.storage?.available === true, 'get_capabilities marks storage family available');
 
   const stats = await ipcQuery({ sessionId: SESSION_ID, tool: 'get_capture_stats', params: {} });
   assert(stats.ok === true, 'get_capture_stats query succeeds');

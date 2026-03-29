@@ -6,3 +6,4 @@ native-host/node_modules/
 docs/
 *.js.map
 .DS_Store
+outputs/

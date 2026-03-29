@@ -51,6 +51,14 @@ async function assertRejects(promise, label, msgFragment = '') {
   }
 }
 
+function isUnserializable(value) {
+  if (value === undefined) return true;
+  if (typeof value === 'function' || typeof value === 'symbol') return true;
+  if (Array.isArray(value)) return value.some(isUnserializable);
+  if (value && typeof value === 'object') return Object.values(value).some(isUnserializable);
+  return false;
+}
+
 // ---------------------------------------------------------------------------
 // Step 1: Compile command-dispatcher.ts to CommonJS
 // ---------------------------------------------------------------------------
@@ -97,6 +105,12 @@ global.chrome = {
   },
   scripting: {
     executeScript: ({ func, args }) => {
+      const badIndex = (args || []).findIndex(isUnserializable);
+      if (badIndex !== -1) {
+        return Promise.reject(new Error(
+          `Error at parameter 'injection': Error at property 'args': Error at index ${badIndex}: Value is unserializable.`
+        ));
+      }
       // Execute the function with the given args in-process (no real DOM)
       try {
         // Provide minimal DOM stubs
@@ -250,6 +264,12 @@ async function runTests() {
     assert(r?.clicked === true, 'click returns clicked=true');
   }
 
+  // click by coordinates
+  {
+    const r = await assertOk(dispatchCommand('click', 42, { x: 10, y: 20 }), 'click (coordinates)');
+    assert(r?.clicked === true, 'click (coordinates) returns clicked=true');
+  }
+
   // type
   {
     const r = await assertOk(dispatchCommand('type', 42, { selector: 'input', text: 'hello', clear: true }), 'type');
@@ -258,7 +278,7 @@ async function runTests() {
 
   // scroll (window scroll)
   {
-    const r = await assertOk(dispatchCommand('scroll', 42, { y: 300 }), 'scroll (window)');
+    const r = await assertOk(dispatchCommand('scroll', 42, { x: 0, y: 300, behavior: 'smooth' }), 'scroll (window)');
     assert(r?.scrolled === true, 'scroll returns scrolled=true');
   }
 
