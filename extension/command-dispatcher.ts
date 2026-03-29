@@ -110,7 +110,7 @@ async function cmdGetPageContent(
 async function cmdFindElements(
   tabId: number,
   params: Record<string, unknown>
-): Promise<{ elements: Array<{ tag: string; id: string; text: string; rect: object }> }> {
+): Promise<{ elements: Array<{ tag: string; id: string; text: string; rect: object; pageX: number; pageY: number }> }> {
   const selector = String(params.selector ?? '*');
   const limit = typeof params.limit === 'number' ? params.limit : 50;
   const [result] = await chrome.scripting.executeScript({
@@ -118,17 +118,24 @@ async function cmdFindElements(
     func: (sel: string, lim: number) => {
       const nodes = Array.from(document.querySelectorAll(sel)).slice(0, lim);
       return {
-        elements: nodes.map(el => ({
-          tag: el.tagName.toLowerCase(),
-          id: el.id ?? '',
-          text: ((el as HTMLElement).innerText ?? '').slice(0, 500),
-          rect: el.getBoundingClientRect().toJSON(),
-        })),
+        elements: nodes.map(el => {
+          const r = el.getBoundingClientRect();
+          return {
+            tag: el.tagName.toLowerCase(),
+            id: el.id ?? '',
+            text: ((el as HTMLElement).innerText ?? '').slice(0, 500),
+            // viewport-relative (may change after scroll)
+            rect: r.toJSON(),
+            // page-relative (stable regardless of scroll position)
+            pageX: Math.round(r.left + window.scrollX),
+            pageY: Math.round(r.top + window.scrollY),
+          };
+        }),
       };
     },
     args: [selector, limit],
   });
-  return result.result as { elements: Array<{ tag: string; id: string; text: string; rect: object }> };
+  return result.result as { elements: Array<{ tag: string; id: string; text: string; rect: object; pageX: number; pageY: number }> };
 }
 
 // --- JavaScript Evaluation ---
@@ -140,11 +147,11 @@ async function cmdEvaluateJs(
   const expression = String(params.expression ?? '');
   const [res] = await chrome.scripting.executeScript({
     target: { tabId },
+    world: 'MAIN',  // Run in page context so page CSP (unsafe-eval) doesn't apply
     func: (expr: string) => {
       try {
-        // Use indirect eval so it runs in the page's global scope
-        const result = (0, eval)(expr); // eslint-disable-line no-eval
-        // Attempt serialization; fall back to string
+        // eslint-disable-next-line no-eval
+        const result = eval(expr);
         try { JSON.stringify(result); } catch { return { result: String(result) }; }
         return { result };
       } catch (e) {
@@ -172,7 +179,10 @@ async function cmdClick(
       if (sel) {
         el = document.querySelector(sel);
         if (!el) return { clicked: false, error: `Element not found: ${sel}` };
+        // Scroll into view so the element is in the viewport before clicking
+        (el as HTMLElement).scrollIntoView({ block: 'center', inline: 'nearest' });
       } else if (cx !== null && cy !== null) {
+        // x/y are viewport-relative; scroll first if needed via caller
         el = document.elementFromPoint(cx, cy);
         if (!el) return { clicked: false, error: `No element at (${cx}, ${cy})` };
       } else {
@@ -190,14 +200,24 @@ async function cmdType(
   tabId: number,
   params: Record<string, unknown>
 ): Promise<{ typed: boolean; error?: string }> {
-  const selector = String(params.selector ?? '');
+  const selector = typeof params.selector === 'string' ? params.selector : undefined;
+  const x = typeof params.x === 'number' ? params.x : undefined;
+  const y = typeof params.y === 'number' ? params.y : undefined;
   const text = String(params.text ?? '');
   const clear = params.clear === true;
   const [result] = await chrome.scripting.executeScript({
     target: { tabId },
-    func: (sel: string, txt: string, clr: boolean) => {
-      const el = document.querySelector(sel) as HTMLInputElement | null;
-      if (!el) return { typed: false, error: `Element not found: ${sel}` };
+    func: (sel: string | null, cx: number | null, cy: number | null, txt: string, clr: boolean) => {
+      let el: HTMLInputElement | null = null;
+      if (sel) {
+        el = document.querySelector(sel) as HTMLInputElement | null;
+        if (!el) return { typed: false, error: `Element not found: ${sel}` };
+      } else if (cx !== null && cy !== null) {
+        el = document.elementFromPoint(cx, cy) as HTMLInputElement | null;
+        if (!el) return { typed: false, error: `No element at (${cx}, ${cy})` };
+      } else {
+        return { typed: false, error: 'selector or x/y required' };
+      }
       el.focus();
       if (clr) el.value = '';
       el.value += txt;
@@ -205,7 +225,7 @@ async function cmdType(
       el.dispatchEvent(new Event('change', { bubbles: true }));
       return { typed: true };
     },
-    args: [selector, text, clear],
+    args: [toScriptArg(selector), toScriptArg(x), toScriptArg(y), text, clear],
   });
   return result.result as { typed: boolean; error?: string };
 }
