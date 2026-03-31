@@ -30,6 +30,7 @@
       </div>
 
       <div class="toolbar-cluster toolbar-layout-cluster">
+        <button id="btn-theme-toggle" type="button" title="Toggle light/dark theme">&#9788;</button>
         <button id="btn-toggle-panel" type="button" title="Close the Chrome side panel for this window">Close Panel</button>
       </div>
     </div>
@@ -44,6 +45,37 @@
     </div>
   </div>
 
+  <script>
+    (function(){
+      const THEME_KEY = 'ccTheme';
+      const saved = localStorage.getItem(THEME_KEY);
+      if (saved === 'light') document.documentElement.classList.add('theme-light');
+      else if (saved === 'dark') document.documentElement.classList.add('theme-dark');
+      document.addEventListener('DOMContentLoaded', function(){
+        var btn = document.getElementById('btn-theme-toggle');
+        if (!btn) return;
+        function updateBtn() {
+          var isLight = document.documentElement.classList.contains('theme-light');
+          btn.textContent = isLight ? '\u263D' : '\u2600';
+          btn.title = isLight ? 'Switch to dark theme' : 'Switch to light theme';
+        }
+        updateBtn();
+        btn.addEventListener('click', function(){
+          var html = document.documentElement;
+          if (html.classList.contains('theme-light')) {
+            html.classList.remove('theme-light');
+            html.classList.add('theme-dark');
+            localStorage.setItem('ccTheme', 'dark');
+          } else {
+            html.classList.remove('theme-dark');
+            html.classList.add('theme-light');
+            localStorage.setItem('ccTheme', 'light');
+          }
+          updateBtn();
+        });
+      });
+    })();
+  </script>
   <script src="panel.js"></script>
 </body>
 </html>

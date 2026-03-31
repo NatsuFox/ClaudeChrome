@@ -32,6 +32,10 @@ module.exports = {
           from: 'node_modules/@xterm/xterm/css/xterm.css',
           to: 'side-panel/xterm.css',
         },
+        {
+          from: 'extension/side-panel/fonts',
+          to: 'side-panel/fonts',
+        },
       ],
     }),
   ],
