@@ -8,6 +8,7 @@ export async function dispatchCommand(
   params: Record<string, unknown>
 ): Promise<unknown> {
   switch (command) {
+    case 'list_tabs':         return cmdListTabs(tabId, params);
     case 'screenshot':        return cmdScreenshot(tabId, params);
     case 'navigate':          return cmdNavigate(tabId, params);
     case 'reload':            return cmdReload(tabId, params);
@@ -28,6 +29,56 @@ export async function dispatchCommand(
 
 function toScriptArg<T>(value: T | undefined): T | null {
   return value === undefined ? null : value;
+}
+
+function summarizeTabForList(tab: chrome.tabs.Tab) {
+  return {
+    tabId: tab.id!,
+    windowId: tab.windowId ?? null,
+    title: tab.title || '',
+    url: tab.url || '',
+    faviconUrl: tab.favIconUrl,
+    active: Boolean(tab.active),
+    pinned: Boolean(tab.pinned),
+    audible: Boolean(tab.audible),
+    discarded: Boolean(tab.discarded),
+    status: tab.status ?? 'unknown',
+  };
+}
+
+// --- Tab Listing ---
+
+async function cmdListTabs(
+  _tabId: number,
+  params: Record<string, unknown>
+): Promise<{
+  windowScope: 'last_focused' | 'all';
+  activeOnly: boolean;
+  count: number;
+  tabs: Array<ReturnType<typeof summarizeTabForList>>;
+}> {
+  const windowScope = params.window_scope === 'all' ? 'all' : 'last_focused';
+  const activeOnly = params.active_only === true;
+  const query: chrome.tabs.QueryInfo = {};
+
+  if (windowScope === 'last_focused') {
+    query.lastFocusedWindow = true;
+  }
+  if (activeOnly) {
+    query.active = true;
+  }
+
+  const tabs = await chrome.tabs.query(query);
+  const summaries = tabs
+    .filter((tab): tab is chrome.tabs.Tab & { id: number } => tab.id != null)
+    .map((tab) => summarizeTabForList(tab));
+
+  return {
+    windowScope,
+    activeOnly,
+    count: summaries.length,
+    tabs: summaries,
+  };
 }
 
 // --- Screenshot ---
