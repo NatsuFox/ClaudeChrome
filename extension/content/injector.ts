@@ -2,6 +2,14 @@ const MAX_VISIBLE_TEXT_CHARS = 200_000;
 const MAX_HTML_CHARS = 500_000;
 const PAGE_INFO_DEBOUNCE_MS = 250;
 
+function safeSendMessage(message: Record<string, unknown>): void {
+  try {
+    chrome.runtime.sendMessage(message);
+  } catch {
+    // Extension context invalidated (e.g. extension reloaded) — ignore.
+  }
+}
+
 let lastPageInfoKey = '';
 let pageInfoTimer: number | null = null;
 const root = document.documentElement;
@@ -47,14 +55,14 @@ if (root?.dataset.claudechromeInjectorInstalled === '1') {
 
     const msg = event.data;
     if (msg.type === 'captured_body') {
-      chrome.runtime.sendMessage({
+      safeSendMessage({
         type: 'captured_body',
         url: msg.url,
         body: msg.body,
         method: msg.method,
       });
     } else if (msg.type === 'console_entry') {
-      chrome.runtime.sendMessage({
+      safeSendMessage({
         type: 'console_entry',
         entry: msg.entry,
       });
@@ -128,7 +136,7 @@ function sendPageInfo() {
   if (nextKey === lastPageInfoKey) return;
   lastPageInfoKey = nextKey;
 
-  chrome.runtime.sendMessage({
+  safeSendMessage({
     type: 'page_info',
     info,
   });

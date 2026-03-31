@@ -1219,7 +1219,7 @@ workspaceRailEdgeToggle.addEventListener('click', () => {
   toggleRailCollapsed();
 });
 
-chrome.runtime.onMessage.addListener((message) => {
+chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
   if (message.type === 'context_update') {
     sendToHost(message);
   }
