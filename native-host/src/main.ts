@@ -345,6 +345,7 @@ const IMPLEMENTED_SESSION_TOOLS = [
   'browser__get_page_info',
   'browser__get_page_text',
   'browser__get_page_html',
+  'browser__list_tabs',
   'browser__status',
   'browser__binding_status',
   'browser__capabilities',
@@ -460,6 +461,10 @@ function getCapabilities(context: ReturnType<typeof getSessionContext>) {
       console: {
         available: true,
         tools: ['browser__get_console_logs'],
+      },
+      tabs: {
+        available: true,
+        tools: ['browser__list_tabs'],
       },
       introspection: {
         available: true,

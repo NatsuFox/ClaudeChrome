@@ -248,6 +248,19 @@ async function main() {
   );
 
   server.tool(
+    'browser__list_tabs',
+    'List tabs from the user Chrome window, with optional filtering to the last-focused window or active tabs only',
+    {
+      window_scope: z.enum(['last_focused', 'all']).optional().describe('Limit results to the last-focused window or include all browser windows (default: last_focused)'),
+      active_only: z.boolean().optional().describe('Return only active tabs within the selected window scope (default: false)'),
+    },
+    async (params) => {
+      const result = await sendCommand('list_tabs', params);
+      return { content: [{ type: 'text', text: JSON.stringify(result) }] };
+    }
+  );
+
+  server.tool(
     'browser__screenshot',
     'Take a screenshot of the browser tab bound to this session',
     {
