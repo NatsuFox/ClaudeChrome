@@ -10,7 +10,7 @@
     "cookies",
     "scripting",
     "tabs",
-    "activeTab"
+    "activeTab",
   ],
   "host_permissions": ["<all_urls>"],
   "side_panel": {

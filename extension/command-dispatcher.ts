@@ -20,6 +20,7 @@ export async function dispatchCommand(
     case 'wait_for':          return cmdWaitFor(tabId, params);
     case 'get_cookies':       return cmdGetCookies(tabId, params);
     case 'get_storage':       return cmdGetStorage(tabId, params);
+    case 'get_selection':     return cmdGetSelection(tabId, params);
     default:
       throw new Error(`Unknown browser command: ${command}`);
   }
@@ -305,6 +306,25 @@ async function cmdGetCookies(
   const cookies = await chrome.cookies.getAll(details);
   return { cookies };
 }
+
+// --- Selection ---
+
+async function cmdGetSelection(
+  tabId: number,
+  _params: Record<string, unknown>
+): Promise<{ selection: string; hasSelection: boolean }> {
+  const [result] = await chrome.scripting.executeScript({
+    target: { tabId },
+    func: () => {
+      const sel = window.getSelection();
+      const text = sel ? sel.toString() : '';
+      return { selection: text, hasSelection: text.length > 0 };
+    },
+    args: [],
+  });
+  return result.result as { selection: string; hasSelection: boolean };
+}
+
 
 // --- Storage ---
 
