@@ -8,11 +8,14 @@ const os = require('node:os');
 const path = require('node:path');
 const { spawn } = require('node:child_process');
 const { WebSocket } = require(path.resolve(__dirname, '../native-host/node_modules/ws'));
+const { Client } = require(path.resolve(__dirname, '../native-host/node_modules/@modelcontextprotocol/sdk/dist/cjs/client/index.js'));
+const { StdioClientTransport } = require(path.resolve(__dirname, '../native-host/node_modules/@modelcontextprotocol/sdk/dist/cjs/client/stdio.js'));
 
 const ROOT = path.resolve(__dirname, '..');
 const DIST_DIR = path.resolve(ROOT, 'dist');
 const HOST_DIR = path.resolve(ROOT, 'native-host');
 const HOST_ENTRY = path.resolve(HOST_DIR, 'dist/main.js');
+const MCP_BRIDGE_ENTRY = path.resolve(HOST_DIR, 'dist/mcp-stdio-bridge.js');
 const PROFILE_PREFS_RELATIVE = path.join('profile', 'Default', 'Preferences');
 const TEST_PAGE_HTML = `<!doctype html>
 <html lang="en">
@@ -361,9 +364,9 @@ class CdpClient {
   }
 }
 
-function ipcRequest(socketPath, payload) {
+function ipcRequest(storePort, payload) {
   return new Promise((resolve, reject) => {
-    const client = net.createConnection(socketPath, () => {
+    const client = net.createConnection({ host: '127.0.0.1', port: storePort }, () => {
       client.end(`${JSON.stringify(payload)}\n`);
     });
     const chunks = [];
@@ -379,15 +382,15 @@ function ipcRequest(socketPath, payload) {
   });
 }
 
-function ipcQuery(socketPath, sessionId, tool, params = {}) {
-  return ipcRequest(socketPath, { sessionId, tool, params });
+function ipcQuery(storePort, sessionId, tool, params = {}) {
+  return ipcRequest(storePort, { sessionId, tool, params });
 }
 
-function ipcCommand(socketPath, sessionId, command, params = {}, timeoutMs = 20000) {
-  return ipcRequest(socketPath, { kind: 'command', sessionId, command, params, timeoutMs });
+function ipcCommand(storePort, sessionId, command, params = {}, timeoutMs = 20000) {
+  return ipcRequest(storePort, { kind: 'command', sessionId, command, params, timeoutMs });
 }
 
-async function createSession(hostWsPort, socketPath, sessionId, tabId) {
+async function createSession(hostWsPort, storePort, sessionId, tabId) {
   const ws = new WebSocket(`ws://127.0.0.1:${hostWsPort}`);
   await new Promise((resolve, reject) => {
     ws.on('open', resolve);
@@ -403,7 +406,7 @@ async function createSession(hostWsPort, socketPath, sessionId, tabId) {
     rows: 30,
   }));
   await waitFor(async () => {
-    const status = await ipcQuery(socketPath, sessionId, 'get_binding_status', {});
+    const status = await ipcQuery(storePort, sessionId, 'get_binding_status', {});
     const boundTabId = status?.binding?.tabId ?? status?.summary?.boundTabId;
     return status?.ok === true && boundTabId === tabId ? status : null;
   }, 'session binding', 30000, 250);
@@ -417,7 +420,36 @@ function unwrapCommand(name, response) {
   return response.result;
 }
 
-async function cleanup(sessionWs, panelClient) {
+function unwrapMcpTextResult(name, response) {
+  const textBlock = response?.content?.find((entry) => entry.type === 'text');
+  if (!textBlock || typeof textBlock.text !== 'string') {
+    throw makeError(`${name} returned no text content: ${JSON.stringify(response)}`);
+  }
+  try {
+    return JSON.parse(textBlock.text);
+  } catch (error) {
+    throw makeError(`${name} returned invalid JSON text`, { response, error: String(error) });
+  }
+}
+
+async function createMcpClient(storePort, sessionId) {
+  const transport = new StdioClientTransport({
+    command: 'node',
+    args: [MCP_BRIDGE_ENTRY],
+    cwd: HOST_DIR,
+    env: {
+      ...process.env,
+      CLAUDECHROME_STORE_PORT: String(storePort),
+      CLAUDECHROME_SESSION_ID: sessionId,
+    },
+    stderr: 'pipe',
+  });
+  const client = new Client({ name: 'claudechrome-live-test', version: '1.0.0' }, { capabilities: {} });
+  await client.connect(transport);
+  return { client, transport };
+}
+
+async function cleanup(sessionWs, panelClient, mcpTransport) {
   if (sessionWs && sessionWs.readyState === WebSocket.OPEN && !closedSession) {
     sessionWs.send(JSON.stringify({ type: 'session_close', sessionId: 'live-test-session' }));
     closedSession = true;
@@ -426,6 +458,12 @@ async function cleanup(sessionWs, panelClient) {
   }
   if (panelClient) {
     panelClient.close();
+  }
+  if (mcpTransport) {
+    await Promise.race([
+      mcpTransport.close().catch(() => undefined),
+      sleep(1000),
+    ]);
   }
   if (httpServer) {
     await new Promise((resolve) => httpServer.close(() => resolve()));
@@ -480,7 +518,7 @@ async function main() {
   const profileDir = path.join(runtimeDir, 'profile');
   fs.mkdirSync(profileDir, { recursive: true });
 
-  const socketPath = path.join(runtimeDir, 'store.sock');
+  const storePort = await reservePort();
   const preferencesPath = path.join(runtimeDir, PROFILE_PREFS_RELATIVE);
   const browserCommand = resolveBrowserCommand();
   const debugPort = await reservePort();
@@ -491,6 +529,7 @@ async function main() {
 
   let panelClient = null;
   let sessionWs = null;
+  let mcpTransport = null;
   let hostLogs = () => ({ label: 'host', stdout: '', stderr: '' });
   let browserLogs = () => ({ label: 'browser', stdout: '', stderr: '' });
 
@@ -501,12 +540,12 @@ async function main() {
         ...process.env,
         CLAUDECHROME_WS_PORT: String(hostWsPort),
         CLAUDECHROME_RUNTIME_DIR: runtimeDir,
-        CLAUDECHROME_STORE_SOCKET: socketPath,
+        CLAUDECHROME_STORE_PORT: String(storePort),
       },
     });
     hostLogs = collectOutput(hostProcess, 'host');
     await waitForPort(hostWsPort, 'native host WebSocket port');
-    await waitFor(() => fs.existsSync(socketPath), 'native host store socket', 30000, 100);
+    await waitForPort(storePort, 'native host IPC port');
 
     const browserLaunch = resolveBrowserLaunch(browserCommand, profileDir, debugPort);
     const browserProcess = spawnManaged(browserLaunch.command, browserLaunch.args, { cwd: ROOT, env: process.env });
@@ -578,16 +617,66 @@ async function main() {
     }
     record('active tab resolution', true, `tabId=${boundTabId}`);
 
-    sessionWs = await createSession(hostWsPort, socketPath, sessionId, boundTabId);
+    sessionWs = await createSession(hostWsPort, storePort, sessionId, boundTabId);
     record('session create', true, `sessionId=${sessionId}, tabId=${boundTabId}`);
 
-    const caps = await ipcQuery(socketPath, sessionId, 'get_capabilities', {});
-    if (caps.ok !== true || caps.families?.action?.available !== true || caps.families?.cookies?.available !== true || caps.families?.storage?.available !== true) {
+    const caps = await ipcQuery(storePort, sessionId, 'get_capabilities', {});
+    if (
+      caps.ok !== true ||
+      caps.families?.action?.available !== true ||
+      caps.families?.cookies?.available !== true ||
+      caps.families?.storage?.available !== true ||
+      caps.families?.tabs?.available !== true
+    ) {
       throw makeError(`Capabilities mismatch: ${JSON.stringify(caps)}`);
     }
-    record('capabilities', true, 'action/cookies/storage families available');
+    record('capabilities', true, 'action/cookies/storage/tabs families available');
 
-    const storage = unwrapCommand('get_storage', await ipcCommand(socketPath, sessionId, 'get_storage', {
+    const listTabs = unwrapCommand('list_tabs(default)', await ipcCommand(storePort, sessionId, 'list_tabs', {}));
+    const boundTabSummary = Array.isArray(listTabs.tabs)
+      ? listTabs.tabs.find((tab) => tab.tabId === boundTabId)
+      : null;
+    if (listTabs.windowScope !== 'last_focused' || !boundTabSummary || boundTabSummary.url !== testUrl) {
+      throw makeError(`Tab listing mismatch: ${JSON.stringify(listTabs)}`);
+    }
+    record('list_tabs command', true, `count=${listTabs.count}, boundTab=${boundTabSummary.tabId}`);
+
+    const activeTabs = unwrapCommand(
+      'list_tabs(active_only)',
+      await ipcCommand(storePort, sessionId, 'list_tabs', { window_scope: 'all', active_only: true })
+    );
+    const activeBoundTab = Array.isArray(activeTabs.tabs)
+      ? activeTabs.tabs.find((tab) => tab.tabId === boundTabId && tab.active === true)
+      : null;
+    if (activeTabs.activeOnly !== true || !activeBoundTab) {
+      throw makeError(`Active tab listing mismatch: ${JSON.stringify(activeTabs)}`);
+    }
+    record('list_tabs active_only', true, `count=${activeTabs.count}, activeBoundTab=${activeBoundTab.tabId}`);
+
+    const mcp = await createMcpClient(storePort, sessionId);
+    mcpTransport = mcp.transport;
+    const mcpTools = await mcp.client.listTools();
+    if (!Array.isArray(mcpTools.tools) || !mcpTools.tools.some((tool) => tool.name === 'browser__list_tabs')) {
+      throw makeError(`MCP tool list missing browser__list_tabs: ${JSON.stringify(mcpTools)}`);
+    }
+    record('mcp tool registration', true, 'browser__list_tabs is exposed over stdio MCP');
+
+    const mcpListTabs = unwrapMcpTextResult(
+      'browser__list_tabs MCP call',
+      await mcp.client.callTool({
+        name: 'browser__list_tabs',
+        arguments: { window_scope: 'all', active_only: true },
+      })
+    );
+    const mcpBoundTab = Array.isArray(mcpListTabs?.result?.tabs)
+      ? mcpListTabs.result.tabs.find((tab) => tab.tabId === boundTabId && tab.active === true)
+      : null;
+    if (mcpListTabs?.ok !== true || !mcpBoundTab || mcpBoundTab.url !== testUrl) {
+      throw makeError(`MCP list_tabs mismatch: ${JSON.stringify(mcpListTabs)}`);
+    }
+    record('mcp list_tabs live call', true, `activeBoundTab=${mcpBoundTab.tabId}`);
+
+    const storage = unwrapCommand('get_storage', await ipcCommand(storePort, sessionId, 'get_storage', {
       storage_type: 'both',
       keys: ['liveLocal', 'liveSession'],
     }));
@@ -596,7 +685,7 @@ async function main() {
     }
     record('get_storage', true, `local=${storage.localStorage.liveLocal}, session=${storage.sessionStorage.liveSession}`);
 
-    const cookies = unwrapCommand('get_cookies', await ipcCommand(socketPath, sessionId, 'get_cookies', {
+    const cookies = unwrapCommand('get_cookies', await ipcCommand(storePort, sessionId, 'get_cookies', {
       url: testUrl,
       name: 'livecookie',
     }));
@@ -605,74 +694,74 @@ async function main() {
     }
     record('get_cookies', true, `cookies=${cookies.cookies.length}`);
 
-    const clickSelector = unwrapCommand('click(selector)', await ipcCommand(socketPath, sessionId, 'click', { selector: '#selector-button' }));
+    const clickSelector = unwrapCommand('click(selector)', await ipcCommand(storePort, sessionId, 'click', { selector: '#selector-button' }));
     if (clickSelector.clicked !== true) {
       throw makeError(`Selector click response was not successful: ${JSON.stringify(clickSelector)}`);
     }
     await waitFor(async () => {
-      const page = await ipcQuery(socketPath, sessionId, 'get_page_text', { max_chars: 5000 });
+      const page = await ipcQuery(storePort, sessionId, 'get_page_text', { max_chars: 5000 });
       return page.ok === true && page.text.includes('selector-clicked:1') ? page : null;
     }, 'selector click visible text', 30000, 250);
     record('click selector', true, 'selector-clicked:1');
 
-    const coordButton = unwrapCommand('find_elements(coord button)', await ipcCommand(socketPath, sessionId, 'find_elements', { selector: '#coord-button', limit: 1 }));
+    const coordButton = unwrapCommand('find_elements(coord button)', await ipcCommand(storePort, sessionId, 'find_elements', { selector: '#coord-button', limit: 1 }));
     const rect = coordButton.elements?.[0]?.rect;
     if (!rect || typeof rect.x !== 'number' || typeof rect.y !== 'number' || typeof rect.width !== 'number' || typeof rect.height !== 'number') {
       throw makeError(`Missing coordinate button rect: ${JSON.stringify(coordButton)}`);
     }
     const centerX = Math.round(rect.x + rect.width / 2);
     const centerY = Math.round(rect.y + rect.height / 2);
-    const clickCoords = unwrapCommand('click(coords)', await ipcCommand(socketPath, sessionId, 'click', { x: centerX, y: centerY }));
+    const clickCoords = unwrapCommand('click(coords)', await ipcCommand(storePort, sessionId, 'click', { x: centerX, y: centerY }));
     if (clickCoords.clicked !== true) {
       throw makeError(`Coordinate click response was not successful: ${JSON.stringify(clickCoords)}`);
     }
     await waitFor(async () => {
-      const page = await ipcQuery(socketPath, sessionId, 'get_page_text', { max_chars: 5000 });
+      const page = await ipcQuery(storePort, sessionId, 'get_page_text', { max_chars: 5000 });
       return page.ok === true && page.text.includes('coord-clicked:1') ? page : null;
     }, 'coordinate click visible text', 30000, 250);
     record('click coordinates', true, `coord button center=(${centerX}, ${centerY}) -> coord-clicked:1`);
 
-    const initialAnchor = unwrapCommand('find_elements(initial anchor)', await ipcCommand(socketPath, sessionId, 'find_elements', { selector: '#deep-anchor', limit: 1 }));
+    const initialAnchor = unwrapCommand('find_elements(initial anchor)', await ipcCommand(storePort, sessionId, 'find_elements', { selector: '#deep-anchor', limit: 1 }));
     const initialTop = initialAnchor.elements?.[0]?.rect?.top;
     if (typeof initialTop !== 'number') {
       throw makeError(`Initial anchor rect missing: ${JSON.stringify(initialAnchor)}`);
     }
 
-    const scrollInstant = unwrapCommand('scroll instant', await ipcCommand(socketPath, sessionId, 'scroll', { y: 900 }));
+    const scrollInstant = unwrapCommand('scroll instant', await ipcCommand(storePort, sessionId, 'scroll', { y: 900 }));
     if (scrollInstant.scrolled !== true) {
       throw makeError(`Instant scroll response was not successful: ${JSON.stringify(scrollInstant)}`);
     }
     const anchorAfterInstant = await waitFor(async () => {
-      const result = unwrapCommand('find_elements(anchor after instant scroll)', await ipcCommand(socketPath, sessionId, 'find_elements', { selector: '#deep-anchor', limit: 1 }));
+      const result = unwrapCommand('find_elements(anchor after instant scroll)', await ipcCommand(storePort, sessionId, 'find_elements', { selector: '#deep-anchor', limit: 1 }));
       const top = result.elements?.[0]?.rect?.top;
       return typeof top === 'number' && top <= initialTop - 700 ? result : null;
     }, 'instant scroll anchor movement', 30000, 250);
     record('scroll coordinates instant', true, `anchorTop=${anchorAfterInstant.elements[0].rect.top}`);
 
-    const scrollSmooth = unwrapCommand('scroll smooth', await ipcCommand(socketPath, sessionId, 'scroll', { y: 1500, behavior: 'smooth' }));
+    const scrollSmooth = unwrapCommand('scroll smooth', await ipcCommand(storePort, sessionId, 'scroll', { y: 1500, behavior: 'smooth' }));
     if (scrollSmooth.scrolled !== true) {
       throw makeError(`Smooth scroll response was not successful: ${JSON.stringify(scrollSmooth)}`);
     }
     const anchorAfterSmooth = await waitFor(async () => {
-      const result = unwrapCommand('find_elements(anchor after smooth scroll)', await ipcCommand(socketPath, sessionId, 'find_elements', { selector: '#deep-anchor', limit: 1 }));
+      const result = unwrapCommand('find_elements(anchor after smooth scroll)', await ipcCommand(storePort, sessionId, 'find_elements', { selector: '#deep-anchor', limit: 1 }));
       const top = result.elements?.[0]?.rect?.top;
       return typeof top === 'number' && top <= initialTop - 1300 ? result : null;
     }, 'smooth scroll anchor movement', 30000, 300);
     record('scroll coordinates smooth', true, `anchorTop=${anchorAfterSmooth.elements[0].rect.top}`);
 
-    const scrollSelector = unwrapCommand('scroll selector', await ipcCommand(socketPath, sessionId, 'scroll', { selector: '#deep-anchor' }));
+    const scrollSelector = unwrapCommand('scroll selector', await ipcCommand(storePort, sessionId, 'scroll', { selector: '#deep-anchor' }));
     if (scrollSelector.scrolled !== true) {
       throw makeError(`Selector scroll response was not successful: ${JSON.stringify(scrollSelector)}`);
     }
     const anchorAfterSelector = await waitFor(async () => {
-      const result = unwrapCommand('find_elements(anchor after selector scroll)', await ipcCommand(socketPath, sessionId, 'find_elements', { selector: '#deep-anchor', limit: 1 }));
+      const result = unwrapCommand('find_elements(anchor after selector scroll)', await ipcCommand(storePort, sessionId, 'find_elements', { selector: '#deep-anchor', limit: 1 }));
       const top = result.elements?.[0]?.rect?.top;
       return typeof top === 'number' && top <= 200 ? result : null;
     }, 'selector scroll anchor movement', 30000, 250);
     record('scroll selector', true, `anchorTop=${anchorAfterSelector.elements[0].rect.top}`);
 
     const consoleMessages = await waitFor(async () => {
-      const logs = await ipcQuery(socketPath, sessionId, 'get_console_logs', { limit: 20 });
+      const logs = await ipcQuery(storePort, sessionId, 'get_console_logs', { limit: 20 });
       const messages = Array.isArray(logs) ? logs.map((entry) => entry.message || '') : [];
       const sawSelector = messages.some((message) => String(message).includes('selector-click'));
       const sawCoord = messages.some((message) => String(message).includes('coord-click'));
@@ -692,10 +781,14 @@ async function main() {
     console.error(JSON.stringify(details, null, 2));
     throw error;
   } finally {
-    await cleanup(sessionWs, panelClient);
+    await cleanup(sessionWs, panelClient, mcpTransport);
   }
 }
 
-main().catch(() => {
-  process.exitCode = 1;
-});
+main()
+  .then(() => {
+    process.exit(0);
+  })
+  .catch(() => {
+    process.exit(1);
+  });

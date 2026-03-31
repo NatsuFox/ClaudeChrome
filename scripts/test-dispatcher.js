@@ -89,12 +89,23 @@ try {
 console.log('\n[2] Setting up chrome API mocks...');
 
 // Canned results for each command:
-const TAB    = { id: 42, windowId: 1, url: 'https://example.com', title: 'Example', status: 'complete', favIconUrl: '' };
+const TAB = { id: 42, windowId: 1, url: 'https://example.com', title: 'Example', status: 'complete', favIconUrl: '', active: true, pinned: false, audible: false, discarded: false };
+const WINDOW_TABS = [
+  TAB,
+  { id: 43, windowId: 1, url: 'https://example.org', title: 'Example Org', status: 'complete', favIconUrl: '', active: false, pinned: true, audible: false, discarded: false },
+  { id: 44, windowId: 2, url: 'https://example.net', title: 'Example Net', status: 'loading', favIconUrl: '', active: true, pinned: false, audible: true, discarded: false },
+];
 const COOKIE = { name: 'session', value: 'abc', domain: 'example.com', path: '/', secure: true, httpOnly: true, sameSite: 'Strict', session: false, expirationDate: 9999999999 };
 
 global.chrome = {
   tabs: {
     get: (tabId, cb) => cb ? cb(TAB) : Promise.resolve(TAB),
+    query: (queryInfo, cb) => {
+      let tabs = WINDOW_TABS;
+      if (queryInfo?.lastFocusedWindow) tabs = tabs.filter((tab) => tab.windowId === 1);
+      if (queryInfo?.active) tabs = tabs.filter((tab) => tab.active);
+      if (cb) cb(tabs); else return Promise.resolve(tabs);
+    },
     update: (tabId, props, cb) => {
       // For navigate: simulate status complete after update
       const updated = { ...TAB, url: props.url || TAB.url, status: 'complete' };
@@ -200,7 +211,7 @@ assert(typeof dispatchCommand === 'function', 'dispatchCommand is exported and i
 // ---------------------------------------------------------------------------
 // Step 4: Test each command
 // ---------------------------------------------------------------------------
-console.log('\n[4] Testing all 12 commands...');
+console.log('\n[4] Testing command coverage...');
 
 async function runTests() {
   // screenshot
@@ -228,6 +239,21 @@ async function runTests() {
     // tabs.get mock already returns complete
     const r = await assertOk(dispatchCommand('reload', 42, {}), 'reload');
     assert(r?.status === 'complete', 'reload status=complete');
+  }
+
+  // list_tabs
+  {
+    const r = await assertOk(dispatchCommand('list_tabs', 42, {}), 'list_tabs');
+    assert(Array.isArray(r?.tabs), 'list_tabs returns tabs array');
+    assert(r?.count === 2, `list_tabs returns last-focused window tab count (${r?.count})`);
+    assert(r?.tabs?.[0]?.tabId === 42, 'list_tabs includes the primary tab');
+
+    const activeOnly = await assertOk(
+      dispatchCommand('list_tabs', 42, { window_scope: 'all', active_only: true }),
+      'list_tabs active_only'
+    );
+    assert(activeOnly?.count === 2, `list_tabs active_only returns one active tab per window (${activeOnly?.count})`);
+    assert(activeOnly?.tabs?.every((tab) => tab.active === true), 'list_tabs active_only filters to active tabs');
   }
 
   // get_page_content
