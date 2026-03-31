@@ -78,7 +78,8 @@ export class SessionManager {
   private readonly contextStore: ContextStore;
   private readonly runtimeDir: string;
   private readonly mcpBridgeScript: string;
-  private readonly storeSocketPath: string;
+  private storeSocketPath: string;
+  private storePort: number = 0;
   private readonly broadcast: (message: object) => void;
   private readonly sessions = new Map<string, AgentSession>();
 
@@ -88,6 +89,10 @@ export class SessionManager {
     this.mcpBridgeScript = options.mcpBridgeScript;
     this.storeSocketPath = options.storeSocketPath;
     this.broadcast = options.broadcast;
+  }
+
+  setStorePort(port: number): void {
+    this.storePort = port;
   }
 
   hasSession(sessionId: string): boolean {
@@ -263,6 +268,7 @@ export class SessionManager {
         runtimeDir: this.runtimeDir,
         mcpBridgeScript: this.mcpBridgeScript,
         storeSocketPath: this.storeSocketPath,
+        storePort: this.storePort,
         launchArgs: session.launchArgs,
       });
       bridge.spawn(launch);

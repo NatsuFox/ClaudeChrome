@@ -13,6 +13,7 @@ export interface AgentLaunchOptions {
   runtimeDir: string;
   mcpBridgeScript: string;
   storeSocketPath: string;
+  storePort: number;
   launchArgs?: string;
 }
 
@@ -124,7 +125,7 @@ function buildClaudeLaunch(options: AgentLaunchOptions): PtySpawnOptions {
         command: 'node',
         args: [options.mcpBridgeScript],
         env: {
-          CLAUDECHROME_STORE_SOCKET: options.storeSocketPath,
+          CLAUDECHROME_STORE_PORT: String(options.storePort),
           CLAUDECHROME_SESSION_ID: options.sessionId,
         },
       },
@@ -152,7 +153,6 @@ function buildClaudeLaunch(options: AgentLaunchOptions): PtySpawnOptions {
 function buildCodexLaunch(options: AgentLaunchOptions): PtySpawnOptions {
   const env = { ...process.env };
   const bridgeScript = escapeTomlBasicString(options.mcpBridgeScript);
-  const storeSocket = escapeTomlBasicString(options.storeSocketPath);
   const sessionId = escapeTomlBasicString(options.sessionId);
 
   return wrapWithLoginShell(
@@ -163,7 +163,7 @@ function buildCodexLaunch(options: AgentLaunchOptions): PtySpawnOptions {
       '-c',
       `mcp_servers.claudechrome-browser.args=["${bridgeScript}"]`,
       '-c',
-      `mcp_servers.claudechrome-browser.env={CLAUDECHROME_STORE_SOCKET="${storeSocket}",CLAUDECHROME_SESSION_ID="${sessionId}"}`,
+      `mcp_servers.claudechrome-browser.env={CLAUDECHROME_STORE_PORT="${options.storePort}",CLAUDECHROME_SESSION_ID="${sessionId}"}`,
       ...splitCommandLine(options.launchArgs),
     ],
     options.cwd,

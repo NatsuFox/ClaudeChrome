@@ -9,9 +9,11 @@ import * as os from 'node:os';
 import * as net from 'node:net';
 
 const WS_HOST = process.env.CLAUDECHROME_WS_HOST || '127.0.0.1';
-const WS_PORT = parseInt(process.env.CLAUDECHROME_WS_PORT || '9999', 10);
+const WS_PORT = parseInt(process.env.CLAUDECHROME_WS_PORT || '0', 10);
 const RUNTIME_DIR = process.env.CLAUDECHROME_RUNTIME_DIR || path.join(os.tmpdir(), 'claudechrome');
+const WS_PORT_FILE = process.env.CLAUDECHROME_WS_PORT_FILE || path.join(RUNTIME_DIR, 'ws.port');
 const CONNECTION_LOG_PATH = process.env.CLAUDECHROME_CONNECTION_LOG_PATH || path.join(RUNTIME_DIR, 'connections.log');
+const STORE_PORT = parseInt(process.env.CLAUDECHROME_STORE_PORT || '0', 10);
 const STORE_SOCKET_PATH = process.env.CLAUDECHROME_STORE_SOCKET || path.join(RUNTIME_DIR, 'store.sock');
 const MCP_BRIDGE_SCRIPT = path.resolve(__dirname, 'mcp-stdio-bridge.js');
 const PROJECT_ROOT = path.resolve(__dirname, '..', '..');
@@ -185,10 +187,21 @@ function handleClientMessage(msg: any): void {
 }
 
 const wss = new WebSocketServer({ port: WS_PORT, host: WS_HOST });
+let resolvedWsPort: number = WS_PORT;
 
 wss.on('listening', () => {
+  const addr = wss.address() as { port: number };
+  resolvedWsPort = addr.port;
+  try {
+    fs.mkdirSync(RUNTIME_DIR, { recursive: true });
+    fs.writeFileSync(WS_PORT_FILE, String(resolvedWsPort), 'utf8');
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    console.error(`[ClaudeChrome] Failed to write port file: ${msg}`);
+  }
   appendConnectionLog('ws_listening', {
-    url: `ws://${WS_HOST}:${WS_PORT}`,
+    url: `ws://${WS_HOST}:${resolvedWsPort}`,
+    portFile: WS_PORT_FILE,
     logPath: CONNECTION_LOG_PATH,
   });
 });
@@ -249,13 +262,7 @@ wss.on('connection', (client, req) => {
 
 let ipcServer: net.Server | null = null;
 
-function startIpcServer(socketPath: string): void {
-  try {
-    fs.unlinkSync(socketPath);
-  } catch {
-    // Ignore stale socket cleanup failures.
-  }
-
+function startIpcServer(_socketPath: string): void {
   ipcServer = net.createServer({ allowHalfOpen: true }, (conn) => {
     const meta = socketMeta(conn);
     let data = '';
@@ -322,7 +329,12 @@ function startIpcServer(socketPath: string): void {
     });
   });
 
-  ipcServer.listen(socketPath);
+  ipcServer.listen(STORE_PORT, '127.0.0.1', () => {
+    const addr = ipcServer!.address() as net.AddressInfo;
+    const resolvedPort = addr.port;
+    appendConnectionLog('ipc_listening', { port: resolvedPort });
+    sessionManager.setStorePort(resolvedPort);
+  });
 }
 
 const IMPLEMENTED_SESSION_TOOLS = [
@@ -351,6 +363,7 @@ const IMPLEMENTED_SESSION_TOOLS = [
   'browser__wait_for',
   'browser__get_cookies',
   'browser__get_storage',
+  'browser__get_selection',
 ] as const;
 
 function makeError(code: string, message: string, details: Record<string, unknown> = {}) {
@@ -641,7 +654,7 @@ function handleStoreQuery(sessionId: string | undefined, tool: string, params: a
         transport: {
           websocket: {
             host: WS_HOST,
-            port: WS_PORT,
+            port: resolvedWsPort,
             connectedClients: clients.size,
           },
           ipc: {
@@ -766,7 +779,7 @@ function handleStoreQuery(sessionId: string | undefined, tool: string, params: a
 
 try {
   fs.mkdirSync(RUNTIME_DIR, { recursive: true });
-  startIpcServer(STORE_SOCKET_PATH);
+  startIpcServer(STORE_SOCKET_PATH); // socket path ignored; TCP is used
 } catch (error) {
   const message = error instanceof Error ? error.message : String(error);
   console.error(`[ClaudeChrome] Failed to start IPC server: ${message}`);
@@ -775,6 +788,7 @@ try {
 function cleanup(): void {
   sessionManager.shutdown();
   ipcServer?.close();
+  try { fs.unlinkSync(WS_PORT_FILE); } catch { /* ignore */ }
   process.exit(0);
 }
 

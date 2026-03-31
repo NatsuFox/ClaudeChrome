@@ -4,7 +4,7 @@ import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js'
 import { z } from 'zod';
 import * as net from 'node:net';
 
-const SOCKET_PATH = process.env.CLAUDECHROME_STORE_SOCKET || '/tmp/claudechrome/store.sock';
+const STORE_PORT = parseInt(process.env.CLAUDECHROME_STORE_PORT || '0', 10);
 const SESSION_ID = process.env.CLAUDECHROME_SESSION_ID;
 
 function sendCommand(command: string, params: Record<string, unknown>, timeoutMs?: number): Promise<any> {
@@ -24,7 +24,7 @@ function sendCommand(command: string, params: Record<string, unknown>, timeoutMs
       fn();
     };
 
-    const client = net.createConnection(SOCKET_PATH, () => {
+    const client = net.createConnection(STORE_PORT, '127.0.0.1', () => {
       const msg = JSON.stringify({ kind: 'command', sessionId: SESSION_ID, command, params, timeoutMs });
       client.end(msg + '\n');
     });
@@ -65,7 +65,7 @@ function queryStore(tool: string, params: Record<string, unknown>): Promise<any>
       fn();
     };
 
-    const client = net.createConnection(SOCKET_PATH, () => {
+    const client = net.createConnection(STORE_PORT, '127.0.0.1', () => {
       const msg = JSON.stringify({ sessionId: SESSION_ID, tool, params });
       client.end(msg + '\n');
     });
@@ -404,6 +404,16 @@ async function main() {
     },
     async (params) => {
       const result = await sendCommand('get_storage', params);
+      return { content: [{ type: 'text', text: JSON.stringify(result) }] };
+    }
+  );
+
+  server.tool(
+    'browser__get_selection',
+    'Get the text currently selected by the user on the browser tab bound to this session',
+    {},
+    async () => {
+      const result = await sendCommand('get_selection', {});
       return { content: [{ type: 'text', text: JSON.stringify(result) }] };
     }
   );
