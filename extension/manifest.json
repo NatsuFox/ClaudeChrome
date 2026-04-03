@@ -31,9 +31,20 @@
     "extension_pages": "script-src 'self' 'wasm-unsafe-eval'; object-src 'self'; connect-src ws://localhost:* ws://127.0.0.1:*"
   },
   "action": {
-    "default_title": "Open ClaudeChrome"
+    "default_title": "Open ClaudeChrome",
+    "default_icon": {
+      "16": "branding/logo.png",
+      "32": "branding/logo.png",
+      "48": "branding/logo.png",
+      "128": "branding/logo.png"
+    }
   },
-  "icons": {},
+  "icons": {
+    "16": "branding/logo.png",
+    "32": "branding/logo.png",
+    "48": "branding/logo.png",
+    "128": "branding/logo.png"
+  },
   "web_accessible_resources": [
     {
       "resources": ["content/page-script.js"],

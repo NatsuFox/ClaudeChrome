@@ -100,24 +100,22 @@ function handleContextUpdate(msg: { category: string; payload: unknown }): void 
     case 'network': {
       const request = msg.payload as StoredRequest;
       contextStore.addRequest(request);
-      sessionManager.noteTabUpdated(request.tabId);
       break;
     }
     case 'console': {
       const entry = msg.payload as StoredConsoleEntry;
       contextStore.addConsoleLog(entry);
-      sessionManager.noteTabUpdated(entry.tabId);
       break;
     }
     case 'page_info': {
       const info = msg.payload as StoredPageInfo;
       contextStore.setPageInfo(info);
-      sessionManager.noteTabUpdated(info.tabId);
       break;
     }
     case 'tab_state': {
       const tab = msg.payload as StoredTabSummary;
       contextStore.upsertTab(tab);
+      // Session snapshots drive panel rerenders, so only emit them when tab metadata changes.
       sessionManager.noteTabUpdated(tab.tabId);
       break;
     }

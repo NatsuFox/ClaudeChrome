@@ -36,6 +36,14 @@ module.exports = {
           from: 'extension/side-panel/fonts',
           to: 'side-panel/fonts',
         },
+        {
+          from: 'assets/logo-transparent.png',
+          to: 'branding/logo.png',
+        },
+        {
+          from: 'assets/logo-transparent.svg',
+          to: 'branding/logo.svg',
+        },
       ],
     }),
   ],

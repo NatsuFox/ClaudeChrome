@@ -1,6 +1,60 @@
-import { Terminal } from '@xterm/xterm';
 import { FitAddon } from '@xterm/addon-fit';
 import { WebglAddon } from '@xterm/addon-webgl';
+import { Terminal, type ITheme } from '@xterm/xterm';
+
+import type { PanelTheme } from './state';
+
+const DARK_THEME: ITheme = {
+  background: '#07111f',
+  foreground: '#d6e6ff',
+  cursor: '#f8fafc',
+  cursorAccent: '#07111f',
+  selectionBackground: '#28486b',
+  black: '#07111f',
+  red: '#f7768e',
+  green: '#9ece6a',
+  yellow: '#e0af68',
+  blue: '#7aa2f7',
+  magenta: '#bb9af7',
+  cyan: '#7dcfff',
+  white: '#d6e6ff',
+  brightBlack: '#52627d',
+  brightRed: '#ff8ea1',
+  brightGreen: '#b4f581',
+  brightYellow: '#f4c184',
+  brightBlue: '#9ab9ff',
+  brightMagenta: '#d0b6ff',
+  brightCyan: '#9de6ff',
+  brightWhite: '#f8fafc',
+};
+
+const LIGHT_THEME: ITheme = {
+  background: '#fffaf5',
+  foreground: '#1b2a40',
+  cursor: '#3558ff',
+  cursorAccent: '#fffaf5',
+  selectionBackground: '#cad9ff',
+  black: '#24364d',
+  red: '#c64b63',
+  green: '#1f8f58',
+  yellow: '#b56f1f',
+  blue: '#3558ff',
+  magenta: '#7b4cd6',
+  cyan: '#0d7d94',
+  white: '#8798ad',
+  brightBlack: '#566a83',
+  brightRed: '#dd5e76',
+  brightGreen: '#2ca96b',
+  brightYellow: '#cf8d3b',
+  brightBlue: '#5573ff',
+  brightMagenta: '#9567ea',
+  brightCyan: '#2998b2',
+  brightWhite: '#18263d',
+};
+
+function themeForMode(mode: PanelTheme): ITheme {
+  return mode === 'light' ? LIGHT_THEME : DARK_THEME;
+}
 
 export class TerminalView {
   readonly root: HTMLDivElement;
@@ -9,35 +63,14 @@ export class TerminalView {
   private readonly fitAddon: FitAddon;
   private mounted = false;
 
-  constructor() {
+  constructor(theme: PanelTheme = 'dark') {
     this.root = document.createElement('div');
     this.root.className = 'pane-terminal';
 
     this.terminal = new Terminal({
-      fontFamily: "'Menlo', 'Consolas', 'Courier New', monospace",
+      fontFamily: "'JetBrains Mono', 'Menlo', 'Consolas', 'Courier New', monospace",
       fontSize: 13,
-      theme: {
-        background: '#1a1b26',
-        foreground: '#a9b1d6',
-        cursor: '#c0caf5',
-        selectionBackground: '#33467c',
-        black: '#15161e',
-        red: '#f7768e',
-        green: '#9ece6a',
-        yellow: '#e0af68',
-        blue: '#7aa2f7',
-        magenta: '#bb9af7',
-        cyan: '#7dcfff',
-        white: '#a9b1d6',
-        brightBlack: '#414868',
-        brightRed: '#f7768e',
-        brightGreen: '#9ece6a',
-        brightYellow: '#e0af68',
-        brightBlue: '#7aa2f7',
-        brightMagenta: '#bb9af7',
-        brightCyan: '#7dcfff',
-        brightWhite: '#c0caf5',
-      },
+      theme: { ...themeForMode(theme) },
       cursorBlink: true,
       allowProposedApi: true,
     });
@@ -50,6 +83,8 @@ export class TerminalView {
     } catch {
       // Fall back to the default renderer when WebGL is unavailable.
     }
+
+    this.setTheme(theme);
   }
 
   mount(parent: HTMLElement): void {
@@ -63,6 +98,11 @@ export class TerminalView {
     }
 
     this.fit();
+  }
+
+  setTheme(theme: PanelTheme): void {
+    this.root.dataset.theme = theme;
+    this.terminal.options.theme = { ...themeForMode(theme) };
   }
 
   fit(): void {

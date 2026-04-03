@@ -28,6 +28,7 @@ import {
   removePane,
   removeWorkspace,
   type PaneLayout,
+  type PanelTheme,
   type PersistedPanelState,
 } from './state';
 import { TerminalView } from './terminal-view';
@@ -58,6 +59,7 @@ const btnLaunchDefaults = document.getElementById('btn-launch-defaults')!;
 const btnAddShellPane = document.getElementById('btn-add-shell-pane')!;
 const btnAddClaudePane = document.getElementById('btn-add-claude-pane')!;
 const btnAddCodexPane = document.getElementById('btn-add-codex-pane')!;
+const btnThemeToggle = document.getElementById('btn-theme-toggle') as HTMLButtonElement;
 const btnTogglePanel = document.getElementById('btn-toggle-panel') as HTMLButtonElement;
 
 const chunkAssembler = new ChunkAssembler();
@@ -110,6 +112,43 @@ function getEffectiveLaunchArgs(pane: PaneLayout, agentType: AgentType = pane.ag
 
   const fallback = panelState.launchDefaults[launchAgent].trim();
   return fallback || undefined;
+}
+
+function normalizeTheme(theme: unknown): PanelTheme {
+  return theme === 'light' ? 'light' : 'dark';
+}
+
+function updateThemeToggleButton(): void {
+  const nextTheme = panelState.theme === 'light' ? 'dark' : 'light';
+  btnThemeToggle.textContent = nextTheme === 'light' ? 'Light' : 'Dark';
+  btnThemeToggle.title = `Switch to ${nextTheme} theme`;
+  btnThemeToggle.setAttribute('aria-label', btnThemeToggle.title);
+}
+
+function applyTheme(): void {
+  const theme = normalizeTheme(panelState.theme);
+  panelState.theme = theme;
+  document.documentElement.classList.toggle('theme-light', theme === 'light');
+  document.documentElement.classList.toggle('theme-dark', theme === 'dark');
+  document.documentElement.style.colorScheme = theme;
+  updateThemeToggleButton();
+  terminalViews.forEach((view) => view.setTheme(theme));
+}
+
+async function setTheme(theme: PanelTheme): Promise<void> {
+  const nextTheme = normalizeTheme(theme);
+  if (panelState.theme === nextTheme) {
+    applyTheme();
+    return;
+  }
+
+  panelState.theme = nextTheme;
+  applyTheme();
+  await saveState();
+}
+
+function toggleTheme(): void {
+  void setTheme(panelState.theme === 'light' ? 'dark' : 'light');
 }
 
 function setStatus(state: 'connected' | 'disconnected' | 'connecting' | 'error', message?: string): void {
@@ -203,6 +242,7 @@ async function loadState(): Promise<void> {
   });
 
   const legacyPort = String(stored[WS_PORT_STORAGE_KEY] ?? DEFAULT_WS_PORT);
+  const legacyTheme = localStorage.getItem('ccTheme');
   portInput.value = normalizePort(legacyPort) ?? DEFAULT_WS_PORT;
 
   const rawState = stored[PANEL_STATE_STORAGE_KEY] as PersistedPanelState | null;
@@ -217,6 +257,7 @@ async function loadState(): Promise<void> {
       ...pane.launchOverrides,
     };
   });
+  panelState.theme = normalizeTheme(rawState?.theme ?? legacyTheme ?? panelState.theme);
   panelState.wsPort = portInput.value;
   panelState.railWidth = clampRailWidth(panelState.railWidth);
   panelState.panelCollapsed = false;
@@ -237,7 +278,7 @@ async function saveState(): Promise<void> {
 function getOrCreateTerminalView(sessionId: string): TerminalView {
   let view = terminalViews.get(sessionId);
   if (!view) {
-    view = new TerminalView();
+    view = new TerminalView(panelState.theme);
     view.onData((data) => {
       const message: SessionInputMessage = {
         type: 'session_input',
@@ -247,6 +288,8 @@ function getOrCreateTerminalView(sessionId: string): TerminalView {
       sendToHost(message);
     });
     terminalViews.set(sessionId, view);
+  } else {
+    view.setTheme(panelState.theme);
   }
   return view;
 }
@@ -442,16 +485,47 @@ function updateFocusedBindingChip(): void {
   focusedBinding.textContent = `${agentLabel(pane.agentType)} -> ${buildBindingLabel(pane)}`;
 }
 
-function focusPane(paneId: string, shouldFocusTerminal = true): void {
-  activePaneId = paneId;
-  render();
-  if (shouldFocusTerminal) {
-    const pane = getPane(panelState, paneId);
-    if (pane) {
-      requestAnimationFrame(() => {
-        terminalViews.get(pane.sessionId)?.focus();
-      });
+function focusedTerminalSessionId(): string | null {
+  const activeElement = document.activeElement as HTMLElement | null;
+  if (!activeElement) {
+    return null;
+  }
+  for (const [sessionId, view] of terminalViews) {
+    if (view.root.contains(activeElement)) {
+      return sessionId;
     }
+  }
+  return null;
+}
+
+function focusTerminalSession(sessionId: string): void {
+  requestAnimationFrame(() => {
+    terminalViews.get(sessionId)?.focus();
+  });
+}
+
+function syncActivePaneUi(): void {
+  workspaceStage.querySelectorAll<HTMLElement>('.pane[data-pane-id]').forEach((element) => {
+    element.classList.toggle('focused', element.dataset.paneId === activePaneId);
+  });
+  updateFocusedBindingChip();
+}
+
+function focusPane(paneId: string, shouldFocusTerminal = true): void {
+  const pane = getPane(panelState, paneId);
+  if (!pane) {
+    return;
+  }
+  if (activePaneId === paneId) {
+    if (shouldFocusTerminal) {
+      focusTerminalSession(pane.sessionId);
+    }
+    return;
+  }
+  activePaneId = paneId;
+  syncActivePaneUi();
+  if (shouldFocusTerminal) {
+    focusTerminalSession(pane.sessionId);
   }
 }
 
@@ -928,6 +1002,7 @@ function renderWorkspaceStage(): void {
   const panes = getPanesForWorkspace(panelState, workspace.workspaceId);
   panes.forEach((pane, index) => {
     const paneEl = document.createElement('section');
+    paneEl.dataset.paneId = pane.paneId;
     paneEl.className = `pane${pane.paneId === activePaneId ? ' focused' : ''}`;
     paneEl.style.flex = `${pane.sizeRatio} 1 0%`;
     paneEl.style.setProperty('--pane-accent', workspace.accentColor);
@@ -1097,12 +1172,17 @@ function renderWorkspaceStage(): void {
 }
 
 function render(): void {
+  const sessionIdToRefocus = focusedTerminalSessionId();
+  applyTheme();
   applyRailWidth();
   applyLayoutState();
   renderWorkspaceRail();
   renderWorkspaceStage();
   updateFocusedBindingChip();
   scheduleFit();
+  if (sessionIdToRefocus) {
+    focusTerminalSession(sessionIdToRefocus);
+  }
 }
 
 function removePaneForSession(sessionId: string, notifyHost: boolean): void {
@@ -1209,6 +1289,10 @@ btnAddClaudePane.addEventListener('click', () => {
 
 btnAddCodexPane.addEventListener('click', () => {
   addPane('codex');
+});
+
+btnThemeToggle.addEventListener('click', () => {
+  toggleTheme();
 });
 
 btnTogglePanel.addEventListener('click', () => {

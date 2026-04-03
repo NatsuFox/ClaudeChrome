@@ -1,5 +1,7 @@
 import type { AgentLaunchConfig, AgentType } from '../shared/types';
 
+export type PanelTheme = 'dark' | 'light';
+
 export interface WorkspaceTab {
   workspaceId: string;
   title: string;
@@ -24,6 +26,7 @@ export interface PersistedPanelState {
   workspaces: WorkspaceTab[];
   panes: PaneLayout[];
   launchDefaults: AgentLaunchConfig;
+  theme: PanelTheme;
   wsPort: string;
   railWidth: number;
   railCollapsed: boolean;
@@ -89,6 +92,7 @@ export function createDefaultState(wsPort: string): PersistedPanelState {
     workspaces: [workspace],
     panes: [pane],
     launchDefaults: createEmptyLaunchConfig(),
+    theme: 'dark',
     wsPort,
     railWidth: DEFAULT_RAIL_WIDTH,
     railCollapsed: false,
@@ -168,6 +172,7 @@ export function ensureValidState(state: PersistedPanelState, fallbackPort: strin
       ...createEmptyLaunchConfig(),
       ...(state.launchDefaults || {}),
     },
+    theme: state.theme === 'light' ? 'light' : 'dark',
     wsPort: state.wsPort || fallbackPort,
     railWidth: typeof state.railWidth === 'number' ? state.railWidth : DEFAULT_RAIL_WIDTH,
     railCollapsed: typeof state.railCollapsed === 'boolean' ? state.railCollapsed : false,
