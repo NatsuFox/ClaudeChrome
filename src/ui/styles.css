@@ -11,6 +11,7 @@
   --accent-cobalt: #4f6cff;
   --accent-orange: #ff8a48;
   --accent-gold: #ffc98d;
+  --accent-primary-gradient: linear-gradient(135deg, var(--accent-cobalt), var(--accent-orange));
   --accent-violet: #6f8cff;
   --panel-night: #0f1727;
   --panel-night-alt: #16233a;
@@ -318,7 +319,7 @@ code {
 
 .nav-cta {
   color: #fffdf8 !important;
-  background: linear-gradient(135deg, var(--accent-cobalt), var(--accent-orange));
+  background: var(--accent-primary-gradient);
   box-shadow: 0 18px 38px rgba(90, 98, 198, 0.24);
 }
 
@@ -405,9 +406,9 @@ main {
 
 .hero {
   display: grid;
-  grid-template-columns: minmax(0, 1.15fr) minmax(0, 0.85fr);
+  grid-template-columns: 1fr;
   gap: 1.5rem;
-  align-items: start;
+  align-items: stretch;
 }
 
 .hero-intro,
@@ -420,6 +421,13 @@ main {
 .faq,
 .final-cta {
   padding: clamp(1.35rem, 2.8vw, 2rem);
+}
+
+.hero-intro {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(20rem, 30rem);
+  align-items: start;
+  column-gap: clamp(1.5rem, 3vw, 3rem);
 }
 
 .eyebrow,
@@ -499,40 +507,71 @@ main {
 .hero-logo-lockup {
   display: inline-flex;
   align-items: center;
-  gap: 1rem;
+  justify-content: flex-start;
+  gap: 1.3rem;
+  width: min(100%, 26rem);
+  min-height: clamp(10rem, 14vw, 12.5rem);
   margin-bottom: 1rem;
-  padding: 0.85rem 1rem;
-  border-radius: 1.5rem;
-  background: linear-gradient(180deg, rgba(255, 255, 255, 0.78), rgba(244, 249, 255, 0.46));
-  border: 1px solid rgba(255, 255, 255, 0.62);
-  box-shadow: 0 20px 40px rgba(27, 45, 89, 0.12);
+  padding: clamp(1.2rem, 2vw, 1.65rem) clamp(1.35rem, 2.4vw, 1.9rem);
+  border-radius: 1.85rem;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.88), rgba(250, 246, 240, 0.72));
+  border: 1px solid rgba(255, 255, 255, 0.76);
+  box-shadow: 0 30px 58px rgba(27, 45, 89, 0.16);
+  will-change: transform;
+  animation: heroLogoFloat 6.8s ease-in-out infinite;
 }
 
 .hero-logo-lockup img {
   display: block;
-  width: 4.9rem;
-  height: 4.9rem;
+  width: clamp(5.8rem, 7vw, 7rem);
+  height: clamp(5.8rem, 7vw, 7rem);
   flex-shrink: 0;
   object-fit: contain;
-  filter: drop-shadow(0 20px 30px rgba(49, 91, 176, 0.2));
+  filter: drop-shadow(0 22px 34px rgba(49, 91, 176, 0.22));
+  transition: transform 0.22s ease, filter 0.22s ease;
 }
 
 .hero-logo-copy {
   display: grid;
-  gap: 0.2rem;
+  gap: 0.35rem;
+  transition: transform 0.22s ease;
 }
 
 .hero-logo-copy strong {
   font-family: var(--font-display);
-  font-size: clamp(1.1rem, 2vw, 1.55rem);
+  font-size: clamp(1.35rem, 2.1vw, 1.9rem);
   line-height: 1.02;
   letter-spacing: -0.03em;
 }
 
 .hero-logo-copy span {
-  max-width: 28ch;
+  max-width: 34ch;
   color: var(--ink-soft);
-  font-size: 0.94rem;
+  font-size: 1rem;
+  line-height: 1.55;
+}
+
+.hero-logo-lockup {
+  grid-column: 2;
+  grid-row: 1 / span 3;
+  justify-self: center;
+  align-self: center;
+  margin-inline-start: clamp(-5.25rem, -3.2vw, -3rem);
+  margin-bottom: 0;
+}
+
+.eyebrow,
+.lead-sentence,
+.lead-english {
+  grid-column: 1;
+}
+
+.hero-actions,
+.hero-copy-grid,
+.command-label,
+.hero-terminal,
+.hero-metrics {
+  grid-column: 1 / -1;
 }
 
 .hero-copy-grid {
@@ -550,7 +589,7 @@ main {
 }
 
 .hero-copy-block-alt {
-  background: linear-gradient(180deg, rgba(243, 248, 255, 0.68), rgba(255, 249, 243, 0.44));
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.66), rgba(250, 246, 240, 0.46));
 }
 
 .hero-copy-block h2,
@@ -600,9 +639,12 @@ main {
 }
 
 .button.primary {
-  background: linear-gradient(135deg, var(--accent-cobalt), var(--accent-orange));
+  background: var(--accent-primary-gradient);
+  background-repeat: no-repeat;
+  background-size: 160% 160%;
+  background-position: center;
   color: #fffdf8;
-  box-shadow: 0 18px 38px rgba(98, 105, 194, 0.24);
+  box-shadow: 0 18px 38px rgba(90, 98, 198, 0.24);
 }
 
 .button.secondary,
@@ -794,13 +836,16 @@ main {
 
 .hero-stage {
   display: grid;
+  grid-template-rows: auto 1fr;
   gap: 1.2rem;
+  min-height: 100%;
 }
 
 .stage-scene {
   display: grid;
   grid-template-columns: minmax(0, 1.25fr) minmax(18rem, 0.78fr);
   gap: 1rem;
+  min-height: 100%;
 }
 
 .browser-frame {
@@ -1341,6 +1386,35 @@ main {
   padding: 0.5rem 0.95rem;
 }
 
+@keyframes heroLogoFloat {
+  0%,
+  100% {
+    transform: translate3d(0, 0, 0);
+  }
+
+  50% {
+    transform: translate3d(0, -8px, 0);
+  }
+}
+
+@keyframes heroLogoSheen {
+  0%,
+  18% {
+    transform: translate3d(-170%, 0, 0) skewX(-20deg);
+    opacity: 0;
+  }
+
+  34%,
+  52% {
+    opacity: 0.72;
+  }
+
+  100% {
+    transform: translate3d(230%, 0, 0) skewX(-20deg);
+    opacity: 0;
+  }
+}
+
 .interactive-card {
   transition:
     transform 0.26s ease,
@@ -1370,9 +1444,42 @@ main {
     border-color: rgba(255, 255, 255, 0.08);
   }
 
+  .hero-logo-lockup:hover,
+  .hero-logo-lockup:focus-within {
+    box-shadow:
+      0 28px 58px rgba(15, 24, 43, 0.24),
+      -14px 14px 28px rgba(96, 126, 208, 0.1),
+      14px 18px 32px rgba(84, 190, 228, 0.11),
+      0 0 0 1px rgba(124, 159, 225, 0.1),
+      0 0 30px rgba(255, 173, 120, 0.08);
+  }
+
+  .hero-logo-lockup:hover img,
+  .hero-logo-lockup:focus-within img {
+    transform: translate3d(0, -3px, 0) rotate(-4deg);
+    filter: drop-shadow(0 26px 40px rgba(49, 91, 176, 0.28));
+  }
+
+  .hero-logo-lockup:hover .hero-logo-copy,
+  .hero-logo-lockup:focus-within .hero-logo-copy {
+    transform: translate3d(0, -2px, 0);
+  }
+
   .site-nav a:hover .nav-sub::before,
   .site-nav a:focus-visible .nav-sub::before {
     background: rgba(77, 97, 122, 0.42);
+  }
+}
+
+@media (max-width: 1480px) {
+  .stage-scene,
+  .browser-body {
+    grid-template-columns: 1fr;
+  }
+
+  .sidepanel-frame {
+    border-left: 0;
+    border-top: 1px solid rgba(255, 255, 255, 0.07);
   }
 }
 
@@ -1436,6 +1543,19 @@ main {
   .site-nav a {
     width: 100%;
     text-align: center;
+  }
+
+  .hero-intro {
+    grid-template-columns: 1fr;
+  }
+
+  .hero-logo-lockup {
+    grid-column: 1;
+    grid-row: auto;
+    justify-self: start;
+    width: 100%;
+    margin-inline-start: 0;
+    margin-bottom: 1rem;
   }
 
   .hero-metrics,
@@ -1527,6 +1647,8 @@ main {
 
   .browser-frame,
   .interactive-card,
+  .hero-logo-lockup,
+  .hero-logo-lockup::after,
   .button,
   .copy-button,
   .footer-link,
