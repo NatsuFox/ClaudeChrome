@@ -4,31 +4,64 @@
   <img src="assets/logo-transparent.png" alt="ClaudeChrome logo" width="180" />
 </p>
 
-ClaudeChrome puts your coding agent inside the browser experience instead of leaving it outside the page you are actually working on.
+ClaudeChrome is a browser-native framework for bringing agent intelligence into Chrome instead of leaving the agent outside the page you are actually working on.
 
-It turns Chrome into a practical workspace where Claude, Codex, or a shell can stay attached to the live tab you care about. Instead of manually copying URLs, screenshots, logs, page text, or browser state back into a terminal, ClaudeChrome keeps the agent close to the real page so the conversation stays grounded in what is actually happening.
+Today it embeds Claude, Codex, and shell workflows directly into Chrome; over time it is meant to support more mainstream browsers as well. The important idea is broader than web debugging: ClaudeChrome keeps the agent attached to the live page so it can crawl sites, execute JavaScript, mimic native styles from existing websites, ingest content into knowledge systems, and sustain longer interactive workflows without forcing manual context transfer back into a separate terminal.
 
-## Visual showcase
+## Demo gallery
 
-This section is intentionally left ready for promotional media.
+The README uses the smaller `readme_mp4` recordings for inline playback, arranged as a six-demo gallery. Each entry keeps its quick-view GIF and HD promo MP4 alongside the embedded version.
 
-### Screenshot slots
-
-- ◆◆◆ HERO SCREENSHOT PLACEHOLDER ◆◆◆
-  ClaudeChrome beside a real browser workflow
-- ◆◆◆ MULTI-PANE WORKSPACE SCREENSHOT PLACEHOLDER ◆◆◆
-  Different task contexts shown at the same time
-- ◆◆◆ LIVE DEBUGGING SCREENSHOT PLACEHOLDER ◆◆◆
-  Browser-attached investigation or debugging moment
-
-### Terminal recording slots
-
-- ▶▶▶ END-TO-END TERMINAL RECORDING PLACEHOLDER ◀◀◀
-  Short walkthrough of the full product experience
-- ▶▶▶ DEBUGGING FLOW TERMINAL RECORDING PLACEHOLDER ◀◀◀
-  Practical debugging or inspection flow
-- ▶▶▶ MULTI-TASK TERMINAL RECORDING PLACEHOLDER ◀◀◀
-  Multi-pane or parallel workflow demo
+<table>
+  <tr>
+    <td valign="top" width="50%">
+      <strong>Demo 1 · 2048</strong><br>
+      This demo focuses on the tool's capacity for continuous, complex interactions with visual elements in a gaming environment. It shows that ClaudeChrome can remain inside a long-running stateful loop instead of stopping at one-shot page reads.<br><br>
+      <video src="assets/demo/readme_mp4/demo%202048_readme.mp4" controls autoplay muted loop playsinline preload="metadata" width="100%"></video><br>
+      Quick view GIF: <a href="assets/demo/gif/demo%202048.gif">demo 2048.gif</a><br>
+      HD promo MP4: <a href="assets/demo/promo_mp4/demo%202048_promo.mp4">demo 2048_promo.mp4</a>
+    </td>
+    <td valign="top" width="50%">
+      <strong>Demo 2 · Amazon</strong><br>
+      This demo primarily showcases ClaudeChrome's web crawling capabilities, including its interaction ability to handle page transitions and scrolling on a real commercial page.<br><br>
+      <video src="assets/demo/readme_mp4/demo%20amazon_readme.mp4" controls autoplay muted loop playsinline preload="metadata" width="100%"></video><br>
+      Quick view GIF: <a href="assets/demo/gif/demo%20amazon.gif">demo amazon.gif</a><br>
+      HD promo MP4: <a href="assets/demo/promo_mp4/demo%20amazon_promo.mp4">demo amazon_promo.mp4</a>
+    </td>
+  </tr>
+  <tr>
+    <td valign="top" width="50%">
+      <strong>Demo 3 · LinuxDo</strong><br>
+      This demo is tailored for the LinuxDo forum. It illustrates how ClaudeChrome can crawl forum content and execute JavaScript commands according to user instructions while remaining grounded in the active thread.<br><br>
+      <video src="assets/demo/readme_mp4/demo%20linuxdo_readme.mp4" controls autoplay muted loop playsinline preload="metadata" width="100%"></video><br>
+      Quick view GIF: <a href="assets/demo/gif/demo%20linuxdo.gif">demo linuxdo.gif</a><br>
+      HD promo MP4: <a href="assets/demo/promo_mp4/demo%20linuxdo_promo.mp4">demo linuxdo_promo.mp4</a>
+    </td>
+    <td valign="top" width="50%">
+      <strong>Demo 4 · OpenClaw</strong><br>
+      This demo highlights ClaudeChrome's browser extension capabilities. It can mimic existing websites to design similar styles natively, which is much more convenient and accurate than traditional methods like manually copying stylesheets.<br><br>
+      <video src="assets/demo/readme_mp4/demo%20openclaw_readme.mp4" controls autoplay muted loop playsinline preload="metadata" width="100%"></video><br>
+      Quick view GIF: <a href="assets/demo/gif/demo%20openclaw.gif">demo openclaw.gif</a><br>
+      HD promo MP4: <a href="assets/demo/promo_mp4/demo%20openclaw_promo.mp4">demo openclaw_promo.mp4</a>
+    </td>
+  </tr>
+  <tr>
+    <td valign="top" width="50%">
+      <strong>Demo 5 · Tapestry & Text Selection</strong><br>
+      This demo focuses on integration with our earlier Tapestry project: it ingests page content directly into the knowledge base without calling Tapestry's built-in crawlers, and it also demonstrates actions driven by selected text on the page.<br><br>
+      <video src="assets/demo/readme_mp4/demo%20tapestry%20%26%20texts%20selection_readme.mp4" controls autoplay muted loop playsinline preload="metadata" width="100%"></video><br>
+      Quick view GIF: <a href="assets/demo/gif/demo%20tapestry%20%26%20texts%20selection.gif">demo tapestry &amp; texts selection.gif</a><br>
+      HD promo MP4: <a href="assets/demo/promo_mp4/demo%20tapestry%20%26%20texts%20selection_promo.mp4">demo tapestry &amp; texts selection_promo.mp4</a>
+    </td>
+    <td valign="top" width="50%">
+      <strong>Demo 6 · V2EX</strong><br>
+      This second forum-focused demo complements the LinuxDo example. It shows ClaudeChrome crawling V2EX content and executing JavaScript commands on the page in response to user instructions.<br><br>
+      <video src="assets/demo/readme_mp4/demo%20v2ex_readme.mp4" controls autoplay muted loop playsinline preload="metadata" width="100%"></video><br>
+      Quick view GIF: <a href="assets/demo/gif/demo%20v2ex.gif">demo v2ex.gif</a><br>
+      HD promo MP4: <a href="assets/demo/promo_mp4/demo%20v2ex_promo.mp4">demo v2ex_promo.mp4</a>
+    </td>
+  </tr>
+</table>
 
 ## What ClaudeChrome is for
 
