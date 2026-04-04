@@ -2,6 +2,7 @@ import { FitAddon } from '@xterm/addon-fit';
 import { WebglAddon } from '@xterm/addon-webgl';
 import { Terminal, type ITheme } from '@xterm/xterm';
 
+import { decodeBase64ToBytes } from '../shared/base64';
 import type { PanelTheme } from './state';
 
 const DARK_THEME: ITheme = {
@@ -113,8 +114,7 @@ export class TerminalView {
   }
 
   writeBase64(data: string): void {
-    const bytes = Uint8Array.from(atob(data), (char) => char.charCodeAt(0));
-    this.terminal.write(bytes);
+    this.terminal.write(decodeBase64ToBytes(data));
   }
 
   writeln(text: string): void {

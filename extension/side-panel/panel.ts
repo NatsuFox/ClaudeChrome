@@ -31,6 +31,7 @@ import {
   type PanelTheme,
   type PersistedPanelState,
 } from './state';
+import { encodeUtf8ToBase64 } from '../shared/base64';
 import { TerminalView } from './terminal-view';
 
 const DEFAULT_WS_HOST = '127.0.0.1';
@@ -283,7 +284,7 @@ function getOrCreateTerminalView(sessionId: string): TerminalView {
       const message: SessionInputMessage = {
         type: 'session_input',
         sessionId,
-        data: btoa(data),
+        data: encodeUtf8ToBase64(data),
       };
       sendToHost(message);
     });
