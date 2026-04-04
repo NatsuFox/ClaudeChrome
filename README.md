@@ -10,21 +10,23 @@ Today it embeds Claude, Codex, and shell workflows directly into Chrome; over ti
 
 ## Demo gallery
 
-The README uses the smaller `readme_mp4` recordings for inline playback, arranged as a six-demo gallery. Each entry keeps its quick-view GIF and HD promo MP4 alongside the embedded version.
+GitHub README rendering does not reliably show inline `<video>` or `<iframe>` players here, so this gallery uses clickable GIF previews that open the bundled MP4 recordings. Each entry keeps its quick-view GIF, README-sized MP4, and HD promo MP4 together.
 
 <table>
   <tr>
     <td valign="top" width="50%">
       <strong>Demo 1 · 2048</strong><br>
       This demo focuses on the tool's capacity for continuous, complex interactions with visual elements in a gaming environment. It shows that ClaudeChrome can remain inside a long-running stateful loop instead of stopping at one-shot page reads.<br><br>
-      <video src="assets/demo/readme_mp4/demo%202048_readme.mp4" controls autoplay muted loop playsinline preload="metadata" width="100%"></video><br>
+      <a href="assets/demo/readme_mp4/demo%202048_readme.mp4"><img src="assets/demo/gif/demo%202048.gif" alt="ClaudeChrome demo 2048 preview" width="100%" /></a><br>
+      README MP4: <a href="assets/demo/readme_mp4/demo%202048_readme.mp4">demo 2048_readme.mp4</a><br>
       Quick view GIF: <a href="assets/demo/gif/demo%202048.gif">demo 2048.gif</a><br>
       HD promo MP4: <a href="assets/demo/promo_mp4/demo%202048_promo.mp4">demo 2048_promo.mp4</a>
     </td>
     <td valign="top" width="50%">
       <strong>Demo 2 · Amazon</strong><br>
       This demo primarily showcases ClaudeChrome's web crawling capabilities, including its interaction ability to handle page transitions and scrolling on a real commercial page.<br><br>
-      <video src="assets/demo/readme_mp4/demo%20amazon_readme.mp4" controls autoplay muted loop playsinline preload="metadata" width="100%"></video><br>
+      <a href="assets/demo/readme_mp4/demo%20amazon_readme.mp4"><img src="assets/demo/gif/demo%20amazon.gif" alt="ClaudeChrome demo Amazon preview" width="100%" /></a><br>
+      README MP4: <a href="assets/demo/readme_mp4/demo%20amazon_readme.mp4">demo amazon_readme.mp4</a><br>
       Quick view GIF: <a href="assets/demo/gif/demo%20amazon.gif">demo amazon.gif</a><br>
       HD promo MP4: <a href="assets/demo/promo_mp4/demo%20amazon_promo.mp4">demo amazon_promo.mp4</a>
     </td>
@@ -33,14 +35,16 @@ The README uses the smaller `readme_mp4` recordings for inline playback, arrange
     <td valign="top" width="50%">
       <strong>Demo 3 · LinuxDo</strong><br>
       This demo is tailored for the LinuxDo forum. It illustrates how ClaudeChrome can crawl forum content and execute JavaScript commands according to user instructions while remaining grounded in the active thread.<br><br>
-      <video src="assets/demo/readme_mp4/demo%20linuxdo_readme.mp4" controls autoplay muted loop playsinline preload="metadata" width="100%"></video><br>
+      <a href="assets/demo/readme_mp4/demo%20linuxdo_readme.mp4"><img src="assets/demo/gif/demo%20linuxdo.gif" alt="ClaudeChrome demo LinuxDo preview" width="100%" /></a><br>
+      README MP4: <a href="assets/demo/readme_mp4/demo%20linuxdo_readme.mp4">demo linuxdo_readme.mp4</a><br>
       Quick view GIF: <a href="assets/demo/gif/demo%20linuxdo.gif">demo linuxdo.gif</a><br>
       HD promo MP4: <a href="assets/demo/promo_mp4/demo%20linuxdo_promo.mp4">demo linuxdo_promo.mp4</a>
     </td>
     <td valign="top" width="50%">
       <strong>Demo 4 · OpenClaw</strong><br>
       This demo highlights ClaudeChrome's browser extension capabilities. It can mimic existing websites to design similar styles natively, which is much more convenient and accurate than traditional methods like manually copying stylesheets.<br><br>
-      <video src="assets/demo/readme_mp4/demo%20openclaw_readme.mp4" controls autoplay muted loop playsinline preload="metadata" width="100%"></video><br>
+      <a href="assets/demo/readme_mp4/demo%20openclaw_readme.mp4"><img src="assets/demo/gif/demo%20openclaw.gif" alt="ClaudeChrome demo OpenClaw preview" width="100%" /></a><br>
+      README MP4: <a href="assets/demo/readme_mp4/demo%20openclaw_readme.mp4">demo openclaw_readme.mp4</a><br>
       Quick view GIF: <a href="assets/demo/gif/demo%20openclaw.gif">demo openclaw.gif</a><br>
       HD promo MP4: <a href="assets/demo/promo_mp4/demo%20openclaw_promo.mp4">demo openclaw_promo.mp4</a>
     </td>
@@ -49,14 +53,16 @@ The README uses the smaller `readme_mp4` recordings for inline playback, arrange
     <td valign="top" width="50%">
       <strong>Demo 5 · Tapestry & Text Selection</strong><br>
       This demo focuses on integration with our earlier Tapestry project: it ingests page content directly into the knowledge base without calling Tapestry's built-in crawlers, and it also demonstrates actions driven by selected text on the page.<br><br>
-      <video src="assets/demo/readme_mp4/demo%20tapestry%20%26%20texts%20selection_readme.mp4" controls autoplay muted loop playsinline preload="metadata" width="100%"></video><br>
+      <a href="assets/demo/readme_mp4/demo%20tapestry%20%26%20texts%20selection_readme.mp4"><img src="assets/demo/gif/demo%20tapestry%20%26%20texts%20selection.gif" alt="ClaudeChrome demo Tapestry and text selection preview" width="100%" /></a><br>
+      README MP4: <a href="assets/demo/readme_mp4/demo%20tapestry%20%26%20texts%20selection_readme.mp4">demo tapestry &amp; texts selection_readme.mp4</a><br>
       Quick view GIF: <a href="assets/demo/gif/demo%20tapestry%20%26%20texts%20selection.gif">demo tapestry &amp; texts selection.gif</a><br>
       HD promo MP4: <a href="assets/demo/promo_mp4/demo%20tapestry%20%26%20texts%20selection_promo.mp4">demo tapestry &amp; texts selection_promo.mp4</a>
     </td>
     <td valign="top" width="50%">
       <strong>Demo 6 · V2EX</strong><br>
       This second forum-focused demo complements the LinuxDo example. It shows ClaudeChrome crawling V2EX content and executing JavaScript commands on the page in response to user instructions.<br><br>
-      <video src="assets/demo/readme_mp4/demo%20v2ex_readme.mp4" controls autoplay muted loop playsinline preload="metadata" width="100%"></video><br>
+      <a href="assets/demo/readme_mp4/demo%20v2ex_readme.mp4"><img src="assets/demo/gif/demo%20v2ex.gif" alt="ClaudeChrome demo V2EX preview" width="100%" /></a><br>
+      README MP4: <a href="assets/demo/readme_mp4/demo%20v2ex_readme.mp4">demo v2ex_readme.mp4</a><br>
       Quick view GIF: <a href="assets/demo/gif/demo%20v2ex.gif">demo v2ex.gif</a><br>
       HD promo MP4: <a href="assets/demo/promo_mp4/demo%20v2ex_promo.mp4">demo v2ex_promo.mp4</a>
     </td>
