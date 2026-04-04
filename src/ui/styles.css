@@ -759,6 +759,21 @@ main {
   border-color: rgba(22, 124, 69, 0.28);
 }
 
+.demo-media-wrap {
+  padding: 1rem 1.05rem 0;
+}
+
+.demo-video {
+  display: block;
+  width: 100%;
+  aspect-ratio: 16 / 10;
+  object-fit: cover;
+  border-radius: 1rem;
+  background: rgba(5, 10, 18, 0.98);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.05);
+}
+
 .terminal-body,
 .demo-shell-body {
   padding: 1rem 1.05rem;

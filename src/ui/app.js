@@ -466,14 +466,34 @@ function renderWorkflows(workflows) {
 function renderDemos(demos) {
   const frameClasses = ['demo-shell-frame', 'demo-shell-frame demo-shell-frame-alt', 'demo-shell-frame demo-shell-frame-command'];
   const cards = demos.cards
-    .map(
-      (card, index) => `
+    .map((card, index) => {
+      const media = card.media
+        ? `
+            <div class="demo-media-wrap">
+              <video
+                class="demo-video"
+                controls
+                autoplay
+                preload="metadata"
+                playsinline
+                muted
+                loop
+                aria-label="${escapeHtml(card.media.ariaLabel || card.title)}"
+              >
+                <source src="${escapeHtml(card.media.src)}" type="${escapeHtml(card.media.type || 'video/mp4')}" />
+              </video>
+            </div>
+          `
+        : '';
+
+      return `
         <article class="demo-card interactive-card">
           <div class="${frameClasses[index] || 'demo-shell-frame'}">
             <div class="demo-shell-top">
               <div class="terminal-dots" aria-hidden="true"><span></span><span></span><span></span></div>
               <strong>${escapeHtml(card.shellTitle)}</strong>
             </div>
+            ${media}
             <div class="demo-shell-body">
               ${card.lines
                 .map(
@@ -490,8 +510,8 @@ function renderDemos(demos) {
             <p>${escapeHtml(card.body)}</p>
           </div>
         </article>
-      `
-    )
+      `;
+    })
     .join('');
 
   return `
@@ -604,10 +624,10 @@ function renderPage(copy, localeKey) {
     ${renderHeader(copy, localeKey)}
     <main>
       ${renderHero(copy)}
+      ${renderDemos(copy.demos)}
       ${renderUseCases(copy.useCases)}
       ${renderVisualReserve(copy.visualReserve)}
       ${renderWorkflows(copy.workflows)}
-      ${renderDemos(copy.demos)}
       ${renderTeams(copy.teams)}
       ${renderFaq(copy.faq)}
       ${renderFinalCta(copy.finalCta)}
@@ -662,7 +682,21 @@ function resolveLocaleKey(lexicon) {
   return Object.keys(locales)[0] || null;
 }
 
+function readInlineLexicon() {
+  const inlineLexicon = window.__LANDING_LEXICON__;
+  if (!inlineLexicon || typeof inlineLexicon !== 'object') {
+    return null;
+  }
+
+  return inlineLexicon;
+}
+
 async function loadLexicon() {
+  const inlineLexicon = readInlineLexicon();
+  if (inlineLexicon) {
+    return inlineLexicon;
+  }
+
   const response = await fetch(lexiconUrl, { cache: 'no-store' });
   if (!response.ok) {
     throw new Error(`Failed to load ${lexiconUrl}: ${response.status}`);
@@ -826,6 +860,58 @@ function initCopyButtons() {
   });
 }
 
+function initDemoVideoAutoplay() {
+  const videos = Array.from(document.querySelectorAll('.demo-video'));
+  if (!videos.length) {
+    return;
+  }
+
+  videos.forEach((video) => {
+    video.muted = true;
+    video.loop = true;
+    video.playsInline = true;
+  });
+
+  if (prefersReducedMotion) {
+    videos.forEach((video) => {
+      video.removeAttribute('autoplay');
+      video.pause();
+    });
+    return;
+  }
+
+  const tryPlay = (video) => {
+    const result = video.play();
+    if (result && typeof result.catch === 'function') {
+      result.catch(() => {});
+    }
+  };
+
+  const observer = new IntersectionObserver(
+    (entries) => {
+      entries.forEach((entry) => {
+        const video = entry.target;
+        if (!(video instanceof HTMLVideoElement)) {
+          return;
+        }
+
+        if (entry.isIntersecting && entry.intersectionRatio >= 0.55) {
+          tryPlay(video);
+          return;
+        }
+
+        video.pause();
+      });
+    },
+    {
+      threshold: [0, 0.25, 0.55, 0.85],
+      rootMargin: '0px 0px -10% 0px',
+    }
+  );
+
+  videos.forEach((video) => observer.observe(video));
+}
+
 function initStageTilt() {
   const scene = document.querySelector('[data-stage-scene]');
   if (!scene || prefersReducedMotion) {
@@ -876,6 +962,7 @@ async function bootstrap() {
     initReveal();
     initCommandTerminal();
     initCopyButtons();
+    initDemoVideoAutoplay();
     initStageTilt();
   } catch (error) {
     console.error(error);

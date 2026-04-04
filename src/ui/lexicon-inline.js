@@ -1,0 +1,1055 @@
+window.__LANDING_LEXICON__ = {
+  "defaultLocale": "en",
+  "locales": {
+    "en": {
+      "meta": {
+        "title": "ClaudeChrome | Bring Agent Intelligence Into the Browser",
+        "description": "ClaudeChrome is a browser-native agent framework that embeds intelligent sessions into Chrome so they can crawl, execute JavaScript, adapt live styles, ingest knowledge, and operate from the real page context."
+      },
+      "header": {
+        "brand": {
+          "name": "ClaudeChrome",
+          "tagline": "Bring agent intelligence into the browser",
+          "ariaLabel": "ClaudeChrome home"
+        },
+        "navToggleAriaLabel": "Toggle navigation",
+        "navAriaLabel": "Primary navigation",
+        "navItems": [
+          {
+            "label": "Intro",
+            "subLabel": "overview"
+          },
+          {
+            "label": "Product",
+            "subLabel": "side panel"
+          },
+          {
+            "label": "Use Cases",
+            "subLabel": "workflows"
+          },
+          {
+            "label": "Workflows",
+            "subLabel": "daily loops"
+          },
+          {
+            "label": "Demos",
+            "subLabel": "recordings"
+          },
+          {
+            "label": "FAQ",
+            "subLabel": "questions"
+          }
+        ],
+        "languageSwitchLabel": "中文",
+        "repoLink": {
+          "label": "GitHub",
+          "subLabel": "Repo"
+        }
+      },
+      "hero": {
+        "brand": {
+          "name": "ClaudeChrome",
+          "logoAlt": "ClaudeChrome logo",
+          "tagline": "A browser-native agent framework for Chrome today, with broader browser support ahead."
+        },
+        "eyebrow": {
+          "primary": "ClaudeChrome",
+          "secondary": "Agent intelligence, embedded directly into the browser"
+        },
+        "title": "Bring agent intelligence into the browser itself.",
+        "body": "ClaudeChrome is a browser-native framework that embeds Claude, Codex, and shell sessions into Chrome so they can work from the live page instead of from a detached terminal description. The same foundation can support crawling, JavaScript execution, native style adaptation, knowledge-base ingestion, forum operations, and longer interactive browser tasks.",
+        "actions": {
+          "primary": "See the demos first",
+          "secondary": "Explore the framework"
+        },
+        "copyBlocks": [
+          {
+            "title": "Not just a debugging helper.",
+            "body": "Debugging is one visible use case, but the deeper value is a reusable browser runtime where intelligent agents can observe and act from the same page context as the human operator."
+          },
+          {
+            "title": "Built for browser-native agent tasks.",
+            "body": "The demos already cover crawling, forum intelligence, JavaScript execution, style mimicry, Tapestry ingestion, selected-text actions, and continuous visual interaction — all on one common browser-attached foundation."
+          }
+        ],
+        "commandLabel": {
+          "title": "Fast local setup",
+          "subtitle": "Install once, works on any Chrome tab."
+        },
+        "commandTerminal": {
+          "tablistAriaLabel": "ClaudeChrome command groups",
+          "copyButtonAriaLabel": "Copy active command",
+          "copyLabel": "Copy",
+          "copiedLabel": "Copied",
+          "tabs": [
+            {
+              "key": "setup",
+              "label": "setup",
+              "clipboard": "npm run setup",
+              "display": "npm run setup"
+            },
+            {
+              "key": "build",
+              "label": "build",
+              "clipboard": "npm run build && npm run build:host",
+              "display": "npm run build && npm run build:host"
+            },
+            {
+              "key": "host",
+              "label": "host",
+              "clipboard": "cd native-host && npm run start",
+              "display": "cd native-host && npm run start"
+            }
+          ]
+        },
+        "metrics": [
+          {
+            "title": "Browser-native intelligence",
+            "subtitle": "Keep agents inside the live page context",
+            "body": "Sessions work from the real tab instead of from copied notes, screenshots, or detached terminal summaries."
+          },
+          {
+            "title": "Crawling and JS",
+            "subtitle": "Traverse sites and execute browser-side instructions",
+            "body": "The same framework can crawl pages, follow forum threads, and run JavaScript according to user intent."
+          },
+          {
+            "title": "Native style adaptation",
+            "subtitle": "Use existing sites as design references",
+            "body": "ClaudeChrome can inspect a live surface and help derive native styling more accurately than manual stylesheet copying."
+          },
+          {
+            "title": "Knowledge ingestion",
+            "subtitle": "Move page content straight into downstream systems",
+            "body": "The Tapestry demo shows that browser-native agent workflows can feed knowledge pipelines directly from the page."
+          }
+        ]
+      },
+      "stage": {
+        "eyebrow": {
+          "primary": "Live operator view",
+          "secondary": "One framework, many browser-native agent tasks"
+        },
+        "title": "One live browser surface, many kinds of agent work.",
+        "body": "ClaudeChrome appears as a side panel, but the real product is the framework behind it: a way to attach agent sessions to the live tab so crawling, JavaScript execution, design translation, ingestion, and interaction-heavy tasks all stay grounded in the same browser context.",
+        "browserFrameAriaLabel": "Illustration: ClaudeChrome side panel investigating a checkout flow",
+        "browserAddress": "https://app.example.dev/checkout",
+        "browserState": "investigating live flow",
+        "pageRibbon": "What the framework can handle in the browser today",
+        "pageCards": [
+          {
+            "label": "Crawling",
+            "title": "Move across pages while keeping the same task context",
+            "body": "Useful for long-reading sites, forum threads, and commercial surfaces where scrolling and transitions matter."
+          },
+          {
+            "label": "Forum actions",
+            "title": "Inspect content and execute JavaScript on live threads",
+            "body": "The framework can stay inside a forum page and respond directly to page-specific operator instructions."
+          },
+          {
+            "label": "Style mimicry",
+            "title": "Use the live site as the design reference surface",
+            "body": "Native adaptation becomes easier when the agent can inspect the page it is trying to echo."
+          },
+          {
+            "label": "Knowledge intake",
+            "title": "Push page content and selected text into downstream systems",
+            "body": "Browser-native agent work can become part of larger ingestion and knowledge workflows, not only a debugging loop."
+          }
+        ],
+        "statusPill": "Framework active",
+        "toolbarActions": [
+          "+ Workspace",
+          "+ Claude",
+          "+ Codex"
+        ],
+        "workspaces": [
+          {
+            "title": "Forum intelligence",
+            "subtitle": "2 panes · crawl + JS"
+          },
+          {
+            "title": "Style adaptation",
+            "subtitle": "1 pane · native design pass"
+          }
+        ],
+        "panes": [
+          {
+            "badge": "Claude",
+            "binding": "Bound to forum thread · #42",
+            "command": "browser__evaluate_js",
+            "output": "Thread content captured and JavaScript executed without leaving the active page."
+          },
+          {
+            "badge": "Codex",
+            "binding": "Bound to reference site",
+            "command": "browser__get_page_html",
+            "output": "Live structure and styling cues captured for native adaptation work."
+          }
+        ],
+        "notes": [
+          {
+            "label": "Framework",
+            "title": "One browser runtime can support many agent behaviors.",
+            "body": "The demos differ on the surface, but they all rely on the same live-tab attachment model underneath."
+          },
+          {
+            "label": "Breadth",
+            "title": "The same foundation supports crawling, style work, ingestion, and interaction loops.",
+            "body": "ClaudeChrome should be understood as a general browser-native agent framework, not only as a debugger for broken pages."
+          },
+          {
+            "label": "Operator control",
+            "title": "Humans still choose the page, the task, and the moment to act.",
+            "body": "The browser stays visible, the operator keeps the context, and the agent works beside that reality instead of replacing it."
+          }
+        ]
+      },
+      "useCases": {
+        "eyebrow": {
+          "primary": "Real-world use cases",
+          "secondary": "Real problems, solved in the browser"
+        },
+        "title": "What the framework already proves.",
+        "body": "The demos make the broader value concrete: ClaudeChrome is a general browser-native agent framework, with debugging as only one part of the picture.",
+        "cards": [
+          {
+            "index": "01",
+            "label": "Commercial crawling",
+            "title": "Traverse real sites while keeping context across scrolling and navigation.",
+            "body": "The Amazon demo shows that ClaudeChrome can treat the browser like a living surface for page-to-page investigation, not just a static snapshot."
+          },
+          {
+            "index": "02",
+            "label": "Forum intelligence",
+            "title": "Read community threads and stay grounded in the current page.",
+            "body": "LinuxDo and V2EX demonstrate browser-native forum workflows where the agent keeps the live thread open as the source of truth."
+          },
+          {
+            "index": "03",
+            "label": "JavaScript execution",
+            "title": "Let the agent follow page-side instructions without leaving the browser.",
+            "body": "Forum demos make the point clearly: crawling and JavaScript execution belong to the same attached browser session."
+          },
+          {
+            "index": "04",
+            "label": "Native style adaptation",
+            "title": "Study a live site and turn its language into native design work.",
+            "body": "OpenClaw shows that browser-native intelligence is useful for design translation and UI imitation, not just for debugging failures."
+          },
+          {
+            "index": "05",
+            "label": "Knowledge ingestion",
+            "title": "Capture page content and selected text into downstream systems.",
+            "body": "The Tapestry integration path shows how browser-native agent work can connect directly to a knowledge base workflow."
+          },
+          {
+            "index": "06",
+            "label": "Interactive environments",
+            "title": "Sustain longer visual interaction loops when the page behaves like an app or game.",
+            "body": "The 2048 demo proves that ClaudeChrome can support continuous interaction patterns, not only read-and-report tasks."
+          }
+        ]
+      },
+      "visualReserve": {
+        "eyebrow": {
+          "primary": "Proof-ready media",
+          "secondary": "Reserve visual slots for product proof, not generic decoration"
+        },
+        "title": "Make future screenshots tell real product stories.",
+        "body": "These slots are reserved so the page can absorb authentic product media later: real UI captures, operator walkthroughs, and `.cast` recordings anchored in practical workflows.",
+        "shots": [
+          {
+            "badge": "Hero screenshot",
+            "title": "Full browser window with the side panel in action",
+            "body": "Show the product in the exact setting where it matters: a real app page, a real pane, and a visible investigation context.",
+            "pathLabel": "Suggested path",
+            "path": "src/ui/assets/claudechrome-hero.png"
+          },
+          {
+            "badge": "Use-case screenshot",
+            "title": "Pane workflow around a real issue",
+            "body": "Capture a high-value scenario such as checkout debugging, SSO reproduction, or onboarding validation.",
+            "pathLabel": "Suggested path",
+            "path": "src/ui/assets/claudechrome-workflow.png"
+          },
+          {
+            "badge": "Before / after proof",
+            "title": "Visual story of a problem, investigation, and fix",
+            "body": "Use this slot for a compact, buyer-friendly proof asset instead of a system architecture diagram.",
+            "pathLabel": "Suggested path",
+            "path": "src/ui/assets/claudechrome-proof.png"
+          }
+        ]
+      },
+      "workflows": {
+        "eyebrow": {
+          "primary": "Common workflows",
+          "secondary": "How teams use it every day"
+        },
+        "title": "Common browser-native workflows the framework supports.",
+        "body": "These are repeatable workflow families built on the same live-tab attachment model, not isolated product tricks.",
+        "cards": [
+          {
+            "label": "Attach and ground",
+            "title": "Bind the right tab and let the agent work from what the browser actually shows.",
+            "body": "The first step is always grounding the session in the page that matters, whether it is a game, forum, product page, or internal tool."
+          },
+          {
+            "label": "Crawl and navigate",
+            "title": "Move across content-heavy surfaces without losing the investigative thread.",
+            "body": "Useful for product pages, paginated content, long threads, and any flow where scrolling and page transitions are part of the task."
+          },
+          {
+            "label": "Execute page-side instructions",
+            "title": "Run JavaScript or browser actions in response to operator intent.",
+            "body": "The same session that reads the page can also execute controlled instructions inside it when the workflow calls for action."
+          },
+          {
+            "label": "Adapt live interfaces",
+            "title": "Reference the current site when designing a native surface around it.",
+            "body": "ClaudeChrome can support workflows where the agent needs to inspect a live interface before proposing a matching native design."
+          },
+          {
+            "label": "Ingest and annotate knowledge",
+            "title": "Move from page context into knowledge workflows without a second crawler hop.",
+            "body": "The Tapestry demo shows how browser-native agent work can become part of an ingestion pipeline instead of staying siloed in the browser."
+          },
+          {
+            "label": "Run continuous loops",
+            "title": "Support longer-lived, interaction-heavy tasks instead of only one-off inspection.",
+            "body": "Game-like environments make this obvious, but the same principle matters anywhere the browser behaves like a living application."
+          }
+        ]
+      },
+      "demos": {
+        "eyebrow": {
+          "primary": "See it in action",
+          "secondary": "Real workflows, recorded live"
+        },
+        "title": "See the actual browser-aware use cases early.",
+        "body": "These six demos show the product on real surfaces: crawling, JavaScript execution, native style mimicry, direct Tapestry ingestion, selected-text actions, and continuous visual interaction in a game.",
+        "cards": [
+          {
+            "shellTitle": "2048 session",
+            "label": "2048 demo",
+            "title": "Drive continuous visual interaction inside a live game tab.",
+            "body": "This demo focuses on ClaudeChrome's ability to stay in a long-running interaction loop with visual elements inside a 2048 game, rather than stopping at one-shot inspection steps.",
+            "lines": [
+              "Track board state visually",
+              "Drive repeated moves",
+              "Keep the interaction loop alive"
+            ],
+            "media": {
+              "src": "./assets/demo/promo_mp4/demo%202048_promo.mp4",
+              "type": "video/mp4",
+              "ariaLabel": "ClaudeChrome demo video showing a 2048 workflow"
+            }
+          },
+          {
+            "shellTitle": "Amazon investigation",
+            "label": "Amazon demo",
+            "title": "Crawl a real commercial page across transitions and scrolling.",
+            "body": "This demo primarily showcases ClaudeChrome's web crawling capabilities, including interaction with page transitions and scrolling while the session stays attached to the active browser tab.",
+            "lines": [
+              "Traverse page transitions",
+              "Scroll while keeping context",
+              "Continue crawling in one session"
+            ],
+            "media": {
+              "src": "./assets/demo/promo_mp4/demo%20amazon_promo.mp4",
+              "type": "video/mp4",
+              "ariaLabel": "ClaudeChrome demo video showing an Amazon investigation workflow"
+            }
+          },
+          {
+            "shellTitle": "LinuxDo thread",
+            "label": "LinuxDo demo",
+            "title": "Crawl forum content and execute JavaScript on demand.",
+            "body": "This forum-specific demo shows how ClaudeChrome can crawl LinuxDo content and execute JavaScript commands according to user instructions without leaving the thread context.",
+            "lines": [
+              "Crawl the forum thread",
+              "Execute JS from user instructions",
+              "Stay attached to the active page"
+            ],
+            "media": {
+              "src": "./assets/demo/promo_mp4/demo%20linuxdo_promo.mp4",
+              "type": "video/mp4",
+              "ariaLabel": "ClaudeChrome demo video showing a LinuxDo workflow"
+            }
+          },
+          {
+            "shellTitle": "OpenClaw workflow",
+            "label": "OpenClaw demo",
+            "title": "Mimic an existing site to build matching native styles.",
+            "body": "This demo highlights ClaudeChrome's browser extension capabilities: it can inspect and mimic existing websites to design similar styles natively, which is more convenient and more accurate than manually copying stylesheets.",
+            "lines": [
+              "Inspect the live site surface",
+              "Derive native styling cues",
+              "Avoid manual stylesheet copying"
+            ],
+            "media": {
+              "src": "./assets/demo/promo_mp4/demo%20openclaw_promo.mp4",
+              "type": "video/mp4",
+              "ariaLabel": "ClaudeChrome demo video showing an OpenClaw workflow"
+            }
+          },
+          {
+            "shellTitle": "Tapestry selection",
+            "label": "Tapestry selection",
+            "title": "Send page content straight into Tapestry and act on selected text.",
+            "body": "This demo focuses on the integration with the earlier Tapestry project: page content is ingested directly into the knowledge base without calling Tapestry's built-in crawlers, and the same flow also shows actions triggered from selected text on the page.",
+            "lines": [
+              "Ingest page content directly",
+              "Skip built-in crawlers",
+              "Act on selected text"
+            ],
+            "media": {
+              "src": "./assets/demo/promo_mp4/demo%20tapestry%20%26%20texts%20selection_promo.mp4",
+              "type": "video/mp4",
+              "ariaLabel": "ClaudeChrome demo video showing a Tapestry text selection workflow"
+            }
+          },
+          {
+            "shellTitle": "V2EX thread",
+            "label": "V2EX demo",
+            "title": "Run forum crawling and JavaScript commands on a V2EX page.",
+            "body": "This second forum-specific demo complements the LinuxDo one: ClaudeChrome crawls V2EX content and executes JavaScript commands according to user instructions while staying anchored to the live page.",
+            "lines": [
+              "Crawl the V2EX thread",
+              "Execute JS on request",
+              "Keep the session on the same page"
+            ],
+            "media": {
+              "src": "./assets/demo/promo_mp4/demo%20v2ex_promo.mp4",
+              "type": "video/mp4",
+              "ariaLabel": "ClaudeChrome demo video showing a V2EX workflow"
+            }
+          }
+        ]
+      },
+      "teams": {
+        "eyebrow": {
+          "primary": "Who benefits most",
+          "secondary": "Built for the people closest to the browser"
+        },
+        "title": "Who this framework is really for.",
+        "body": "ClaudeChrome is most valuable for people who want agents to work from the real browser surface, not from a secondhand narration of it.",
+        "cards": [
+          {
+            "label": "Agent-tool builders",
+            "title": "Use the browser itself as a runtime surface for richer agent behavior.",
+            "body": "ClaudeChrome is useful if you are designing systems where the browser should become part of the agent’s working environment."
+          },
+          {
+            "label": "Frontend and design teams",
+            "title": "Reference live interfaces before adapting them into native work.",
+            "body": "OpenClaw-style workflows benefit from having the agent inspect the real site instead of inferring style from memory or copied CSS fragments."
+          },
+          {
+            "label": "Knowledge and research teams",
+            "title": "Capture live page content directly into downstream knowledge systems.",
+            "body": "Tapestry-style ingestion becomes simpler when page content and selected text can flow out of the browser without an extra crawl step."
+          },
+          {
+            "label": "Community and ops teams",
+            "title": "Read forum content and execute page-side instructions on the same surface.",
+            "body": "LinuxDo and V2EX show how the framework can help with browser-native community workflows, not just application debugging."
+          },
+          {
+            "label": "QA and workflow owners",
+            "title": "Keep browser tasks, evidence, and actions in one operator surface.",
+            "body": "Validation still matters here, but it becomes one member of a larger family of browser-native agent tasks."
+          },
+          {
+            "label": "Power users and solo builders",
+            "title": "Compose multi-pane browser agent workflows without tool sprawl.",
+            "body": "If one person needs crawling, page understanding, interaction, and synthesis in one loop, ClaudeChrome gives that loop a coherent surface."
+          }
+        ]
+      },
+      "faq": {
+        "eyebrow": {
+          "primary": "Operator FAQ",
+          "secondary": "Answer the adoption questions first"
+        },
+        "title": "What people will ask before they try it.",
+        "items": [
+          {
+            "question": "Is ClaudeChrome only a web debugging tool?",
+            "answer": "No. Debugging is one visible use case, but the framework is broader: the demos already show crawling, JavaScript execution, native style adaptation, Tapestry ingestion, selected-text actions, and continuous interaction in a game."
+          },
+          {
+            "question": "Why put agent intelligence inside the browser instead of next to it?",
+            "answer": "Because the hard part is not simply opening both tools. The value comes from grounding the agent in the live page so reading, acting, and reasoning all happen against the same browser reality."
+          },
+          {
+            "question": "Is Chrome the final target platform?",
+            "answer": "Chrome is the current implementation target, but the product direction is broader: ClaudeChrome is meant to become a general framework for bringing agent intelligence into mainstream browsers."
+          },
+          {
+            "question": "What kinds of tasks does the framework already support?",
+            "answer": "Today the demos cover commercial-site crawling, forum intelligence, JavaScript execution, style mimicry, direct knowledge-base ingestion, selected-text actions, and longer interactive loops in a game surface."
+          }
+        ]
+      },
+      "finalCta": {
+        "eyebrow": {
+          "primary": "Get started",
+          "secondary": "Open source, runs locally, up in minutes"
+        },
+        "title": "The fastest way to understand ClaudeChrome is to watch the demos and try your own browser task.",
+        "body": "If you can imagine an agent that should live beside the real page instead of outside it, ClaudeChrome is the framework to try first.",
+        "primaryButtonLabel": "Review the use cases",
+        "repoButtonLabel": "Open the GitHub repo"
+      },
+      "footer": {
+        "tagline": "ClaudeChrome · A browser-native framework for bringing agent intelligence into Chrome, from crawling and JavaScript execution to style mimicry, knowledge ingestion, and interactive workflows.",
+        "links": [
+          {
+            "label": "Intro"
+          },
+          {
+            "label": "Product"
+          },
+          {
+            "label": "Use Cases"
+          },
+          {
+            "label": "Workflows"
+          },
+          {
+            "label": "Demos"
+          }
+        ],
+        "repoLabel": "GitHub Repo"
+      }
+    },
+    "zh-CN": {
+      "meta": {
+        "title": "ClaudeChrome | 将智能体能力引入浏览器",
+        "description": "ClaudeChrome 是一个浏览器原生的智能体框架，让会话直接嵌入 Chrome，从真实页面上下文中完成网页爬取、JavaScript 执行、风格拟合、知识摄取与交互任务。"
+      },
+      "header": {
+        "brand": {
+          "name": "ClaudeChrome",
+          "tagline": "把智能体能力真正带进浏览器",
+          "ariaLabel": "ClaudeChrome 首页"
+        },
+        "navToggleAriaLabel": "切换导航",
+        "navAriaLabel": "主导航",
+        "navItems": [
+          {
+            "label": "简介",
+            "subLabel": "overview"
+          },
+          {
+            "label": "产品",
+            "subLabel": "side panel"
+          },
+          {
+            "label": "使用场景",
+            "subLabel": "workflows"
+          },
+          {
+            "label": "工作流",
+            "subLabel": "daily loops"
+          },
+          {
+            "label": "演示",
+            "subLabel": "recordings"
+          },
+          {
+            "label": "常见问题",
+            "subLabel": "questions"
+          }
+        ],
+        "languageSwitchLabel": "EN",
+        "repoLink": {
+          "label": "GitHub",
+          "subLabel": "Repo"
+        }
+      },
+      "hero": {
+        "brand": {
+          "name": "ClaudeChrome",
+          "logoAlt": "ClaudeChrome logo",
+          "tagline": "面向 Chrome 的浏览器原生智能体框架，后续会继续扩展到更多主流浏览器。"
+        },
+        "eyebrow": {
+          "primary": "ClaudeChrome",
+          "secondary": "把智能体能力直接嵌入浏览器"
+        },
+        "title": "让智能体真正工作在浏览器里面。",
+        "body": "ClaudeChrome 是一个浏览器原生框架：它把 Claude、Codex 和 Shell 会话直接放进 Chrome，使智能体不再依赖终端里的二手描述，而是立足于真实页面上下文完成网页爬取、JavaScript 执行、原生风格拟合、知识库摄取、论坛操作以及更长链路的交互任务。",
+        "actions": {
+          "primary": "先看演示",
+          "secondary": "了解框架价值"
+        },
+        "copyBlocks": [
+          {
+            "title": "它不只是一个调试插件。",
+            "body": "调试只是这个框架最容易被看见的一层价值。更深的意义在于：让智能体和人类一起工作在同一个浏览器上下文中。"
+          },
+          {
+            "title": "它更像一套浏览器原生智能体能力底座。",
+            "body": "从演示里已经能看到它覆盖的任务类型：网页爬取、论坛理解与 JS 执行、风格拟合、Tapestry 摄取、选中文本动作，以及持续的视觉交互。"
+          }
+        ],
+        "commandLabel": {
+          "title": "快速本地安装",
+          "subtitle": "安装一次，适用于所有 Chrome 标签页。"
+        },
+        "commandTerminal": {
+          "tablistAriaLabel": "ClaudeChrome command groups",
+          "copyButtonAriaLabel": "Copy active command",
+          "copyLabel": "复制",
+          "copiedLabel": "Copied",
+          "tabs": [
+            {
+              "key": "setup",
+              "label": "setup",
+              "clipboard": "npm run setup",
+              "display": "npm run setup"
+            },
+            {
+              "key": "build",
+              "label": "build",
+              "clipboard": "npm run build && npm run build:host",
+              "display": "npm run build && npm run build:host"
+            },
+            {
+              "key": "host",
+              "label": "host",
+              "clipboard": "cd native-host && npm run start",
+              "display": "cd native-host && npm run start"
+            }
+          ]
+        },
+        "metrics": [
+          {
+            "title": "浏览器原生智能体",
+            "subtitle": "让会话直接立足于真实页面上下文",
+            "body": "智能体工作基于真实标签页，而不是基于截图、复制文本或终端里的转述。"
+          },
+          {
+            "title": "爬取与 JS",
+            "subtitle": "跨页面移动，并按需执行浏览器侧指令",
+            "body": "同一套框架既能爬页面，也能读论坛线程，还能执行用户要求的 JavaScript。"
+          },
+          {
+            "title": "原生风格拟合",
+            "subtitle": "把现有网站作为设计参考面",
+            "body": "当智能体能够直接检查真实页面时，做原生风格设计会比手动抄样式表更准确。"
+          },
+          {
+            "title": "知识摄取",
+            "subtitle": "把页面内容直接送进下游系统",
+            "body": "Tapestry 演示说明，浏览器原生工作流可以直接进入知识库或内容处理链路。"
+          }
+        ]
+      },
+      "stage": {
+        "eyebrow": {
+          "primary": "实时操作视图",
+          "secondary": "一个框架，承载多种浏览器原生智能体任务"
+        },
+        "title": "同一个浏览器表面，可以承载很多种智能体工作。",
+        "body": "ClaudeChrome 的外显形态是浏览器侧边栏，但真正的产品是它背后的框架：将智能体会话附着在真实标签页上，让网页爬取、JavaScript 执行、设计翻译、内容摄取与交互型任务都在同一个浏览器上下文里完成。",
+        "browserFrameAriaLabel": "示意图：ClaudeChrome 侧边栏正在调查结账流程",
+        "browserAddress": "https://app.example.dev/checkout",
+        "browserState": "调查实时流程",
+        "pageRibbon": "这个框架现在已经能处理的浏览器任务",
+        "pageCards": [
+          {
+            "label": "网页爬取",
+            "title": "在页面跳转和滚动中持续保留任务上下文",
+            "body": "适合商品页、长内容页面、论坛线程，以及任何需要跨视图移动的浏览器任务。"
+          },
+          {
+            "label": "论坛动作",
+            "title": "读取帖子内容，并在页面内部执行 JS 指令",
+            "body": "论坛演示说明，同一会话既能理解内容，也能根据用户要求直接在页面上操作。"
+          },
+          {
+            "label": "风格拟合",
+            "title": "直接把真实网站作为原生设计参考面",
+            "body": "当智能体可以直接看见目标网站，原生界面设计的参考过程就会更自然、更准确。"
+          },
+          {
+            "label": "知识摄取",
+            "title": "把页面内容和选中文本送进下游系统",
+            "body": "浏览器里的智能体流程不必停留在阅读层面，还可以成为更大知识工作流的一部分。"
+          }
+        ],
+        "statusPill": "框架在线",
+        "toolbarActions": [
+          "+ 工作区",
+          "+ Claude",
+          "+ Codex"
+        ],
+        "workspaces": [
+          {
+            "title": "论坛智能",
+            "subtitle": "2 个面板 · 爬取 + JS"
+          },
+          {
+            "title": "风格拟合",
+            "subtitle": "1 个面板 · 原生设计任务"
+          }
+        ],
+        "panes": [
+          {
+            "badge": "Claude",
+            "binding": "绑定到论坛线程 · #42",
+            "command": "browser__evaluate_js",
+            "output": "论坛内容已抓取，JavaScript 已在当前帖子页面内执行。"
+          },
+          {
+            "badge": "Codex",
+            "binding": "绑定到参考站点",
+            "command": "browser__get_page_html",
+            "output": "已捕获页面结构与风格线索，可直接用于原生界面拟合。"
+          }
+        ],
+        "notes": [
+          {
+            "label": "框架",
+            "title": "同一套浏览器运行时可以承载很多种智能体行为。",
+            "body": "不同演示看起来像不同产品，但它们底层都依赖同一个“附着在真实标签页”的会话模型。"
+          },
+          {
+            "label": "广度",
+            "title": "它覆盖的不只是调试，而是一整类浏览器原生任务。",
+            "body": "网页爬取、论坛理解、风格拟合、知识摄取、交互循环，都可以建立在同一套框架之上。"
+          },
+          {
+            "label": "控制权",
+            "title": "人仍然决定页面、任务和何时执行动作。",
+            "body": "浏览器保持可见，操作者保留上下文，智能体是在这个真实表面旁边工作，而不是替代它。"
+          }
+        ]
+      },
+      "useCases": {
+        "eyebrow": {
+          "primary": "真实使用场景",
+          "secondary": "真实问题，在浏览器中解决"
+        },
+        "title": "这个框架已经证明了什么。",
+        "body": "从这些演示可以看到，ClaudeChrome 的价值并不只是一类调试工具，而是一套通用的浏览器原生智能体框架。",
+        "cards": [
+          {
+            "index": "01",
+            "label": "商业站点爬取",
+            "title": "在滚动与跳转中持续爬取真实站点。",
+            "body": "Amazon 演示说明，ClaudeChrome 可以把浏览器视为一个持续变化的任务表面，而不是只读快照。"
+          },
+          {
+            "index": "02",
+            "label": "论坛智能",
+            "title": "在社区帖子里读取内容、保持上下文。",
+            "body": "LinuxDo 与 V2EX 表明，这个框架可以直接面向论坛页面工作，而不需要把线程内容先搬到终端里。"
+          },
+          {
+            "index": "03",
+            "label": "JavaScript 执行",
+            "title": "让智能体在当前页面内按要求执行浏览器侧指令。",
+            "body": "论坛演示最能说明这一点：同一个会话既能爬取内容，也能执行页面内部的 JavaScript。"
+          },
+          {
+            "index": "04",
+            "label": "原生风格拟合",
+            "title": "参考真实网站，把设计翻译成原生界面工作。",
+            "body": "OpenClaw 演示说明，这套框架也适合设计与界面生成类任务，而不只是排错。"
+          },
+          {
+            "index": "05",
+            "label": "知识摄取",
+            "title": "把页面内容和选中文本直接纳入知识工作流。",
+            "body": "Tapestry 集成演示证明，浏览器里的智能体会话可以直接接入知识库处理链路。"
+          },
+          {
+            "index": "06",
+            "label": "交互型环境",
+            "title": "在游戏或类应用页面中维持长时间交互循环。",
+            "body": "2048 演示证明，这套框架可以处理持续性的视觉交互，而不只是“读取后汇报”。"
+          }
+        ]
+      },
+      "visualReserve": {
+        "eyebrow": {
+          "primary": "Proof-ready media",
+          "secondary": "Reserve visual slots for product proof, not generic decoration"
+        },
+        "title": "Make future screenshots tell real product stories.",
+        "body": "These slots are reserved so the page can absorb authentic product media later: real UI captures, operator walkthroughs, and `.cast` recordings anchored in practical workflows.",
+        "shots": [
+          {
+            "badge": "Hero screenshot",
+            "title": "Full browser window with the side panel in action",
+            "body": "Show the product in the exact setting where it matters: a real app page, a real pane, and a visible investigation context.",
+            "pathLabel": "Suggested path",
+            "path": "src/ui/assets/claudechrome-hero.png"
+          },
+          {
+            "badge": "Use-case screenshot",
+            "title": "Pane workflow around a real issue",
+            "body": "Capture a high-value scenario such as checkout debugging, SSO reproduction, or onboarding validation.",
+            "pathLabel": "Suggested path",
+            "path": "src/ui/assets/claudechrome-workflow.png"
+          },
+          {
+            "badge": "Before / after proof",
+            "title": "Visual story of a problem, investigation, and fix",
+            "body": "Use this slot for a compact, buyer-friendly proof asset instead of a system architecture diagram.",
+            "pathLabel": "Suggested path",
+            "path": "src/ui/assets/claudechrome-proof.png"
+          }
+        ]
+      },
+      "workflows": {
+        "eyebrow": {
+          "primary": "常见工作流",
+          "secondary": "团队每天如何使用它"
+        },
+        "title": "这套框架实际支持的浏览器原生工作流。",
+        "body": "这些不是彼此孤立的小功能，而是建立在“会话附着真实标签页”之上的可复用工作流家族。",
+        "cards": [
+          {
+            "label": "附着与对齐",
+            "title": "先绑定正确标签页，再让智能体基于真实页面工作。",
+            "body": "无论是论坛、游戏、商业站点还是内部系统，第一步都是把会话与当前页面真实对齐。"
+          },
+          {
+            "label": "爬取与导航",
+            "title": "在滚动、翻页和跳转中保留任务连续性。",
+            "body": "适合长内容页面、商品页、论坛线程和任何需要跨视图移动的浏览器任务。"
+          },
+          {
+            "label": "页面内指令",
+            "title": "在浏览器内部执行 JavaScript 或其它页面侧动作。",
+            "body": "当工作流需要动作时，同一会话可以直接从理解页面过渡到在页面中执行指令。"
+          },
+          {
+            "label": "参考面拟合",
+            "title": "用真实网站作为设计参考面来完成原生风格工作。",
+            "body": "对于界面生成和设计翻译类任务，直接观察真实页面比依赖手动摘抄更高效。"
+          },
+          {
+            "label": "摄取与标注",
+            "title": "把页面内容和选中文本直接送入知识工作流。",
+            "body": "Tapestry 演示说明，这类浏览器原生能力完全可以成为知识管线的一部分。"
+          },
+          {
+            "label": "持续交互",
+            "title": "支撑更长时间的交互循环，而不仅是一问一答式检查。",
+            "body": "游戏类环境最直观，但只要页面更像一个实时应用，这种能力就同样重要。"
+          }
+        ]
+      },
+      "demos": {
+        "eyebrow": {
+          "primary": "实际演示",
+          "secondary": "真实工作流，实时录制"
+        },
+        "title": "尽早看到真正的浏览器感知使用场景。",
+        "body": "这六段演示覆盖了产品最关键的真实能力：网页爬取、JavaScript 执行、原生风格拟合、直接接入 Tapestry、选中文本动作，以及在游戏里的持续视觉交互。",
+        "cards": [
+          {
+            "shellTitle": "2048 会话",
+            "label": "2048 演示",
+            "title": "在实时游戏标签页里持续驱动复杂视觉交互。",
+            "body": "这个演示聚焦 ClaudeChrome 在 2048 游戏环境中的持续交互能力：它不会停在一次性读取，而是能围绕视觉元素持续进行长链路操作。",
+            "lines": [
+              "视觉跟踪棋盘状态",
+              "持续执行多步操作",
+              "保持交互循环不断开"
+            ],
+            "media": {
+              "src": "./assets/demo/promo_mp4/demo%202048_promo.mp4",
+              "type": "video/mp4",
+              "ariaLabel": "ClaudeChrome 演示视频：2048 工作流"
+            }
+          },
+          {
+            "shellTitle": "Amazon 调查",
+            "label": "Amazon 演示",
+            "title": "在真实商业页面中跨跳转与滚动完成爬取。",
+            "body": "这个演示主要展示 ClaudeChrome 的网页爬取能力，包括处理页面跳转和滚动交互的能力，同时会话始终保持绑定在当前浏览器标签页上。",
+            "lines": [
+              "跨页面跳转继续爬取",
+              "滚动时保持上下文连续",
+              "在同一会话中完成调查"
+            ],
+            "media": {
+              "src": "./assets/demo/promo_mp4/demo%20amazon_promo.mp4",
+              "type": "video/mp4",
+              "ariaLabel": "ClaudeChrome 演示视频：Amazon 调查工作流"
+            }
+          },
+          {
+            "shellTitle": "LinuxDo 线程",
+            "label": "LinuxDo 演示",
+            "title": "爬取论坛内容，并按用户指令执行 JavaScript。",
+            "body": "这是专门为 LinuxDo 准备的论坛场景演示，展示 ClaudeChrome 如何爬取帖子内容，并根据用户指令执行 JavaScript 命令。",
+            "lines": [
+              "爬取论坛线程内容",
+              "按指令执行 JS",
+              "保持会话附着在当前帖子"
+            ],
+            "media": {
+              "src": "./assets/demo/promo_mp4/demo%20linuxdo_promo.mp4",
+              "type": "video/mp4",
+              "ariaLabel": "ClaudeChrome 演示视频：LinuxDo 工作流"
+            }
+          },
+          {
+            "shellTitle": "OpenClaw 工作流",
+            "label": "OpenClaw 演示",
+            "title": "拟合现有网站风格，直接做出接近原站的原生设计。",
+            "body": "这个演示突出 ClaudeChrome 的浏览器扩展能力：它可以模仿现有网站来原生设计相似风格，比传统的手动拷贝样式表更方便，也更准确。",
+            "lines": [
+              "检查页面现有风格",
+              "提取原生设计线索",
+              "避免手动复制样式表"
+            ],
+            "media": {
+              "src": "./assets/demo/promo_mp4/demo%20openclaw_promo.mp4",
+              "type": "video/mp4",
+              "ariaLabel": "ClaudeChrome 演示视频：OpenClaw 工作流"
+            }
+          },
+          {
+            "shellTitle": "Tapestry 选择",
+            "label": "Tapestry 文本选择",
+            "title": "直接把页面内容送进 Tapestry，并围绕选中文本执行动作。",
+            "body": "这个演示聚焦于与之前 Tapestry 项目的集成：不调用 Tapestry 自带爬虫，也能把页面内容直接写入知识库，同时展示基于页面选中文本触发动作的能力。",
+            "lines": [
+              "直接摄取页面内容",
+              "跳过内置爬虫",
+              "围绕选中文本执行动作"
+            ],
+            "media": {
+              "src": "./assets/demo/promo_mp4/demo%20tapestry%20%26%20texts%20selection_promo.mp4",
+              "type": "video/mp4",
+              "ariaLabel": "ClaudeChrome 演示视频：Tapestry 文本选择工作流"
+            }
+          },
+          {
+            "shellTitle": "V2EX 线程",
+            "label": "V2EX 演示",
+            "title": "在 V2EX 页面中执行论坛爬取与 JavaScript 指令。",
+            "body": "这是另一个为论坛场景定制的演示，用来补足 LinuxDo 的例子：ClaudeChrome 可以在 V2EX 页面中爬取论坛内容，并根据用户要求执行 JavaScript 命令。",
+            "lines": [
+              "爬取 V2EX 帖子内容",
+              "按请求执行 JS",
+              "让会话始终停留在同一页面"
+            ],
+            "media": {
+              "src": "./assets/demo/promo_mp4/demo%20v2ex_promo.mp4",
+              "type": "video/mp4",
+              "ariaLabel": "ClaudeChrome 演示视频：V2EX 工作流"
+            }
+          }
+        ]
+      },
+      "teams": {
+        "eyebrow": {
+          "primary": "最受益的用户",
+          "secondary": "为最贴近浏览器的人而生"
+        },
+        "title": "这套框架真正适合谁。",
+        "body": "凡是希望智能体直接工作在真实浏览器表面，而不是工作在浏览器的转述版本上的人，都会从 ClaudeChrome 中受益。",
+        "cards": [
+          {
+            "label": "智能体工具构建者",
+            "title": "把浏览器本身当成更丰富的智能体运行表面。",
+            "body": "如果你在设计一类需要浏览器上下文的智能体系统，ClaudeChrome 可以成为实际的工作底座。"
+          },
+          {
+            "label": "前端与设计团队",
+            "title": "先观察真实界面，再做原生风格适配。",
+            "body": "像 OpenClaw 这样的任务，直接参考真实页面，比记忆或摘抄 CSS 更自然。"
+          },
+          {
+            "label": "知识与研究团队",
+            "title": "把页面内容直接纳入下游知识系统。",
+            "body": "Tapestry 路径说明，浏览器里的智能体工作流可以直接成为知识摄取的一环。"
+          },
+          {
+            "label": "社区与运营团队",
+            "title": "在论坛页面中读取内容并执行页面侧动作。",
+            "body": "LinuxDo 与 V2EX 演示说明，这套框架同样适合社区场景，而不只是产品站点。"
+          },
+          {
+            "label": "QA 与流程负责人",
+            "title": "把浏览器任务、证据和动作留在同一个操作表面。",
+            "body": "验证仍然重要，但在这里它只是更大浏览器原生任务集合中的一种。"
+          },
+          {
+            "label": "独立开发者与高阶用户",
+            "title": "在一个工作面里组织多种浏览器智能体任务。",
+            "body": "如果你需要把爬取、理解、执行和整合放进同一条工作链，ClaudeChrome 会更有价值。"
+          }
+        ]
+      },
+      "faq": {
+        "eyebrow": {
+          "primary": "常见问题",
+          "secondary": "先回答大家最关心的问题"
+        },
+        "title": "在真正尝试之前，大家最会问什么。",
+        "items": [
+          {
+            "question": "ClaudeChrome 只是一个网页调试工具吗？",
+            "answer": "不是。调试只是最容易被看见的一层价值。从演示可以看到，它同样覆盖网页爬取、JavaScript 执行、原生风格拟合、Tapestry 摄取、选中文本动作和持续交互。"
+          },
+          {
+            "question": "为什么要把智能体能力放进浏览器，而不是放在浏览器旁边？",
+            "answer": "关键不只是同时打开两个工具，而是让智能体真正立足于当前页面。这样读取、执行和推理都围绕同一个浏览器现实展开。"
+          },
+          {
+            "question": "Chrome 会是最终平台边界吗？",
+            "answer": "Chrome 是当前实现落点，但产品方向更大：ClaudeChrome 旨在逐步扩展成一套面向主流浏览器的智能体框架。"
+          },
+          {
+            "question": "这套框架今天已经适合什么任务？",
+            "answer": "目前演示已经覆盖商业站点爬取、论坛理解、JavaScript 执行、原生风格拟合、知识库摄取、选中文本动作和游戏中的持续视觉交互。"
+          }
+        ]
+      },
+      "finalCta": {
+        "eyebrow": {
+          "primary": "立即开始",
+          "secondary": "开源、本地运行、几分钟即可上手"
+        },
+        "title": "理解 ClaudeChrome 最快的方式，就是先看演示，再把它用在你自己的浏览器任务上。",
+        "body": "如果你认同“智能体应该贴着真实页面工作，而不是站在浏览器外面猜”，那 ClaudeChrome 值得你直接试一遍。",
+        "primaryButtonLabel": "查看使用场景",
+        "repoButtonLabel": "Open the GitHub repo"
+      },
+      "footer": {
+        "tagline": "ClaudeChrome · 一套把智能体能力引入 Chrome 的浏览器原生框架，覆盖网页爬取、JavaScript 执行、风格拟合、知识摄取与交互工作流。",
+        "links": [
+          {
+            "label": "简介"
+          },
+          {
+            "label": "产品"
+          },
+          {
+            "label": "使用场景"
+          },
+          {
+            "label": "工作流"
+          },
+          {
+            "label": "演示"
+          }
+        ],
+        "repoLabel": "GitHub Repo"
+      }
+    }
+  }
+};
