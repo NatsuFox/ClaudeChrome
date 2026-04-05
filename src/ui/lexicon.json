@@ -521,6 +521,11 @@
           },
           {
             "label": "Demos"
+          },
+          {
+            "label": "LINUX DO",
+            "href": "https://linux.do",
+            "external": true
           }
         ],
         "repoLabel": "GitHub Repo"
@@ -1046,6 +1051,11 @@
           },
           {
             "label": "演示"
+          },
+          {
+            "label": "LINUX DO",
+            "href": "https://linux.do",
+            "external": true
           }
         ],
         "repoLabel": "GitHub Repo"

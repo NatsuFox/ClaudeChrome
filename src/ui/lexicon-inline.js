@@ -521,6 +521,11 @@ window.__LANDING_LEXICON__ = {
           },
           {
             "label": "Demos"
+          },
+          {
+            "label": "LINUX DO",
+            "href": "https://linux.do",
+            "external": true
           }
         ],
         "repoLabel": "GitHub Repo"
@@ -1046,6 +1051,11 @@ window.__LANDING_LEXICON__ = {
           },
           {
             "label": "演示"
+          },
+          {
+            "label": "LINUX DO",
+            "href": "https://linux.do",
+            "external": true
           }
         ],
         "repoLabel": "GitHub Repo"

@@ -415,8 +415,8 @@ function renderHero(copy) {
         <p class="lead-english">${escapeHtml(copy.hero.body)}</p>
 
         <div class="hero-actions">
-          <a class="button primary" href="#use-cases">${escapeHtml(copy.hero.actions.primary)}</a>
-          <a class="button secondary" href="#demos">${escapeHtml(copy.hero.actions.secondary)}</a>
+          <a class="button primary" href="#demos">${escapeHtml(copy.hero.actions.primary)}</a>
+          <a class="button secondary" href="#use-cases">${escapeHtml(copy.hero.actions.secondary)}</a>
         </div>
 
         <div class="hero-copy-grid">
@@ -765,11 +765,13 @@ function renderFinalCta(finalCta) {
 
 function renderFooter(footer) {
   const links = footer.links
-    .map(
-      (link, index) => `
-        <a class="footer-link" href="${footerTargets[index] || '#'}">${escapeHtml(link.label)}</a>
-      `
-    )
+    .map((link, index) => {
+      const href = link.href || footerTargets[index] || '#';
+      const externalAttrs = link.external ? ' target="_blank" rel="noreferrer"' : '';
+      return `
+        <a class="footer-link" href="${href}"${externalAttrs}>${escapeHtml(link.label)}</a>
+      `;
+    })
     .join('');
 
   return `
