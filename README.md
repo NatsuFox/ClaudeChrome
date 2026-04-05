@@ -10,6 +10,8 @@ Today it embeds Claude, Codex, and shell workflows directly into Chrome; over ti
 
 Landing page: [https://natsufox.github.io/ClaudeChrome/](https://natsufox.github.io/ClaudeChrome/)
 
+Friend link: [LINUX DO](https://linux.do)
+
 ## Demo gallery
 
 GitHub README rendering does not reliably show inline `<video>` or `<iframe>` players here, so this gallery uses clickable GIF previews that open the bundled MP4 recordings. Each entry keeps its quick-view GIF, README-sized MP4, and HD promo MP4 together.
