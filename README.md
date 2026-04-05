@@ -1,7 +1,7 @@
 # ClaudeChrome
 
 <p align="center">
-  <img src="assets/logo-transparent.png" alt="ClaudeChrome logo" width="180" />
+  <img src="assets/logo-with-texts-transparent.png" alt="ClaudeChrome logo" width="420" />
 </p>
 
 ClaudeChrome is a browser-native framework for bringing agent intelligence into Chrome instead of leaving the agent outside the page you are actually working on.
@@ -35,9 +35,9 @@ GitHub README rendering does not reliably show inline `<video>` or `<iframe>` pl
   </tr>
   <tr>
     <td valign="top" width="50%">
-      <strong>Demo 3 · LinuxDo</strong><br>
-      This demo is tailored for the LinuxDo forum. It illustrates how ClaudeChrome can crawl forum content and execute JavaScript commands according to user instructions while remaining grounded in the active thread.<br><br>
-      <a href="assets/demo/readme_mp4/demo%20linuxdo_readme.mp4"><img src="assets/demo/gif/demo%20linuxdo.gif" alt="ClaudeChrome demo LinuxDo preview" width="100%" /></a><br>
+      <strong>Demo 3 · LINUX DO</strong><br>
+      This demo is tailored for the LINUX DO forum. It illustrates how ClaudeChrome can crawl forum content and execute JavaScript commands according to user instructions while remaining grounded in the active thread.<br><br>
+      <a href="assets/demo/readme_mp4/demo%20linuxdo_readme.mp4"><img src="assets/demo/gif/demo%20linuxdo.gif" alt="ClaudeChrome demo LINUX DO preview" width="100%" /></a><br>
       README MP4: <a href="assets/demo/readme_mp4/demo%20linuxdo_readme.mp4">demo linuxdo_readme.mp4</a><br>
       Quick view GIF: <a href="assets/demo/gif/demo%20linuxdo.gif">demo linuxdo.gif</a><br>
       HD promo MP4: <a href="assets/demo/promo_mp4/demo%20linuxdo_promo.mp4">demo linuxdo_promo.mp4</a>
@@ -62,7 +62,7 @@ GitHub README rendering does not reliably show inline `<video>` or `<iframe>` pl
     </td>
     <td valign="top" width="50%">
       <strong>Demo 6 · V2EX</strong><br>
-      This second forum-focused demo complements the LinuxDo example. It shows ClaudeChrome crawling V2EX content and executing JavaScript commands on the page in response to user instructions.<br><br>
+      This second forum-focused demo complements the LINUX DO example. It shows ClaudeChrome crawling V2EX content and executing JavaScript commands on the page in response to user instructions.<br><br>
       <a href="assets/demo/readme_mp4/demo%20v2ex_readme.mp4"><img src="assets/demo/gif/demo%20v2ex.gif" alt="ClaudeChrome demo V2EX preview" width="100%" /></a><br>
       README MP4: <a href="assets/demo/readme_mp4/demo%20v2ex_readme.mp4">demo v2ex_readme.mp4</a><br>
       Quick view GIF: <a href="assets/demo/gif/demo%20v2ex.gif">demo v2ex.gif</a><br>
@@ -70,6 +70,218 @@ GitHub README rendering does not reliably show inline `<video>` or `<iframe>` pl
     </td>
   </tr>
 </table>
+
+## Installation and local usage
+
+ClaudeChrome currently runs as two local pieces working together:
+
+- a Chrome extension built into `dist/`
+- a local Node.js host in `native-host/dist/main.js` that the side panel connects to over WebSocket
+
+If you only want to run the project locally, follow the user-level guide first. If you plan to edit code, run tests, or work on the host/extension internals, use the developer-level guide below.
+
+### 1. User-level guide
+
+This path is for people who want a reliable local setup with the fewest moving parts.
+
+#### Prerequisites
+
+- Google Chrome with access to `chrome://extensions`
+- a recent Node.js LTS release with `npm`
+- `bash` on your `PATH`
+- optional: `claude` on your `PATH` if you want to launch Claude panes
+- optional: `codex` on your `PATH` if you want to launch Codex panes
+
+Notes:
+
+- macOS and Linux already provide `bash` in normal setups.
+- On Windows, install Git Bash or WSL and make sure `bash` is callable from `PATH`.
+- If you only want to verify the local bridge first, start with a Shell pane. That avoids depending on `claude` or `codex`.
+
+#### Step 1: Install dependencies and build the local artifacts
+
+```bash
+npm install
+npm install --prefix native-host
+npm run package
+```
+
+After that finishes, you should have:
+
+- `dist/manifest.json` for the unpacked Chrome extension
+- `native-host/dist/main.js` for the local host process
+
+#### Step 2: Start the local host on a fixed port
+
+The side panel defaults to `127.0.0.1:9999`, so using port `9999` avoids extra setup in the UI.
+
+macOS / Linux / Git Bash:
+
+```bash
+CLAUDECHROME_WS_PORT=9999 npm --prefix native-host run start
+```
+
+PowerShell:
+
+```powershell
+$env:CLAUDECHROME_WS_PORT=9999
+npm --prefix native-host run start
+```
+
+Leave that process running. On successful startup, the host should log events such as `ws_listening` and `ipc_listening`.
+
+#### Step 3: Load the built extension into Chrome
+
+1. Open `chrome://extensions`.
+2. Turn on Developer mode.
+3. Click Load unpacked.
+4. Select the repo's `dist/` directory.
+5. Pin or open the ClaudeChrome extension.
+
+#### Step 4: Connect the side panel to the running host
+
+1. Navigate Chrome to the page you want ClaudeChrome to inspect.
+2. Open the ClaudeChrome side panel.
+3. Confirm the `Port` field shows `9999`, or replace it with the port you used when starting the host.
+4. Click `Apply`.
+5. Wait for the status text to change from `Disconnected` to `Connected: ws://127.0.0.1:9999` or `Connected to ClaudeChrome host`.
+
+#### Step 5: Launch your first pane
+
+1. Keep the target browser tab active.
+2. Click `+ Shell` for the safest first smoke test.
+3. After Shell works, try `+ Claude` or `+ Codex` if those CLIs are installed.
+4. New panes bind to the current active tab when the session is created.
+
+At that point, ClaudeChrome is running locally and attached to the live tab you selected.
+
+#### Optional: install the native-messaging manifest shipped by this repo
+
+The WebSocket flow above is enough to run ClaudeChrome locally. If you also want to register the native-messaging manifest bundled in `native-host/src/install.ts`, run:
+
+```bash
+npm run install:host
+```
+
+That command writes `com.anthropic.claudechrome.json`, but it does not populate `allowed_origins`. You must add your unpacked extension ID manually.
+
+Find your extension ID:
+
+1. Open `chrome://extensions`.
+2. Find ClaudeChrome.
+3. Copy the extension ID shown on the extension card.
+
+Manifest locations:
+
+- macOS: `~/Library/Application Support/Google/Chrome/NativeMessagingHosts/com.anthropic.claudechrome.json`
+- Linux: `~/.config/google-chrome/NativeMessagingHosts/com.anthropic.claudechrome.json`
+- Windows: `%LOCALAPPDATA%\Google\Chrome\User Data\NativeMessagingHosts\com.anthropic.claudechrome.json`
+
+Edit the generated JSON file and set its `allowed_origins` field like this:
+
+```json
+"allowed_origins": [
+  "chrome-extension://YOUR_EXTENSION_ID/"
+]
+```
+
+Then click Reload on the ClaudeChrome extension in `chrome://extensions`. If the extension ID changes because you reload from a different unpacked path, update `allowed_origins` again.
+
+#### First-run troubleshooting
+
+- The side panel says `Cannot connect to ws://127.0.0.1:9999`: the host is not running, the host is on a different port, or you changed the port field without clicking `Apply`.
+- You started the host without `CLAUDECHROME_WS_PORT=9999`: the native host defaults to a random port, so the panel will not find it unless you manually enter that port.
+- `+ Shell` works but `+ Claude` or `+ Codex` fails: the corresponding CLI is missing from `PATH` inside a login shell.
+- Pane launch fails immediately on Windows: `bash` is not available on `PATH`.
+- `npm run package` fails inside `native-host`: rerun `npm install --prefix native-host`.
+- `npm run test:live` cannot find a browser: set `CLAUDECHROME_LIVE_BROWSER=/absolute/path/to/chrome` and rerun the test.
+
+### 2. Developer-level guide
+
+Use this path if you will edit the extension, change the native host, or run the full validation loop.
+
+#### Repo layout
+
+- `extension/` contains the Chrome extension source
+- `native-host/` contains the local host, session manager, and MCP bridge
+- `dist/` is the built extension that Chrome loads via Load unpacked
+- `scripts/` contains repo test harnesses, including live browser validation
+
+#### One-time bootstrap
+
+```bash
+npm install
+npm install --prefix native-host
+npm run package
+```
+
+#### Recommended development loop
+
+Terminal 1, watch the extension bundle:
+
+```bash
+npm run dev
+```
+
+Terminal 2, rebuild the native host when host-side code changes:
+
+```bash
+npm run build:host
+```
+
+If you want continuous rebuilds while editing `native-host/`, the existing TypeScript build script also supports watch mode:
+
+```bash
+npm --prefix native-host run build -- --watch
+```
+
+Terminal 3, run the host on the same port the side panel expects:
+
+```bash
+CLAUDECHROME_WS_PORT=9999 npm --prefix native-host run start
+```
+
+Chrome loop:
+
+1. Load unpacked from `dist/`.
+2. After `npm run dev` writes a new extension bundle, click Reload in `chrome://extensions`.
+3. Keep the side panel port aligned with the host port.
+
+#### Validation commands
+
+Core scripted checks:
+
+```bash
+npm test
+```
+
+Live end-to-end check:
+
+```bash
+npm run test:live
+```
+
+`npm run test:live` launches an isolated host, loads the unpacked extension into a temporary Chrome/Chromium profile, connects the side panel, and exercises live browser features including:
+
+- `browser__list_tabs`
+- page text capture
+- cookies and storage capture
+- selector-based and coordinate-based clicking
+- console capture
+
+Useful live-test environment overrides:
+
+- `CLAUDECHROME_LIVE_BROWSER=/absolute/path/to/chrome` to force a specific Chrome or Chromium binary
+- on Linux without `DISPLAY`, install `xvfb-run` or provide a graphical session
+
+#### Developer notes and invariants
+
+- The side panel default is `127.0.0.1:9999`; the host defaults to a random port unless `CLAUDECHROME_WS_PORT` is set.
+- `npm run install:host` registers a Chrome native-messaging manifest, but current repo-local development and `npm run test:live` work by launching the host directly and connecting the panel over WebSocket.
+- `bash` is the launcher for Shell, Claude, and Codex panes. On platforms where `bash` is not already present, install it first.
+- Claude panes invoke `claude --setting-sources user,project,local --mcp-config ...`.
+- Codex panes invoke `codex` with injected MCP server configuration for the ClaudeChrome browser bridge.
+- If you need multiple local host instances, isolate them with `CLAUDECHROME_WS_PORT`, `CLAUDECHROME_RUNTIME_DIR`, and related environment variables instead of sharing one runtime directory.
 
 ## What ClaudeChrome is for
 
