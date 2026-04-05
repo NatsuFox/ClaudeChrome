@@ -1,7 +1,7 @@
 # ClaudeChrome
 
 <p align="center">
-  <img src="assets/logo-with-texts-transparent.png" alt="ClaudeChrome logo" width="420" />
+  <img src="assets/logo-with-texts.png" alt="ClaudeChrome logo" width="420" />
 </p>
 
 ClaudeChrome is a browser-native framework for bringing agent intelligence into Chrome instead of leaving the agent outside the page you are actually working on.
