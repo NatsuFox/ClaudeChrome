@@ -7,3 +7,4 @@ docs/
 *.js.map
 .DS_Store
 misc/
+.site-pages/

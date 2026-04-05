@@ -8,6 +8,8 @@ ClaudeChrome is a browser-native framework for bringing agent intelligence into 
 
 Today it embeds Claude, Codex, and shell workflows directly into Chrome; over time it is meant to support more mainstream browsers as well. The important idea is broader than web debugging: ClaudeChrome keeps the agent attached to the live page so it can crawl sites, execute JavaScript, mimic native styles from existing websites, ingest content into knowledge systems, and sustain longer interactive workflows without forcing manual context transfer back into a separate terminal.
 
+Landing page: [https://natsufox.github.io/ClaudeChrome/](https://natsufox.github.io/ClaudeChrome/)
+
 ## Demo gallery
 
 GitHub README rendering does not reliably show inline `<video>` or `<iframe>` players here, so this gallery uses clickable GIF previews that open the bundled MP4 recordings. Each entry keeps its quick-view GIF, README-sized MP4, and HD promo MP4 together.
