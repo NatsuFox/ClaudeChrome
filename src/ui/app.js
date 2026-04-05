@@ -18,6 +18,170 @@ root.classList.add('js');
 
 const prefersReducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 
+const SECTION_ICON_KEYS = {
+  "useCases": [
+    "traversePages",
+    "forumSummary",
+    "scriptExecution",
+    "styleAdaptation",
+    "knowledgeIngestion",
+    "interactiveLoop"
+  ],
+  "workflows": [
+    "attachAlign",
+    "crawlNavigate",
+    "inPageInstructions",
+    "referenceAdaptation",
+    "ingestAnnotate",
+    "continuousInteraction"
+  ],
+  "teams": [
+    "agentBuilders",
+    "frontendDesign",
+    "knowledgeResearch",
+    "communityOps",
+    "qaOwners",
+    "indiePowerUsers"
+  ]
+};
+
+const CARD_ICON_LIBRARY = {
+  "traversePages": {
+    "start": "rgba(79, 108, 255, 0.2)",
+    "end": "rgba(53, 184, 255, 0.14)",
+    "color": "#4064d8",
+    "svg": "<rect class=\"icon-fill\" x=\"6\" y=\"11\" width=\"13\" height=\"17\" rx=\"4\"></rect><rect x=\"6\" y=\"11\" width=\"13\" height=\"17\" rx=\"4\"></rect><rect x=\"29\" y=\"19\" width=\"13\" height=\"17\" rx=\"4\"></rect><path d=\"M19 19h9\"></path><path d=\"m24 14 5 5-5 5\"></path>"
+  },
+  "forumSummary": {
+    "start": "rgba(53, 184, 255, 0.18)",
+    "end": "rgba(255, 201, 141, 0.14)",
+    "color": "#238db8",
+    "svg": "<rect class=\"icon-fill\" x=\"7\" y=\"10\" width=\"24\" height=\"16\" rx=\"6\"></rect><rect x=\"7\" y=\"10\" width=\"24\" height=\"16\" rx=\"6\"></rect><path d=\"M17 26v6l6-6\"></path><rect x=\"24\" y=\"20\" width=\"17\" height=\"11\" rx=\"5\"></rect><path d=\"M14 16h10\"></path><path d=\"M14 21h7\"></path>"
+  },
+  "scriptExecution": {
+    "start": "rgba(255, 138, 72, 0.2)",
+    "end": "rgba(255, 201, 141, 0.12)",
+    "color": "#c76322",
+    "svg": "<rect class=\"icon-fill\" x=\"8\" y=\"10\" width=\"32\" height=\"24\" rx=\"6\"></rect><rect x=\"8\" y=\"10\" width=\"32\" height=\"24\" rx=\"6\"></rect><path d=\"m16 19-5 4.5 5 4.5\"></path><path d=\"m32 19 5 4.5-5 4.5\"></path><path d=\"m25 17-4 13\"></path><path d=\"M17 38h14\"></path>"
+  },
+  "styleAdaptation": {
+    "start": "rgba(111, 140, 255, 0.18)",
+    "end": "rgba(255, 138, 72, 0.16)",
+    "color": "#5a6fe3",
+    "svg": "<rect class=\"icon-fill\" x=\"8\" y=\"11\" width=\"14\" height=\"18\" rx=\"4\"></rect><rect x=\"8\" y=\"11\" width=\"14\" height=\"18\" rx=\"4\"></rect><path d=\"M12 17h6\"></path><path d=\"M12 22h4\"></path><path d=\"m27 27 11-11\"></path><path d=\"m30 14 2 3 3 2-3 2-2 3-2-3-3-2 3-2z\"></path><path d=\"m24 30 4 4\"></path>"
+  },
+  "knowledgeIngestion": {
+    "start": "rgba(53, 184, 255, 0.15)",
+    "end": "rgba(99, 242, 175, 0.14)",
+    "color": "#2f9c6e",
+    "svg": "<rect class=\"icon-fill\" x=\"9\" y=\"8\" width=\"15\" height=\"18\" rx=\"4\"></rect><rect x=\"9\" y=\"8\" width=\"15\" height=\"18\" rx=\"4\"></rect><path d=\"M16.5 27v6\"></path><path d=\"m13.5 30 3 3 3-3\"></path><ellipse cx=\"33\" cy=\"17\" rx=\"7\" ry=\"3.5\"></ellipse><path d=\"M26 17v10c0 1.9 3.1 3.5 7 3.5s7-1.6 7-3.5V17\"></path><path d=\"M26 22c0 1.9 3.1 3.5 7 3.5s7-1.6 7-3.5\"></path>"
+  },
+  "interactiveLoop": {
+    "start": "rgba(255, 138, 72, 0.16)",
+    "end": "rgba(79, 108, 255, 0.16)",
+    "color": "#c6751b",
+    "svg": "<rect class=\"icon-fill\" x=\"10\" y=\"10\" width=\"18\" height=\"18\" rx=\"5\"></rect><rect x=\"10\" y=\"10\" width=\"18\" height=\"18\" rx=\"5\"></rect><path d=\"M19 10v18\"></path><path d=\"M10 19h18\"></path><path d=\"m31 16 5-4v4h5\"></path><path d=\"M41 16c0 8-7 15-15 15\"></path><path d=\"m17 32-5 4v-4H7\"></path><path d=\"M7 32c0-8 7-15 15-15\"></path>"
+  },
+  "attachAlign": {
+    "start": "rgba(79, 108, 255, 0.18)",
+    "end": "rgba(111, 140, 255, 0.12)",
+    "color": "#4565d6",
+    "svg": "<rect class=\"icon-fill\" x=\"7\" y=\"12\" width=\"14\" height=\"12\" rx=\"4\"></rect><rect x=\"7\" y=\"12\" width=\"14\" height=\"12\" rx=\"4\"></rect><path d=\"M14 24v5\"></path><path d=\"M11 29h6\"></path><circle cx=\"33\" cy=\"24\" r=\"8\"></circle><path d=\"M33 19v10\"></path><path d=\"M28 24h10\"></path>"
+  },
+  "crawlNavigate": {
+    "start": "rgba(53, 184, 255, 0.18)",
+    "end": "rgba(79, 108, 255, 0.12)",
+    "color": "#238db8",
+    "svg": "<circle class=\"icon-fill\" cx=\"10\" cy=\"16\" r=\"4\"></circle><circle cx=\"10\" cy=\"16\" r=\"4\"></circle><circle cx=\"23\" cy=\"25\" r=\"4\"></circle><circle cx=\"38\" cy=\"14\" r=\"4\"></circle><path d=\"M14 18c3 0 5 2 7 5\"></path><path d=\"M27 23c3-1 6-4 8-7\"></path><path d=\"m36 10 4 4-4 4\"></path>"
+  },
+  "inPageInstructions": {
+    "start": "rgba(255, 138, 72, 0.18)",
+    "end": "rgba(255, 201, 141, 0.12)",
+    "color": "#c76322",
+    "svg": "<rect x=\"7\" y=\"10\" width=\"34\" height=\"22\" rx=\"6\"></rect><path class=\"icon-fill\" d=\"M28 16h9v10h-9z\"></path><path d=\"M13 17h8\"></path><path d=\"M13 22h5\"></path><path d=\"m20 20 4 4-4 4\"></path><path d=\"M25 24h12\"></path><path d=\"M18 36h12\"></path>"
+  },
+  "referenceAdaptation": {
+    "start": "rgba(111, 140, 255, 0.18)",
+    "end": "rgba(255, 138, 72, 0.12)",
+    "color": "#6477db",
+    "svg": "<rect x=\"7\" y=\"11\" width=\"11\" height=\"18\" rx=\"4\"></rect><rect x=\"30\" y=\"11\" width=\"11\" height=\"18\" rx=\"4\"></rect><path class=\"icon-fill\" d=\"M20 17h8v6h-8z\"></path><path d=\"M18 20h12\"></path><path d=\"m24 15 4 5-4 5\"></path><path d=\"M11 17h4\"></path><path d=\"M11 22h5\"></path><path d=\"M34 17h4\"></path><path d=\"M34 22h5\"></path>"
+  },
+  "ingestAnnotate": {
+    "start": "rgba(53, 184, 255, 0.16)",
+    "end": "rgba(99, 242, 175, 0.14)",
+    "color": "#2f9c6e",
+    "svg": "<rect x=\"7\" y=\"9\" width=\"16\" height=\"22\" rx=\"5\"></rect><path d=\"M11 15h8\"></path><path d=\"M11 20h6\"></path><path d=\"M7 34h6\"></path><path d=\"M10 31v6\"></path><path d=\"M23 20h5\"></path><path d=\"m25 17 3 3-3 3\"></path><ellipse cx=\"34\" cy=\"17\" rx=\"7\" ry=\"3.5\"></ellipse><path d=\"M27 17v12c0 1.9 3.1 3.5 7 3.5s7-1.6 7-3.5V17\"></path><path d=\"M27 22c0 1.9 3.1 3.5 7 3.5s7-1.6 7-3.5\"></path>"
+  },
+  "continuousInteraction": {
+    "start": "rgba(255, 138, 72, 0.18)",
+    "end": "rgba(79, 108, 255, 0.14)",
+    "color": "#c6751b",
+    "svg": "<circle class=\"icon-fill\" cx=\"24\" cy=\"24\" r=\"7\"></circle><circle cx=\"24\" cy=\"24\" r=\"7\"></circle><path d=\"M24 20v5l3 2\"></path><path d=\"m19 10-6 1 2-6\"></path><path d=\"M13 11a16 16 0 0 1 26 6\"></path><path d=\"m29 38 6-1-2 6\"></path><path d=\"M35 37A16 16 0 0 1 9 31\"></path>"
+  },
+  "agentBuilders": {
+    "start": "rgba(79, 108, 255, 0.18)",
+    "end": "rgba(53, 184, 255, 0.12)",
+    "color": "#4565d6",
+    "svg": "<circle class=\"icon-fill\" cx=\"24\" cy=\"21\" r=\"5\"></circle><circle cx=\"12\" cy=\"14\" r=\"4\"></circle><circle cx=\"36\" cy=\"14\" r=\"4\"></circle><circle cx=\"24\" cy=\"34\" r=\"5\"></circle><circle cx=\"24\" cy=\"21\" r=\"5\"></circle><path d=\"M15 16l5 3\"></path><path d=\"M33 16l-5 3\"></path><path d=\"M24 26v3\"></path>"
+  },
+  "frontendDesign": {
+    "start": "rgba(255, 138, 72, 0.18)",
+    "end": "rgba(255, 201, 141, 0.14)",
+    "color": "#cc6b2b",
+    "svg": "<rect x=\"8\" y=\"10\" width=\"20\" height=\"18\" rx=\"5\"></rect><path d=\"M12 16h12\"></path><path d=\"M12 21h8\"></path><path class=\"icon-fill\" d=\"M31 30 39 22l3 3-8 8-6 2z\"></path><path d=\"M31 30 39 22l3 3-8 8-6 2z\"></path><path d=\"m37 20 5 5\"></path>"
+  },
+  "knowledgeResearch": {
+    "start": "rgba(53, 184, 255, 0.18)",
+    "end": "rgba(111, 140, 255, 0.12)",
+    "color": "#2a8ebc",
+    "svg": "<rect class=\"icon-fill\" x=\"8\" y=\"10\" width=\"15\" height=\"20\" rx=\"4\"></rect><rect x=\"8\" y=\"10\" width=\"15\" height=\"20\" rx=\"4\"></rect><path d=\"M12 16h7\"></path><path d=\"M12 21h6\"></path><circle cx=\"33\" cy=\"24\" r=\"6\"></circle><path d=\"m37.5 28.5 4 4\"></path>"
+  },
+  "communityOps": {
+    "start": "rgba(99, 242, 175, 0.16)",
+    "end": "rgba(53, 184, 255, 0.12)",
+    "color": "#2f9c6e",
+    "svg": "<rect class=\"icon-fill\" x=\"7\" y=\"11\" width=\"18\" height=\"14\" rx=\"5\"></rect><rect x=\"7\" y=\"11\" width=\"18\" height=\"14\" rx=\"5\"></rect><path d=\"M14 25v5l5-5\"></path><rect x=\"24\" y=\"20\" width=\"14\" height=\"10\" rx=\"4\"></rect><path d=\"M13 17h7\"></path><path d=\"M13 21h5\"></path><path d=\"M42 13v15\"></path><path d=\"M42 18h4\"></path><path d=\"M46 18l-2-2\"></path><path d=\"M46 18l-2 2\"></path>"
+  },
+  "qaOwners": {
+    "start": "rgba(255, 201, 141, 0.18)",
+    "end": "rgba(255, 138, 72, 0.12)",
+    "color": "#ba7c2d",
+    "svg": "<rect x=\"8\" y=\"9\" width=\"16\" height=\"23\" rx=\"5\"></rect><path d=\"M12 15h8\"></path><path d=\"M12 20h6\"></path><path d=\"m12 26 2 2 4-4\"></path><circle class=\"icon-fill\" cx=\"35\" cy=\"24\" r=\"8\"></circle><circle cx=\"35\" cy=\"24\" r=\"8\"></circle><path d=\"m31.5 24 2.5 2.5 4.5-5\"></path>"
+  },
+  "indiePowerUsers": {
+    "start": "rgba(111, 140, 255, 0.18)",
+    "end": "rgba(53, 184, 255, 0.12)",
+    "color": "#5f73db",
+    "svg": "<rect class=\"icon-fill\" x=\"8\" y=\"10\" width=\"32\" height=\"28\" rx=\"7\"></rect><rect x=\"8\" y=\"10\" width=\"14\" height=\"10\" rx=\"3\"></rect><rect x=\"26\" y=\"10\" width=\"14\" height=\"10\" rx=\"3\"></rect><rect x=\"8\" y=\"24\" width=\"14\" height=\"10\" rx=\"3\"></rect><rect x=\"26\" y=\"24\" width=\"14\" height=\"10\" rx=\"3\"></rect><path d=\"M33 25.5 34.5 29l3.5 1.5-3.5 1.5L33 35.5 31.5 32 28 30.5l3.5-1.5Z\"></path>"
+  }
+};
+
+function renderCardIcon(sectionKey, index) {
+  const iconKey = SECTION_ICON_KEYS[sectionKey]?.[index];
+  const icon = iconKey ? CARD_ICON_LIBRARY[iconKey] : null;
+  if (!icon) {
+    return '';
+  }
+
+  return `
+    <span
+      class="card-icon card-icon-${sectionKey}"
+      aria-hidden="true"
+      style="--icon-start:${icon.start}; --icon-end:${icon.end}; --icon-color:${icon.color};"
+    >
+      <svg viewBox="0 0 48 48" role="presentation" focusable="false">${icon.svg}</svg>
+    </span>
+  `;
+}
+
+function renderBrandWordmark(name) {
+  if (name !== 'ClaudeChrome') {
+    return escapeHtml(name);
+  }
+
+  return '<span class="brand-wordmark" aria-label="ClaudeChrome"><span class="brand-wordmark-accent is-red">C</span>l<span class="brand-wordmark-accent is-gold">a</span>ude<span class="brand-wordmark-accent is-green">C</span>hrom<span class="brand-wordmark-accent is-blue">e</span></span>';
+}
+
 function escapeHtml(value) {
   return String(value ?? '').replace(/[&<>"']/g, (character) => HTML_ESCAPE_MAP[character]);
 }
@@ -122,7 +286,7 @@ function renderHeader(copy, localeKey) {
           <img src="${logoSrc}" alt="" />
         </span>
         <span class="brand-lockup">
-          <strong>${escapeHtml(copy.header.brand.name)}</strong>
+          <strong>${renderBrandWordmark(copy.header.brand.name)}</strong>
           <small>${escapeHtml(copy.header.brand.tagline)}</small>
         </span>
       </a>
@@ -240,7 +404,7 @@ function renderHero(copy) {
         <div class="hero-logo-lockup">
           <img src="${logoSrc}" alt="${escapeHtml(copy.hero.brand.logoAlt)}" />
           <div class="hero-logo-copy">
-            <strong>${escapeHtml(copy.hero.brand.name)}</strong>
+            <strong>${renderBrandWordmark(copy.hero.brand.name)}</strong>
             <span>${escapeHtml(copy.hero.brand.tagline)}</span>
           </div>
         </div>
@@ -269,8 +433,6 @@ function renderHero(copy) {
           ${metrics}
         </div>
       </div>
-
-      ${renderStage(copy.stage)}
     </section>
   `;
 }
@@ -331,61 +493,66 @@ function renderStage(stage) {
     .join('');
 
   return `
-    <div class="hero-stage glass-panel section-animate delay-1" data-stage-scene>
-      <div class="stage-header">
-        ${renderEyebrow(stage.eyebrow)}
-        <h2>${escapeHtml(stage.title)}</h2>
-        <p class="section-english">${escapeHtml(stage.body)}</p>
-      </div>
+    <section class="product-stage" id="surface" data-section="Product">
+      <div class="hero-stage glass-panel section-animate delay-1" data-stage-scene>
+        <div class="stage-header">
+          ${renderEyebrow(stage.eyebrow)}
+          <h2>${escapeHtml(stage.title)}</h2>
+          <p class="section-english">${escapeHtml(stage.body)}</p>
+        </div>
 
-      <div class="stage-scene">
-        <article class="browser-frame interactive-card" role="img" aria-label="${escapeHtml(stage.browserFrameAriaLabel)}">
-          <div class="browser-bar">
-            <div class="browser-dots" aria-hidden="true"><span></span><span></span><span></span></div>
-            <div class="browser-address">${escapeHtml(stage.browserAddress)}</div>
-            <div class="browser-state">${escapeHtml(stage.browserState)}</div>
-          </div>
-          <div class="browser-body">
-            <div class="browser-page">
-              <div class="page-ribbon">${escapeHtml(stage.pageRibbon)}</div>
-              <div class="page-grid">
-                ${pageCards}
-              </div>
+        <div class="stage-scene">
+          <article class="browser-frame interactive-card" role="img" aria-label="${escapeHtml(stage.browserFrameAriaLabel)}">
+            <div class="browser-bar">
+              <div class="browser-dots" aria-hidden="true"><span></span><span></span><span></span></div>
+              <div class="browser-address">${escapeHtml(stage.browserAddress)}</div>
+              <div class="browser-state">${escapeHtml(stage.browserState)}</div>
             </div>
-
-            <aside class="sidepanel-frame">
-              <div class="sidepanel-toolbar">
-                <div class="status-pill is-live"><span></span>${escapeHtml(stage.statusPill)}</div>
-                <div class="toolbar-actions">
-                  ${toolbarActions}
+            <div class="browser-body">
+              <div class="browser-page">
+                <div class="page-ribbon">${escapeHtml(stage.pageRibbon)}</div>
+                <div class="page-grid">
+                  ${pageCards}
                 </div>
               </div>
 
-              <div class="workspace-strip">
-                ${workspaces}
-              </div>
+              <aside class="sidepanel-frame">
+                <div class="sidepanel-toolbar">
+                  <div class="status-pill is-live"><span></span>${escapeHtml(stage.statusPill)}</div>
+                  <div class="toolbar-actions">
+                    ${toolbarActions}
+                  </div>
+                </div>
 
-              <div class="pane-stack">
-                ${panes}
-              </div>
-            </aside>
+                <div class="workspace-strip">
+                  ${workspaces}
+                </div>
+
+                <div class="pane-stack">
+                  ${panes}
+                </div>
+              </aside>
+            </div>
+          </article>
+
+          <div class="scene-notes">
+            ${notes}
           </div>
-        </article>
-
-        <div class="scene-notes">
-          ${notes}
         </div>
       </div>
-    </div>
+    </section>
   `;
 }
 
 function renderUseCases(useCases) {
   const cards = useCases.cards
     .map(
-      (card) => `
+      (card, index) => `
         <article class="chapter-card interactive-card">
-          <span class="chapter-index">${escapeHtml(card.index)}</span>
+          <div class="card-topline">
+            ${renderCardIcon('useCases', index)}
+            <span class="chapter-index">${escapeHtml(card.index)}</span>
+          </div>
           <p class="card-label">${escapeHtml(card.label)}</p>
           <h3>${escapeHtml(card.title)}</h3>
           <p>${escapeHtml(card.body)}</p>
@@ -427,7 +594,7 @@ function renderVisualReserve(visualReserve) {
     .join('');
 
   return `
-    <section class="visual-reserve" id="surface" data-section="Product">
+    <section class="visual-reserve">
       <div class="glass-panel section-animate delay-3 reserve-shell">
         ${renderSectionCopy(visualReserve, ' reserve-copy')}
         <div class="reserve-grid">
@@ -441,8 +608,11 @@ function renderVisualReserve(visualReserve) {
 function renderWorkflows(workflows) {
   const cards = workflows.cards
     .map(
-      (card) => `
+      (card, index) => `
         <article class="evidence-card interactive-card">
+          <div class="card-topline">
+            ${renderCardIcon('workflows', index)}
+          </div>
           <p class="card-label">${escapeHtml(card.label)}</p>
           <h3>${escapeHtml(card.title)}</h3>
           <p>${escapeHtml(card.body)}</p>
@@ -529,8 +699,11 @@ function renderDemos(demos) {
 function renderTeams(teams) {
   const cards = teams.cards
     .map(
-      (card) => `
+      (card, index) => `
         <article class="evidence-card interactive-card">
+          <div class="card-topline">
+            ${renderCardIcon('teams', index)}
+          </div>
           <p class="card-label">${escapeHtml(card.label)}</p>
           <h3>${escapeHtml(card.title)}</h3>
           <p>${escapeHtml(card.body)}</p>
@@ -625,6 +798,7 @@ function renderPage(copy, localeKey) {
     <main>
       ${renderHero(copy)}
       ${renderDemos(copy.demos)}
+      ${renderStage(copy.stage)}
       ${renderUseCases(copy.useCases)}
       ${renderVisualReserve(copy.visualReserve)}
       ${renderWorkflows(copy.workflows)}
@@ -649,7 +823,7 @@ function renderErrorState(message) {
           <div class="hero-logo-lockup">
             <img src="${logoSrc}" alt="ClaudeChrome logo" />
             <div class="hero-logo-copy">
-              <strong>ClaudeChrome</strong>
+              <strong>${renderBrandWordmark('ClaudeChrome')}</strong>
               <span>${escapeHtml(message)}</span>
             </div>
           </div>

@@ -261,6 +261,52 @@ code {
   font-size: 0.78rem;
 }
 
+.brand-wordmark {
+  display: inline-flex;
+  align-items: baseline;
+  flex-wrap: nowrap;
+  gap: 0;
+  white-space: nowrap;
+}
+
+.brand-wordmark-accent {
+  display: inline-block;
+  position: relative;
+  font-weight: inherit;
+  transform: translateY(0);
+  transform-origin: 50% 85%;
+  text-shadow:
+    0 1px 12px rgba(24, 38, 61, 0.1),
+    0 0 12px var(--wordmark-glow, rgba(255, 255, 255, 0));
+  backface-visibility: hidden;
+  will-change: transform;
+  animation: brandWordmarkFloat 5.2s linear infinite;
+}
+
+.brand-wordmark-accent.is-red {
+  color: #e15a4b;
+  --wordmark-glow: rgba(225, 90, 75, 0.28);
+  animation-delay: 0s;
+}
+
+.brand-wordmark-accent.is-gold {
+  color: #d7ab26;
+  --wordmark-glow: rgba(215, 171, 38, 0.26);
+  animation-delay: -1.3s;
+}
+
+.brand-wordmark-accent.is-green {
+  color: #47a964;
+  --wordmark-glow: rgba(71, 169, 100, 0.28);
+  animation-delay: -2.6s;
+}
+
+.brand-wordmark-accent.is-blue {
+  color: #3988ee;
+  --wordmark-glow: rgba(57, 136, 238, 0.28);
+  animation-delay: -3.9s;
+}
+
 .site-nav {
   display: inline-flex;
   align-items: center;
@@ -1144,6 +1190,62 @@ main {
   font-weight: 700;
 }
 
+.card-topline {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.9rem;
+  margin-bottom: 0.9rem;
+}
+
+.card-icon {
+  display: inline-grid;
+  place-items: center;
+  flex-shrink: 0;
+  width: 3.35rem;
+  height: 3.35rem;
+  border-radius: 1.05rem;
+  background: linear-gradient(145deg, var(--icon-start), var(--icon-end));
+  border: 1px solid rgba(112, 130, 171, 0.22);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.58),
+    0 10px 24px rgba(39, 54, 86, 0.08);
+  color: var(--icon-color);
+  transition: transform 0.22s ease, box-shadow 0.22s ease, border-color 0.22s ease;
+}
+
+.card-icon svg {
+  width: 1.82rem;
+  height: 1.82rem;
+  overflow: visible;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.9;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.card-icon .icon-fill {
+  fill: currentColor;
+  opacity: 0.14;
+  stroke: none;
+}
+
+.dark-panel .card-icon {
+  border-color: rgba(255, 255, 255, 0.14);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.08),
+    0 12px 28px rgba(6, 10, 21, 0.32);
+}
+
+.dark-panel .card-icon .icon-fill {
+  opacity: 0.2;
+}
+
+.chapter-card .card-topline {
+  margin-bottom: 0.95rem;
+}
+
 .point-list {
   margin: 0.82rem 0 0;
   padding-left: 1.15rem;
@@ -1412,6 +1514,41 @@ main {
   }
 }
 
+@keyframes brandWordmarkFloat {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+
+  12.5% {
+    transform: translateY(-0.24px);
+  }
+
+  25% {
+    transform: translateY(-0.68px);
+  }
+
+  37.5% {
+    transform: translateY(-1.28px);
+  }
+
+  50% {
+    transform: translateY(-1.8px);
+  }
+
+  62.5% {
+    transform: translateY(-1.28px);
+  }
+
+  75% {
+    transform: translateY(-0.68px);
+  }
+
+  87.5% {
+    transform: translateY(-0.24px);
+  }
+}
+
 @keyframes heroLogoSheen {
   0%,
   18% {
@@ -1445,6 +1582,15 @@ main {
     box-shadow: 0 18px 40px rgba(39, 54, 86, 0.12);
     border-color: rgba(108, 134, 188, 0.22);
     background: rgba(255, 253, 249, 0.58);
+  }
+
+  .interactive-card:hover .card-icon,
+  .interactive-card:focus-within .card-icon {
+    transform: translateY(-2px) scale(1.04);
+    box-shadow:
+      inset 0 1px 0 rgba(255, 255, 255, 0.62),
+      0 14px 30px rgba(39, 54, 86, 0.14);
+    border-color: rgba(108, 134, 188, 0.28);
   }
 
   .browser-frame.interactive-card:hover,
@@ -1664,6 +1810,7 @@ main {
   .interactive-card,
   .hero-logo-lockup,
   .hero-logo-lockup::after,
+  .brand-wordmark-accent,
   .button,
   .copy-button,
   .footer-link,
