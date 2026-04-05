@@ -63,6 +63,8 @@ try {
 console.log('\n[2] Verifying shortcut mappings...');
 const {
   SHIFT_ENTER_SEQUENCE,
+  LINE_START_SEQUENCE,
+  LINE_END_SEQUENCE,
   WORD_BACKWARD_SEQUENCE,
   WORD_FORWARD_SEQUENCE,
   isMacPlatform,
@@ -95,10 +97,10 @@ action = resolveTerminalShortcut(keyEvent({ key: 'ArrowRight', altKey: true }), 
 assert(action?.sequence === WORD_FORWARD_SEQUENCE, 'Option+Right on Mac emits word-forward');
 
 action = resolveTerminalShortcut(keyEvent({ key: 'ArrowLeft', metaKey: true }), true);
-assert(action?.sequence === WORD_BACKWARD_SEQUENCE, 'Command+Left on Mac emits word-backward');
+assert(action?.sequence === LINE_START_SEQUENCE, 'Command+Left on Mac emits line-start movement');
 
 action = resolveTerminalShortcut(keyEvent({ key: 'ArrowRight', metaKey: true }), true);
-assert(action?.sequence === WORD_FORWARD_SEQUENCE, 'Command+Right on Mac emits word-forward');
+assert(action?.sequence === LINE_END_SEQUENCE, 'Command+Right on Mac emits line-end movement');
 
 action = resolveTerminalShortcut(keyEvent({ key: 'ArrowUp', metaKey: true }), true);
 assert(action?.sequence === '\u001b[1;5A', 'Command+Up on Mac emits the modified-arrow fallback');

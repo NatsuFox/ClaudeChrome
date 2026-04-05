@@ -11,6 +11,8 @@ export interface TerminalShortcutKeyboardEvent {
 }
 
 export const SHIFT_ENTER_SEQUENCE = '\u001b[27;2;13~';
+export const LINE_START_SEQUENCE = '\u0001';
+export const LINE_END_SEQUENCE = '\u0005';
 export const WORD_BACKWARD_SEQUENCE = '\u001bb';
 export const WORD_FORWARD_SEQUENCE = '\u001bf';
 
@@ -37,6 +39,13 @@ export function resolveTerminalShortcut(
     return { kind: 'sequence', sequence: SHIFT_ENTER_SEQUENCE };
   }
 
+  if (isMacHorizontalLineJumpShortcut(event, isMacLikePlatform)) {
+    return {
+      kind: 'sequence',
+      sequence: event.key === 'ArrowLeft' ? LINE_START_SEQUENCE : LINE_END_SEQUENCE,
+    };
+  }
+
   if (isHorizontalWordJumpShortcut(event, isMacLikePlatform)) {
     return {
       kind: 'sequence',
@@ -59,11 +68,28 @@ function isShiftEnterShortcut(event: TerminalShortcutKeyboardEvent): boolean {
   return event.key === 'Enter' && event.shiftKey && !event.ctrlKey && !event.altKey && !event.metaKey;
 }
 
+function isMacHorizontalLineJumpShortcut(
+  event: TerminalShortcutKeyboardEvent,
+  isMacLikePlatform: boolean,
+): boolean {
+  return Boolean(
+    isMacLikePlatform &&
+      event.metaKey &&
+      !event.ctrlKey &&
+      !event.altKey &&
+      !event.shiftKey &&
+      (event.key === 'ArrowLeft' || event.key === 'ArrowRight'),
+  );
+}
+
 function isHorizontalWordJumpShortcut(
   event: TerminalShortcutKeyboardEvent,
   isMacLikePlatform: boolean,
 ): boolean {
   if (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight') {
+    return false;
+  }
+  if (isMacHorizontalLineJumpShortcut(event, isMacLikePlatform)) {
     return false;
   }
   return hasSingleMovementModifier(event, isMacLikePlatform);
