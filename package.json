@@ -10,7 +10,7 @@
     "install:host": "node native-host/dist/install.js",
     "setup": "npm install && cd native-host && npm install && npm run build",
     "package": "npm run build && npm run build:host",
-    "test": "npm run build && npm run build:host && node scripts/test-terminal-input.js && node scripts/test-commands.js && node scripts/test-dispatcher.js",
+    "test": "npm run build && npm run build:host && node scripts/test-terminal-shortcuts.js && node scripts/test-terminal-input.js && node scripts/test-commands.js && node scripts/test-dispatcher.js",
     "test:live": "npm run build && npm run build:host && node scripts/test-live.js"
   },
   "devDependencies": {

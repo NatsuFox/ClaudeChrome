@@ -3,6 +3,7 @@ import { WebglAddon } from '@xterm/addon-webgl';
 import { Terminal, type ITheme } from '@xterm/xterm';
 
 import { decodeBase64ToBytes } from '../shared/base64';
+import { isMacPlatform, resolveTerminalShortcut } from './terminal-shortcuts';
 import type { PanelTheme } from './state';
 
 const DARK_THEME: ITheme = {
@@ -57,11 +58,18 @@ function themeForMode(mode: PanelTheme): ITheme {
   return mode === 'light' ? LIGHT_THEME : DARK_THEME;
 }
 
+function getPlatformString(): string {
+  const navigatorWithUserAgentData = navigator as Navigator & { userAgentData?: { platform?: string } };
+  return navigatorWithUserAgentData.userAgentData?.platform || navigator.platform || navigator.userAgent;
+}
+
 export class TerminalView {
   readonly root: HTMLDivElement;
 
   private readonly terminal: Terminal;
   private readonly fitAddon: FitAddon;
+  private readonly isMacLikePlatform = isMacPlatform(getPlatformString());
+  private webglAddon: WebglAddon | null = null;
   private mounted = false;
 
   constructor(theme: PanelTheme = 'dark') {
@@ -79,12 +87,7 @@ export class TerminalView {
     this.fitAddon = new FitAddon();
     this.terminal.loadAddon(this.fitAddon);
 
-    try {
-      this.terminal.loadAddon(new WebglAddon());
-    } catch {
-      // Fall back to the default renderer when WebGL is unavailable.
-    }
-
+    this.terminal.attachCustomKeyEventHandler((event) => this.handleCustomKeyEvent(event));
     this.setTheme(theme);
   }
 
@@ -98,6 +101,7 @@ export class TerminalView {
       this.mounted = true;
     }
 
+    this.attachWebglAddon();
     this.fit();
   }
 
@@ -141,6 +145,66 @@ export class TerminalView {
   }
 
   dispose(): void {
+    this.webglAddon?.dispose();
+    this.webglAddon = null;
     this.terminal.dispose();
+  }
+
+  private attachWebglAddon(): void {
+    if (this.webglAddon) {
+      return;
+    }
+
+    try {
+      const addon = new WebglAddon();
+      addon.onContextLoss(() => {
+        addon.dispose();
+        if (this.webglAddon === addon) {
+          this.webglAddon = null;
+        }
+      });
+      this.terminal.loadAddon(addon);
+      this.webglAddon = addon;
+    } catch (error) {
+      console.warn('[ClaudeChrome] WebGL terminal renderer unavailable; using the default renderer instead.', error);
+    }
+  }
+
+  private handleCustomKeyEvent(event: KeyboardEvent): boolean {
+    if (event.type !== 'keydown') {
+      return true;
+    }
+
+    const action = resolveTerminalShortcut(event, this.isMacLikePlatform);
+    if (!action) {
+      return true;
+    }
+
+    event.preventDefault();
+    event.stopPropagation();
+
+    if (action.kind === 'paste') {
+      void this.pasteFromClipboard();
+      return false;
+    }
+
+    this.terminal.input(action.sequence);
+    return false;
+  }
+
+  private async pasteFromClipboard(): Promise<void> {
+    if (!navigator.clipboard?.readText) {
+      return;
+    }
+
+    try {
+      const text = await navigator.clipboard.readText();
+      if (!text) {
+        return;
+      }
+      this.terminal.paste(text);
+    } catch (error) {
+      console.warn('[ClaudeChrome] Failed to read clipboard for terminal paste', error);
+    }
   }
 }

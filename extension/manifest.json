@@ -10,7 +10,8 @@
     "cookies",
     "scripting",
     "tabs",
-    "activeTab"
+    "activeTab",
+    "clipboardRead"
   ],
   "host_permissions": ["<all_urls>"],
   "side_panel": {
