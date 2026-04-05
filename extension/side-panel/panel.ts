@@ -45,6 +45,7 @@ const MAX_RAIL_WIDTH = 320;
 const RAIL_AUTO_COLLAPSE_WIDTH = 56;
 const PANEL_AUTO_COLLAPSE_WIDTH = 72;
 const PANEL_AUTO_COLLAPSE_ARM_WIDTH = 144;
+const DEFAULT_CODEX_LAUNCH_ARGS = '-a never -s danger-full-access';
 
 const statusIndicator = document.getElementById('status-indicator')!;
 const statusText = document.getElementById('status-text')!;
@@ -78,7 +79,7 @@ let panelCloseInFlight = false;
 function emptyLaunchConfig(): AgentLaunchConfig {
   return {
     claude: '',
-    codex: '',
+    codex: DEFAULT_CODEX_LAUNCH_ARGS,
   };
 }
 
@@ -87,9 +88,22 @@ function agentLabel(agentType: AgentType): string {
     case 'codex':
       return 'Codex';
     case 'shell':
-      return 'Shell';
+      return '终端';
     default:
       return 'Claude';
+  }
+}
+
+function connectionStateLabel(state: 'connected' | 'disconnected' | 'connecting' | 'error'): string {
+  switch (state) {
+    case 'connected':
+      return '已连接';
+    case 'connecting':
+      return '连接中';
+    case 'error':
+      return '错误';
+    default:
+      return '未连接';
   }
 }
 
@@ -112,7 +126,15 @@ function getEffectiveLaunchArgs(pane: PaneLayout, agentType: AgentType = pane.ag
   }
 
   const fallback = panelState.launchDefaults[launchAgent].trim();
-  return fallback || undefined;
+  if (fallback) {
+    return fallback;
+  }
+
+  if (launchAgent === 'codex') {
+    return DEFAULT_CODEX_LAUNCH_ARGS;
+  }
+
+  return undefined;
 }
 
 function normalizeTheme(theme: unknown): PanelTheme {
@@ -121,8 +143,8 @@ function normalizeTheme(theme: unknown): PanelTheme {
 
 function updateThemeToggleButton(): void {
   const nextTheme = panelState.theme === 'light' ? 'dark' : 'light';
-  btnThemeToggle.textContent = nextTheme === 'light' ? 'Light' : 'Dark';
-  btnThemeToggle.title = `Switch to ${nextTheme} theme`;
+  btnThemeToggle.textContent = nextTheme === 'light' ? '浅色' : '深色';
+  btnThemeToggle.title = `切换到${nextTheme === 'light' ? '浅色' : '深色'}主题`;
   btnThemeToggle.setAttribute('aria-label', btnThemeToggle.title);
 }
 
@@ -154,7 +176,7 @@ function toggleTheme(): void {
 
 function setStatus(state: 'connected' | 'disconnected' | 'connecting' | 'error', message?: string): void {
   statusIndicator.className = state === 'error' ? 'disconnected' : state;
-  statusText.textContent = message || state.charAt(0).toUpperCase() + state.slice(1);
+  statusText.textContent = message || connectionStateLabel(state);
 }
 
 function normalizePort(raw: string): string | null {
@@ -186,13 +208,13 @@ function applyLayoutState(): void {
   document.body.classList.remove('panel-collapsed');
   document.body.classList.toggle('rail-collapsed', panelState.railCollapsed);
 
-  btnTogglePanel.textContent = 'Close Panel';
-  btnTogglePanel.title = 'Close the Chrome side panel for this window';
+  btnTogglePanel.textContent = '关闭侧边栏';
+  btnTogglePanel.title = '关闭当前窗口的侧边栏';
 
-  workspaceRailEdgeToggle.textContent = panelState.railCollapsed ? 'Tabs' : 'Hide';
+  workspaceRailEdgeToggle.textContent = panelState.railCollapsed ? '工作区' : '收起';
   workspaceRailEdgeToggle.title = panelState.railCollapsed
-    ? 'Expand the workspace sidebar'
-    : 'Collapse the workspace sidebar';
+    ? '展开工作区列表'
+    : '收起工作区列表';
   workspaceRailEdgeToggle.setAttribute('aria-expanded', String(!panelState.railCollapsed));
 }
 
@@ -317,18 +339,18 @@ function resetConnection(): void {
 function connect(): void {
   const wsUrl = getConfiguredWsUrl();
   if (!wsUrl) {
-    setStatus('error', 'Port must be 1-65535');
+    setStatus('error', '请输入 1 到 65535 之间的端口号');
     return;
   }
 
-  setStatus('connecting', `Connecting to ${wsUrl}...`);
+  setStatus('connecting', `正在连接到 ${wsUrl}...`);
   try {
     const socket = new WebSocket(wsUrl);
     ws = socket;
 
     socket.onopen = () => {
       if (ws !== socket) return;
-      setStatus('connected', `Connected: ${wsUrl}`);
+      setStatus('connected', `已连接到 ${wsUrl}`);
       sendToHost({ type: 'session_list_request' });
       ensurePaneSessions();
     };
@@ -354,13 +376,13 @@ function connect(): void {
     socket.onclose = () => {
       if (ws !== socket) return;
       ws = null;
-      setStatus('disconnected', 'Disconnected');
+      setStatus('disconnected', '未连接');
       render();
     };
 
     socket.onerror = () => {
       if (ws !== socket) return;
-      setStatus('error', `Cannot connect to ${wsUrl}`);
+      setStatus('error', `无法连接到 ${wsUrl}`);
     };
   } catch (error) {
     setStatus('error', error instanceof Error ? error.message : String(error));
@@ -420,8 +442,8 @@ function applySessionSnapshot(snapshots: SessionSnapshot[]): void {
   const unknownSnapshots = snapshots.filter((snapshot) => snapshot.status !== 'exited' && !knownSessionIds.has(snapshot.sessionId));
   if (unknownSnapshots.length > 0) {
     const workspace = createWorkspace(panelState.workspaces.length);
-    workspace.title = `Recovered ${panelState.workspaces.length + 1}`;
-    workspace.hint = 'Recovered from host';
+    workspace.title = `恢复工作区 ${panelState.workspaces.length + 1}`;
+    workspace.hint = '从主机恢复';
 
     unknownSnapshots.forEach((snapshot, index) => {
       const pane = createPane(workspace.workspaceId, snapshot.agentType, index);
@@ -449,22 +471,22 @@ function buildBindingLabel(pane: PaneLayout): string {
   const snapshot = sessionSnapshots.get(pane.sessionId);
   if (snapshot?.boundTab) {
     const tab = snapshot.boundTab;
-    const label = tab.title || tab.url || `Tab ${tab.tabId}`;
+    const label = tab.title || tab.url || `标签页 ${tab.tabId}`;
     return `${label} · #${tab.tabId}`;
   }
   if (pane.bindingTabId != null) {
-    return `Tab ${pane.bindingTabId}`;
+    return `标签页 ${pane.bindingTabId}`;
   }
-  return 'No bound tab';
+  return '尚未绑定标签页';
 }
 
 function buildStatusLabel(pane: PaneLayout): { text: string; className: string } {
   if (pendingSessionCreates.has(pane.sessionId)) {
-    return { text: 'Starting session...', className: 'starting' };
+    return { text: '正在启动...', className: 'starting' };
   }
   const snapshot = sessionSnapshots.get(pane.sessionId);
   if (!snapshot) {
-    return { text: isWsOpen() ? 'Pending session' : 'Waiting for host', className: 'disconnected' };
+    return { text: isWsOpen() ? '等待启动' : '等待连接', className: 'disconnected' };
   }
   return {
     text: snapshot.statusMessage || snapshot.status.replace(/_/g, ' '),
@@ -475,15 +497,15 @@ function buildStatusLabel(pane: PaneLayout): { text: string; className: string }
 function updateFocusedBindingChip(): void {
   const pane = activePaneId ? getPane(panelState, activePaneId) : undefined;
   if (!pane) {
-    focusedBinding.textContent = 'No focused pane';
+    focusedBinding.textContent = '未选中面板';
     return;
   }
   const snapshot = sessionSnapshots.get(pane.sessionId);
   if (snapshot?.boundTab) {
-    focusedBinding.textContent = `${agentLabel(snapshot.agentType)} -> ${snapshot.boundTab.title || snapshot.boundTab.url || `Tab ${snapshot.boundTab.tabId}`}`;
+    focusedBinding.textContent = `${agentLabel(snapshot.agentType)} → ${snapshot.boundTab.title || snapshot.boundTab.url || `标签页 ${snapshot.boundTab.tabId}`}`;
     return;
   }
-  focusedBinding.textContent = `${agentLabel(pane.agentType)} -> ${buildBindingLabel(pane)}`;
+  focusedBinding.textContent = `${agentLabel(pane.agentType)} → ${buildBindingLabel(pane)}`;
 }
 
 function focusedTerminalSessionId(): string | null {
@@ -575,7 +597,7 @@ workspaceColorInput.addEventListener('change', () => {
 
 function restartPaneSession(pane: PaneLayout, agentType: AgentType = pane.agentType): void {
   const view = getOrCreateTerminalView(pane.sessionId);
-  view.writeln(`\x1b[33m[ClaudeChrome] Restarting ${agentLabel(agentType)}\x1b[0m`);
+  view.writeln(`\x1b[33m[ClaudeChrome] 正在重启 ${agentLabel(agentType)}\x1b[0m`);
   sendToHost({
     type: 'session_restart',
     sessionId: pane.sessionId,
@@ -585,11 +607,11 @@ function restartPaneSession(pane: PaneLayout, agentType: AgentType = pane.agentT
 }
 
 function editLaunchDefaults(): void {
-  const nextClaude = window.prompt('Default startup arguments for Claude panes.', panelState.launchDefaults.claude);
+  const nextClaude = window.prompt('请输入 Claude 面板的默认启动选项。', panelState.launchDefaults.claude);
   if (nextClaude === null) {
     return;
   }
-  const nextCodex = window.prompt('Default startup arguments for Codex panes.', panelState.launchDefaults.codex);
+  const nextCodex = window.prompt('请输入 Codex 面板的默认启动选项。', panelState.launchDefaults.codex);
   if (nextCodex === null) {
     return;
   }
@@ -603,13 +625,13 @@ function editLaunchDefaults(): void {
 function editPaneLaunchArgs(pane: PaneLayout): void {
   const launchAgent = launchConfigAgentType(pane.agentType);
   if (!launchAgent) {
-    setStatus('error', 'Startup arguments are only supported for Claude and Codex panes.');
+    setStatus('error', '只有 Claude 和 Codex 面板支持启动选项。');
     return;
   }
 
-  const defaultArgs = panelState.launchDefaults[launchAgent].trim() || '(none)';
+  const defaultArgs = panelState.launchDefaults[launchAgent].trim() || '未设置';
   const nextValue = window.prompt(
-    `${agentLabel(pane.agentType)} startup arguments for this pane. Leave blank to use the global default.\nGlobal default: ${defaultArgs}`,
+    `${agentLabel(pane.agentType)} 面板启动选项\n留空则使用默认设置。\n当前默认：${defaultArgs}`,
     pane.launchOverrides[launchAgent],
   );
   if (nextValue === null) {
@@ -620,7 +642,7 @@ function editPaneLaunchArgs(pane: PaneLayout): void {
   void saveState();
   render();
 
-  if (sessionSnapshots.has(pane.sessionId) && window.confirm(`Restart this ${agentLabel(pane.agentType)} pane now to apply the updated startup arguments?`)) {
+  if (sessionSnapshots.has(pane.sessionId) && window.confirm(`要立即重启该${agentLabel(pane.agentType)}面板以应用新设置吗？`)) {
     restartPaneSession(pane);
   }
 }
@@ -631,14 +653,14 @@ function renameActiveWorkspace(): void {
     return;
   }
 
-  const nextTitle = window.prompt('Workspace name', workspace.title);
+  const nextTitle = window.prompt('工作区名称', workspace.title);
   if (nextTitle === null) {
     return;
   }
 
   const trimmed = nextTitle.trim();
   if (!trimmed) {
-    setStatus('error', 'Workspace name cannot be empty.');
+    setStatus('error', '工作区名称不能为空。');
     return;
   }
 
@@ -687,7 +709,7 @@ async function ensurePaneSession(pane: PaneLayout): Promise<void> {
       : await requestCurrentActiveTab();
 
     if (!bindingTab?.tabId) {
-      throw new Error('No active browser tab available for binding.');
+      throw new Error('当前没有可绑定的活动标签页。');
     }
 
     pane.bindingTabId = bindingTab.tabId;
@@ -759,7 +781,7 @@ async function closeBrowserSidePanel(): Promise<void> {
   try {
     const response = await runtimeMessage<CollapseSidePanelResultMessage>({ type: 'collapse_side_panel' });
     if (!response.ok) {
-      throw new Error(response.error || 'Failed to close the side panel.');
+      throw new Error(response.error || '关闭侧边栏失败。');
     }
   } catch (error) {
     setStatus('error', error instanceof Error ? error.message : String(error));
@@ -911,7 +933,7 @@ function renderWorkspaceRail(): void {
 
   const title = document.createElement('span');
   title.className = 'workspace-rail-title';
-  title.textContent = 'Workspaces';
+  title.textContent = '工作区列表';
 
   const actions = document.createElement('div');
   actions.className = 'workspace-rail-header-actions';
@@ -919,8 +941,8 @@ function renderWorkspaceRail(): void {
   const addButton = document.createElement('button');
   addButton.className = 'workspace-rail-button';
   addButton.type = 'button';
-  addButton.textContent = '+ Workspace';
-  addButton.title = 'Create a new workspace';
+  addButton.textContent = '+ 工作区';
+  addButton.title = '新建工作区';
   addButton.addEventListener('click', () => {
     addWorkspace();
   });
@@ -928,8 +950,8 @@ function renderWorkspaceRail(): void {
   const renameButton = document.createElement('button');
   renameButton.className = 'workspace-rail-button';
   renameButton.type = 'button';
-  renameButton.textContent = 'Rename';
-  renameButton.title = 'Rename the active workspace';
+  renameButton.textContent = '重命名';
+  renameButton.title = '重命名当前工作区';
   renameButton.disabled = !activeWorkspace;
   renameButton.addEventListener('click', () => {
     renameActiveWorkspace();
@@ -938,8 +960,8 @@ function renderWorkspaceRail(): void {
   const colorButton = document.createElement('button');
   colorButton.className = 'workspace-rail-button workspace-rail-color';
   colorButton.type = 'button';
-  colorButton.textContent = 'Color';
-  colorButton.title = 'Change the active workspace accent color';
+  colorButton.textContent = '颜色';
+  colorButton.title = '更改当前工作区主题色';
   colorButton.disabled = !activeWorkspace;
   colorButton.style.setProperty('--workspace-accent', activeWorkspace?.accentColor || 'transparent');
   colorButton.addEventListener('click', () => {
@@ -949,8 +971,8 @@ function renderWorkspaceRail(): void {
   const collapseButton = document.createElement('button');
   collapseButton.className = 'workspace-rail-button workspace-rail-collapse';
   collapseButton.type = 'button';
-  collapseButton.textContent = 'Hide';
-  collapseButton.title = 'Collapse the workspace sidebar';
+  collapseButton.textContent = '收起';
+  collapseButton.title = '收起工作区列表';
   collapseButton.addEventListener('click', () => {
     setRailCollapsed(true);
   });
@@ -971,7 +993,7 @@ function renderWorkspaceRail(): void {
     button.innerHTML = `
       <span class="workspace-tab-title">${workspace.title}</span>
       <span class="workspace-tab-hint">${workspace.hint}</span>
-      <span class="workspace-tab-count">${workspace.paneIds.length} pane${workspace.paneIds.length === 1 ? '' : 's'}</span>
+      <span class="workspace-tab-count">${workspace.paneIds.length} 个面板</span>
     `;
     button.addEventListener('click', () => {
       panelState.activeWorkspaceId = workspace.workspaceId;
@@ -989,7 +1011,7 @@ function renderWorkspaceStage(): void {
   if (!workspace) {
     const empty = document.createElement('div');
     empty.className = 'empty-stage';
-    empty.textContent = 'No workspace available';
+    empty.textContent = '没有可用工作区';
     workspaceStage.appendChild(empty);
     return;
   }
@@ -1026,7 +1048,7 @@ function renderWorkspaceStage(): void {
     const select = document.createElement('select');
     select.className = 'pane-agent-select';
     select.innerHTML = `
-      <option value="shell">Shell</option>
+      <option value="shell">终端</option>
       <option value="claude">Claude</option>
       <option value="codex">Codex</option>
     `;
@@ -1034,7 +1056,7 @@ function renderWorkspaceStage(): void {
     select.addEventListener('change', () => {
       const nextAgent = select.value as AgentType;
       if (nextAgent === pane.agentType) return;
-      if (!window.confirm(`Restart this pane as ${agentLabel(nextAgent)}?`)) {
+      if (!window.confirm(`要切换为 ${agentLabel(nextAgent)} 并立即重启吗？`)) {
         select.value = pane.agentType;
         return;
       }
@@ -1066,8 +1088,8 @@ function renderWorkspaceStage(): void {
     status.textContent = statusLabel.text;
 
     const btnGo = document.createElement('button');
-    btnGo.textContent = 'Go';
-    btnGo.title = 'Activate the bound browser tab';
+    btnGo.textContent = '切换';
+    btnGo.title = '切换到已绑定标签页';
     btnGo.disabled = pane.bindingTabId == null;
     btnGo.addEventListener('click', async (event) => {
       event.stopPropagation();
@@ -1081,18 +1103,18 @@ function renderWorkspaceStage(): void {
 
     const btnBind = document.createElement('button');
     btnBind.className = 'focus-only';
-    btnBind.textContent = 'Rebind';
-    btnBind.title = 'Bind this pane to the currently active browser tab';
+    btnBind.textContent = '绑定当前页';
+    btnBind.title = '将此面板绑定到当前活动标签页';
     btnBind.addEventListener('click', async (event) => {
       event.stopPropagation();
       try {
         const target = await requestCurrentActiveTab();
         if (!target) {
-          throw new Error('No active browser tab available.');
+          throw new Error('当前没有活动标签页。');
         }
         const currentLabel = buildBindingLabel(pane);
-        const nextLabel = target.title || target.url || `Tab ${target.tabId}`;
-        if (!window.confirm(`Rebind this terminal from ${currentLabel} to ${nextLabel}?`)) {
+        const nextLabel = target.title || target.url || `标签页 ${target.tabId}`;
+        if (!window.confirm(`要将此面板从“${currentLabel}”改绑到“${nextLabel}”吗？`)) {
           return;
         }
         pane.bindingTabId = target.tabId;
@@ -1102,7 +1124,7 @@ function renderWorkspaceStage(): void {
           tabId: target.tabId,
         };
         sendToHost(bindMessage);
-        getOrCreateTerminalView(pane.sessionId).writeln(`\x1b[36m[ClaudeChrome] Bound to ${nextLabel}\x1b[0m`);
+        getOrCreateTerminalView(pane.sessionId).writeln(`\x1b[36m[ClaudeChrome] 已绑定到 ${nextLabel}\x1b[0m`);
         await saveState();
         render();
       } catch (error) {
@@ -1114,10 +1136,10 @@ function renderWorkspaceStage(): void {
     let btnArgs: HTMLButtonElement | null = null;
     if (launchAgent) {
       btnArgs = document.createElement('button');
-      btnArgs.textContent = pane.launchOverrides[launchAgent].trim() ? 'Args*' : 'Args';
+      btnArgs.textContent = pane.launchOverrides[launchAgent].trim() ? '启动项*' : '启动项';
       btnArgs.title = pane.launchOverrides[launchAgent].trim()
-        ? `This pane overrides the global ${agentLabel(pane.agentType)} startup arguments.`
-        : `This pane is using the global ${agentLabel(pane.agentType)} startup arguments.`;
+        ? `此面板使用了单独的 ${agentLabel(pane.agentType)} 启动设置。`
+        : `此面板正在使用默认的 ${agentLabel(pane.agentType)} 启动设置。`;
       btnArgs.addEventListener('click', (event) => {
         event.stopPropagation();
         editPaneLaunchArgs(pane);
@@ -1125,14 +1147,14 @@ function renderWorkspaceStage(): void {
     }
 
     const btnRestart = document.createElement('button');
-    btnRestart.textContent = 'Restart';
+    btnRestart.textContent = '重启';
     btnRestart.addEventListener('click', (event) => {
       event.stopPropagation();
       restartPaneSession(pane);
     });
 
     const btnClose = document.createElement('button');
-    btnClose.textContent = 'Close';
+    btnClose.textContent = '关闭';
     btnClose.addEventListener('click', (event) => {
       event.stopPropagation();
       closePane(pane.paneId);
@@ -1223,7 +1245,7 @@ function closePane(paneId: string): void {
 function addPane(agentType: AgentType): void {
   const workspace = ensureActiveWorkspace();
   if (workspace.paneIds.length >= MAX_PANES_PER_WORKSPACE) {
-    setStatus('error', `Workspace pane limit is ${MAX_PANES_PER_WORKSPACE}.`);
+    setStatus('error', `单个工作区最多只能有 ${MAX_PANES_PER_WORKSPACE} 个面板。`);
     return;
   }
 
@@ -1258,7 +1280,7 @@ btnReconnect.addEventListener('click', () => {
 btnApplyPort.addEventListener('click', async () => {
   const port = normalizePort(portInput.value);
   if (!port) {
-    setStatus('error', 'Port must be an integer between 1 and 65535.');
+    setStatus('error', '请输入 1 到 65535 之间的整数端口号。');
     return;
   }
 
