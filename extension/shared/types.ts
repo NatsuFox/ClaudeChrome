@@ -7,9 +7,16 @@ export interface NMMessage {
 export type AgentType = 'claude' | 'codex' | 'shell';
 export type LaunchConfigAgentType = 'claude' | 'codex';
 
+export interface AgentStartupOptions {
+  launchArgs: string;
+  workingDirectory: string;
+  systemPromptMode: 'default' | 'custom' | 'none';
+  customSystemPrompt: string;
+}
+
 export interface AgentLaunchConfig {
-  claude: string;
-  codex: string;
+  claude: AgentStartupOptions;
+  codex: AgentStartupOptions;
 }
 
 export type SessionRuntimeStatus =

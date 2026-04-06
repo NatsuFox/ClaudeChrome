@@ -37,10 +37,22 @@ const ACCENT_COLORS = ['#7aa2f7', '#9ece6a', '#e0af68', '#f7768e', '#7dcfff', '#
 const DEFAULT_RAIL_WIDTH = 152;
 const DEFAULT_CODEX_LAUNCH_ARGS = '-a never -s workspace-write';
 
+function createEmptyStartupOptions(): import('../shared/types').AgentStartupOptions {
+  return {
+    launchArgs: '',
+    workingDirectory: '',
+    systemPromptMode: 'default',
+    customSystemPrompt: '',
+  };
+}
+
 function createEmptyLaunchConfig(): AgentLaunchConfig {
   return {
-    claude: '',
-    codex: DEFAULT_CODEX_LAUNCH_ARGS,
+    claude: createEmptyStartupOptions(),
+    codex: {
+      ...createEmptyStartupOptions(),
+      launchArgs: DEFAULT_CODEX_LAUNCH_ARGS,
+    },
   };
 }
 
@@ -204,15 +216,9 @@ export function ensureValidState(state: PersistedPanelState, fallbackPort: strin
     panes: state.panes.map((pane) => ({
       ...pane,
       title: localizeLegacyPaneTitle(pane.title),
-      launchOverrides: {
-        ...createEmptyLaunchConfig(),
-        ...(pane.launchOverrides || {}),
-      },
+      launchOverrides: migrateLaunchConfig(pane.launchOverrides),
     })),
-    launchDefaults: {
-      ...createEmptyLaunchConfig(),
-      ...(state.launchDefaults || {}),
-    },
+    launchDefaults: migrateLaunchConfig(state.launchDefaults),
     theme: state.theme === 'light' ? 'light' : 'dark',
     wsPort: state.wsPort || fallbackPort,
     railWidth: typeof state.railWidth === 'number' ? state.railWidth : DEFAULT_RAIL_WIDTH,
@@ -238,4 +244,27 @@ export function ensureValidState(state: PersistedPanelState, fallbackPort: strin
 
   nextState.workspaces.forEach((workspace) => normalizeWorkspacePaneRatios(nextState, workspace.workspaceId));
   return nextState;
+}
+
+function migrateLaunchConfig(config: any): AgentLaunchConfig {
+  const base = createEmptyLaunchConfig();
+
+  if (!config) {
+    return base;
+  }
+
+  // Handle legacy string format
+  if (typeof config.claude === 'string') {
+    base.claude.launchArgs = config.claude;
+  } else if (config.claude && typeof config.claude === 'object') {
+    base.claude = { ...base.claude, ...config.claude };
+  }
+
+  if (typeof config.codex === 'string') {
+    base.codex.launchArgs = config.codex;
+  } else if (config.codex && typeof config.codex === 'object') {
+    base.codex = { ...base.codex, ...config.codex };
+  }
+
+  return base;
 }

@@ -33,6 +33,7 @@ import {
 } from './state';
 import { encodeUtf8ToBase64 } from '../shared/base64';
 import { TerminalView } from './terminal-view';
+import { ConfigPanel } from './config-panel';
 
 const DEFAULT_WS_HOST = '127.0.0.1';
 const DEFAULT_WS_PORT = '9999';
@@ -68,6 +69,7 @@ const chunkAssembler = new ChunkAssembler();
 const terminalViews = new Map<string, TerminalView>();
 const sessionSnapshots = new Map<string, SessionSnapshot>();
 const pendingSessionCreates = new Set<string>();
+const configPanel = new ConfigPanel();
 
 let panelState = createDefaultState(DEFAULT_WS_PORT);
 let activePaneId: string | null = null;
@@ -75,13 +77,6 @@ let ws: WebSocket | null = null;
 let lastViewportWidth = window.innerWidth;
 let panelAutoCollapseArmed = window.innerWidth >= PANEL_AUTO_COLLAPSE_ARM_WIDTH;
 let panelCloseInFlight = false;
-
-function emptyLaunchConfig(): AgentLaunchConfig {
-  return {
-    claude: '',
-    codex: DEFAULT_CODEX_LAUNCH_ARGS,
-  };
-}
 
 function agentLabel(agentType: AgentType): string {
   switch (agentType) {
@@ -120,12 +115,12 @@ function getEffectiveLaunchArgs(pane: PaneLayout, agentType: AgentType = pane.ag
     return undefined;
   }
 
-  const override = pane.launchOverrides[launchAgent].trim();
+  const override = pane.launchOverrides[launchAgent].launchArgs.trim();
   if (override) {
     return override;
   }
 
-  const fallback = panelState.launchDefaults[launchAgent].trim();
+  const fallback = panelState.launchDefaults[launchAgent].launchArgs.trim();
   if (fallback) {
     return fallback;
   }
@@ -270,16 +265,6 @@ async function loadState(): Promise<void> {
 
   const rawState = stored[PANEL_STATE_STORAGE_KEY] as PersistedPanelState | null;
   panelState = rawState ? ensureValidState(rawState, portInput.value) : createDefaultState(portInput.value);
-  panelState.launchDefaults = {
-    ...emptyLaunchConfig(),
-    ...panelState.launchDefaults,
-  };
-  panelState.panes.forEach((pane) => {
-    pane.launchOverrides = {
-      ...emptyLaunchConfig(),
-      ...pane.launchOverrides,
-    };
-  });
   panelState.theme = normalizeTheme(rawState?.theme ?? legacyTheme ?? panelState.theme);
   panelState.wsPort = portInput.value;
   panelState.railWidth = clampRailWidth(panelState.railWidth);
@@ -607,19 +592,7 @@ function restartPaneSession(pane: PaneLayout, agentType: AgentType = pane.agentT
 }
 
 function editLaunchDefaults(): void {
-  const nextClaude = window.prompt('请输入 Claude 面板的默认启动选项。', panelState.launchDefaults.claude);
-  if (nextClaude === null) {
-    return;
-  }
-  const nextCodex = window.prompt('请输入 Codex 面板的默认启动选项。', panelState.launchDefaults.codex);
-  if (nextCodex === null) {
-    return;
-  }
-
-  panelState.launchDefaults.claude = nextClaude.trim();
-  panelState.launchDefaults.codex = nextCodex.trim();
-  void saveState();
-  render();
+  configPanel.show(panelState.launchDefaults);
 }
 
 function editPaneLaunchArgs(pane: PaneLayout): void {
@@ -629,16 +602,16 @@ function editPaneLaunchArgs(pane: PaneLayout): void {
     return;
   }
 
-  const defaultArgs = panelState.launchDefaults[launchAgent].trim() || '未设置';
+  const defaultArgs = panelState.launchDefaults[launchAgent].launchArgs.trim() || '未设置';
   const nextValue = window.prompt(
     `${agentLabel(pane.agentType)} 面板启动选项\n留空则使用默认设置。\n当前默认：${defaultArgs}`,
-    pane.launchOverrides[launchAgent],
+    pane.launchOverrides[launchAgent].launchArgs,
   );
   if (nextValue === null) {
     return;
   }
 
-  pane.launchOverrides[launchAgent] = nextValue.trim();
+  pane.launchOverrides[launchAgent].launchArgs = nextValue.trim();
   void saveState();
   render();
 
@@ -1136,8 +1109,8 @@ function renderWorkspaceStage(): void {
     let btnArgs: HTMLButtonElement | null = null;
     if (launchAgent) {
       btnArgs = document.createElement('button');
-      btnArgs.textContent = pane.launchOverrides[launchAgent].trim() ? '启动项*' : '启动项';
-      btnArgs.title = pane.launchOverrides[launchAgent].trim()
+      btnArgs.textContent = pane.launchOverrides[launchAgent].launchArgs.trim() ? '启动项*' : '启动项';
+      btnArgs.title = pane.launchOverrides[launchAgent].launchArgs.trim()
         ? `此面板使用了单独的 ${agentLabel(pane.agentType)} 启动设置。`
         : `此面板正在使用默认的 ${agentLabel(pane.agentType)} 启动设置。`;
       btnArgs.addEventListener('click', (event) => {
@@ -1300,6 +1273,12 @@ portInput.addEventListener('keydown', (event) => {
 
 btnLaunchDefaults.addEventListener('click', () => {
   editLaunchDefaults();
+});
+
+configPanel.onSave((config) => {
+  panelState.launchDefaults = config;
+  void saveState();
+  render();
 });
 
 btnAddShellPane.addEventListener('click', () => {

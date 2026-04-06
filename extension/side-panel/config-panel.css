@@ -1,0 +1,246 @@
+.config-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.6);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 10000;
+  backdrop-filter: blur(4px);
+}
+
+.config-panel {
+  background: var(--bg-primary);
+  border-radius: 8px;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
+  width: 90%;
+  max-width: 720px;
+  max-height: 85vh;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.config-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 20px;
+  border-bottom: 1px solid var(--border-color);
+}
+
+.config-header h2 {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.config-close-btn {
+  background: none;
+  border: none;
+  font-size: 28px;
+  line-height: 1;
+  color: var(--text-secondary);
+  cursor: pointer;
+  padding: 0;
+  width: 32px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 4px;
+  transition: background 0.2s, color 0.2s;
+}
+
+.config-close-btn:hover {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+}
+
+.config-content {
+  flex: 1;
+  overflow-y: auto;
+  padding: 20px;
+}
+
+.config-tabs {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 20px;
+  border-bottom: 1px solid var(--border-color);
+}
+
+.config-tab {
+  background: none;
+  border: none;
+  padding: 10px 16px;
+  font-size: 14px;
+  color: var(--text-secondary);
+  cursor: pointer;
+  border-bottom: 2px solid transparent;
+  transition: color 0.2s, border-color 0.2s;
+}
+
+.config-tab:hover {
+  color: var(--text-primary);
+}
+
+.config-tab.active {
+  color: var(--accent-color);
+  border-bottom-color: var(--accent-color);
+}
+
+.config-tab-content {
+  animation: fadeIn 0.2s ease-in;
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.config-section {
+  margin-bottom: 28px;
+}
+
+.config-section:last-child {
+  margin-bottom: 0;
+}
+
+.config-section h3 {
+  margin: 0 0 16px 0;
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.config-field {
+  margin-bottom: 16px;
+}
+
+.config-field:last-child {
+  margin-bottom: 0;
+}
+
+.config-field label {
+  display: block;
+  margin-bottom: 6px;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text-primary);
+}
+
+.config-field input[type="text"],
+.config-field select,
+.config-field textarea {
+  width: 100%;
+  padding: 8px 12px;
+  font-size: 13px;
+  font-family: inherit;
+  color: var(--text-primary);
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+  border-radius: 4px;
+  transition: border-color 0.2s, background 0.2s;
+}
+
+.config-field input[type="text"]:focus,
+.config-field select:focus,
+.config-field textarea:focus {
+  outline: none;
+  border-color: var(--accent-color);
+  background: var(--bg-primary);
+}
+
+.config-field textarea {
+  resize: vertical;
+  min-height: 80px;
+  font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
+}
+
+.config-hint {
+  display: block;
+  margin-top: 4px;
+  font-size: 12px;
+  color: var(--text-tertiary);
+}
+
+.config-placeholder {
+  color: var(--text-secondary);
+  font-size: 14px;
+  font-style: italic;
+}
+
+.config-footer {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 12px;
+  padding: 16px 20px;
+  border-top: 1px solid var(--border-color);
+}
+
+.config-btn {
+  padding: 8px 16px;
+  font-size: 14px;
+  font-weight: 500;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: background 0.2s, transform 0.1s;
+}
+
+.config-btn:active {
+  transform: scale(0.98);
+}
+
+.config-btn-secondary {
+  background: var(--bg-secondary);
+  color: var(--text-primary);
+}
+
+.config-btn-secondary:hover {
+  background: var(--bg-hover);
+}
+
+.config-btn-primary {
+  background: var(--accent-color);
+  color: white;
+}
+
+.config-btn-primary:hover {
+  opacity: 0.9;
+}
+
+/* Theme-specific variables */
+:root.theme-dark {
+  --bg-primary: #1a1b26;
+  --bg-secondary: #24283b;
+  --bg-hover: #2f3549;
+  --text-primary: #c0caf5;
+  --text-secondary: #9aa5ce;
+  --text-tertiary: #565f89;
+  --border-color: #414868;
+  --accent-color: #7aa2f7;
+}
+
+:root.theme-light {
+  --bg-primary: #ffffff;
+  --bg-secondary: #f5f5f5;
+  --bg-hover: #e8e8e8;
+  --text-primary: #24292f;
+  --text-secondary: #57606a;
+  --text-tertiary: #8c959f;
+  --border-color: #d0d7de;
+  --accent-color: #0969da;
+}
