@@ -9,6 +9,7 @@ export async function dispatchCommand(
 ): Promise<unknown> {
   switch (command) {
     case 'list_tabs':         return cmdListTabs(tabId, params);
+    case 'activate_tab':      return cmdActivateTab(tabId, params);
     case 'screenshot':        return cmdScreenshot(tabId, params);
     case 'navigate':          return cmdNavigate(tabId, params);
     case 'reload':            return cmdReload(tabId, params);
@@ -79,6 +80,14 @@ async function cmdListTabs(
     count: summaries.length,
     tabs: summaries,
   };
+}
+
+async function cmdActivateTab(
+  tabId: number,
+  _params: Record<string, unknown>
+): Promise<{ tab: ReturnType<typeof summarizeTabForList> }> {
+  const activated = await chrome.tabs.update(tabId, { active: true });
+  return { tab: summarizeTabForList(activated) };
 }
 
 // --- Screenshot ---

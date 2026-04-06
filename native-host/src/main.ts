@@ -298,15 +298,19 @@ function startIpcServer(_socketPath: string): void {
         const { kind, sessionId, tool, command, params, timeoutMs } = parsed;
 
         if (kind === 'command') {
-          const tabId = sessionManager.getBindingTabId(sessionId);
-          if (tabId == null) {
-            reply({ error: `No session or tab binding for session: ${sessionId}` });
+          const target = resolveTargetTabContext(getSessionContext(sessionId), params);
+          if (hasToolError(target)) {
+            reply({ error: errorMessage(target) });
             return;
           }
-          appendConnectionLog('ipc_command', { ...meta, sessionId, command });
-          dispatchBrowserCommand(tabId, command as string, (params ?? {}) as Record<string, unknown>, timeoutMs as number | undefined)
-            .then((result) => reply({ ok: true, result }))
+          appendConnectionLog('ipc_command', { ...meta, sessionId, command, tabId: target.resolvedTabId });
+          dispatchBrowserCommand(target.resolvedTabId, command as string, target.params, timeoutMs as number | undefined)
+            .then((result) => reply({ ok: true, result: withResolvedTabMetadata(result, target) }))
             .catch((err) => reply({ error: err instanceof Error ? err.message : String(err) }));
+        } else if (kind === 'host_command') {
+          const result = handleHostCommand(sessionId, command, params);
+          appendConnectionLog('ipc_host_command', { ...meta, sessionId, command });
+          reply(result);
         } else {
           const result = handleStoreQuery(sessionId, tool, params);
           appendConnectionLog('ipc_query', { ...meta, sessionId, tool });
@@ -350,6 +354,8 @@ const IMPLEMENTED_SESSION_TOOLS = [
   'browser__capture_stats',
   'browser__explain_unavailable',
   'browser__self_check',
+  'browser__activate_tab',
+  'browser__bind_tab',
   'browser__screenshot',
   'browser__navigate',
   'browser__reload',
@@ -376,14 +382,74 @@ function makeError(code: string, message: string, details: Record<string, unknow
   };
 }
 
-function getSessionContext(sessionId: string | undefined) {
+type ToolError = ReturnType<typeof makeError>;
+
+type SessionContextValue = {
+  sessionId: string;
+  snapshot: NonNullable<ReturnType<SessionManager['getSnapshot']>>;
+  tabId: number;
+  tab: ReturnType<ContextStore['getTab']>;
+  pageInfo: StoredPageInfo | null;
+  stats: ReturnType<ContextStore['getCaptureStats']>;
+};
+
+type ResolvedTargetTabContext = {
+  sessionId: string;
+  snapshot: NonNullable<ReturnType<SessionManager['getSnapshot']>>;
+  boundTabId: number;
+  boundTab: ReturnType<ContextStore['getTab']>;
+  resolvedTabId: number;
+  requestedTabId: number | null;
+  usedBoundTab: boolean;
+  params: Record<string, unknown>;
+  tab: ReturnType<ContextStore['getTab']>;
+  pageInfo: StoredPageInfo | null;
+  stats: ReturnType<ContextStore['getCaptureStats']>;
+};
+
+function hasToolError(value: unknown): value is ToolError {
+  return Boolean(value && typeof value === 'object' && 'ok' in value && (value as { ok?: boolean }).ok === false && 'error' in value);
+}
+
+function errorMessage(result: ToolError): string {
+  return String(result.error.message || 'Unknown error');
+}
+
+function readExplicitTabId(rawParams: unknown): { provided: boolean; value: number | null } {
+  if (!rawParams || typeof rawParams !== 'object') {
+    return { provided: false, value: null };
+  }
+
+  if (!Object.prototype.hasOwnProperty.call(rawParams, 'tab_id')) {
+    return { provided: false, value: null };
+  }
+
+  const numeric = Number((rawParams as Record<string, unknown>).tab_id);
+  if (!Number.isInteger(numeric) || numeric <= 0) {
+    return { provided: true, value: null };
+  }
+
+  return { provided: true, value: numeric };
+}
+
+function stripTabTarget(rawParams: unknown): Record<string, unknown> {
+  if (!rawParams || typeof rawParams !== 'object') {
+    return {};
+  }
+
+  const params = { ...(rawParams as Record<string, unknown>) };
+  delete params.tab_id;
+  return params;
+}
+
+function getSessionContext(sessionId: string | undefined): SessionContextValue | ToolError {
   if (!sessionId) {
-    return { error: makeError('missing_session_id', 'Missing sessionId') };
+    return makeError('missing_session_id', 'Missing sessionId');
   }
 
   const snapshot = sessionManager.getSnapshot(sessionId);
   if (!snapshot) {
-    return { error: makeError('unknown_session', `Unknown session: ${sessionId}`, { sessionId }) };
+    return makeError('unknown_session', `Unknown session: ${sessionId}`, { sessionId });
   }
 
   const tabId = snapshot.binding.tabId;
@@ -398,6 +464,53 @@ function getSessionContext(sessionId: string | undefined) {
     tab,
     pageInfo,
     stats,
+  };
+}
+
+function resolveTargetTabContext(context: SessionContextValue | ToolError, rawParams: unknown): ResolvedTargetTabContext | ToolError {
+  if (hasToolError(context)) {
+    return context;
+  }
+
+  const explicitTab = readExplicitTabId(rawParams);
+  if (explicitTab.provided && explicitTab.value == null) {
+    return makeError('invalid_tab_id', 'tab_id must be a positive integer.', {
+      sessionId: context.sessionId,
+      requestedTabId: (rawParams as Record<string, unknown>).tab_id,
+    });
+  }
+
+  const resolvedTabId = explicitTab.value ?? context.tabId;
+  return {
+    sessionId: context.sessionId,
+    snapshot: context.snapshot,
+    boundTabId: context.tabId,
+    boundTab: context.tab,
+    resolvedTabId,
+    requestedTabId: explicitTab.value,
+    usedBoundTab: explicitTab.value == null,
+    params: stripTabTarget(rawParams),
+    tab: contextStore.getTab(resolvedTabId),
+    pageInfo: contextStore.getPageInfo(resolvedTabId),
+    stats: contextStore.getCaptureStats(resolvedTabId),
+  };
+}
+
+function withResolvedTabMetadata(result: unknown, target: Pick<ResolvedTargetTabContext, 'resolvedTabId' | 'usedBoundTab' | 'boundTabId'>) {
+  if (result && typeof result === 'object' && !Array.isArray(result)) {
+    return {
+      ...(result as Record<string, unknown>),
+      boundTabId: target.boundTabId,
+      resolvedTabId: target.resolvedTabId,
+      usedBoundTab: target.usedBoundTab,
+    };
+  }
+
+  return {
+    result,
+    boundTabId: target.boundTabId,
+    resolvedTabId: target.resolvedTabId,
+    usedBoundTab: target.usedBoundTab,
   };
 }
 
@@ -435,18 +548,30 @@ function summarizePageInfo(pageInfo: StoredPageInfo | null) {
   };
 }
 
-function makeMissingPageInfoError(sessionId: string, tabId: number) {
-  return makeError('not_captured_yet', 'No page info has been captured for the bound tab yet.', {
-    sessionId,
-    boundTabId: tabId,
-  });
+function makeMissingPageInfoError(sessionId: string, boundTabId: number, resolvedTabId: number, usedBoundTab: boolean) {
+  return makeError(
+    'not_captured_yet',
+    usedBoundTab ? 'No page info has been captured for the bound tab yet.' : 'No page info has been captured for the requested tab yet.',
+    {
+      sessionId,
+      boundTabId,
+      resolvedTabId,
+      usedBoundTab,
+    }
+  );
 }
 
 function getCapabilities(context: ReturnType<typeof getSessionContext>) {
-  const hasContext = !('error' in context) && context.snapshot.status !== 'tab_unavailable';
+  const hasContext = !hasToolError(context) && context.snapshot.status !== 'tab_unavailable';
   return {
     mode: 'default',
     implementedTools: [...IMPLEMENTED_SESSION_TOOLS],
+    targeting: {
+      defaultTarget: 'bound_tab',
+      overrideParam: 'tab_id',
+      overrideSupportedFamilies: ['page', 'network', 'console', 'action'],
+      sessionScopedFamilies: ['introspection'],
+    },
     families: {
       page: {
         available: true,
@@ -462,7 +587,7 @@ function getCapabilities(context: ReturnType<typeof getSessionContext>) {
       },
       tabs: {
         available: true,
-        tools: ['browser__list_tabs'],
+        tools: ['browser__list_tabs', 'browser__activate_tab', 'browser__bind_tab'],
       },
       introspection: {
         available: true,
@@ -490,9 +615,44 @@ function getCapabilities(context: ReturnType<typeof getSessionContext>) {
   };
 }
 
+function handleHostCommand(sessionId: string | undefined, command: string, params: any): any {
+  const context = getSessionContext(sessionId);
+  if (hasToolError(context)) {
+    return context;
+  }
+
+  switch (command) {
+    case 'bind_tab': {
+      const explicitTab = readExplicitTabId(params);
+      if (!explicitTab.provided || explicitTab.value == null) {
+        return makeError('invalid_tab_id', 'bind_tab requires a positive integer tab_id.', {
+          sessionId: context.sessionId,
+          requestedTabId: params?.tab_id,
+        });
+      }
+
+      const previousTabId = context.tabId;
+      sessionManager.bindSessionToTab(context.sessionId, explicitTab.value);
+      const snapshot = sessionManager.getSnapshot(context.sessionId);
+
+      return {
+        ok: true,
+        sessionId: context.sessionId,
+        previousBinding: {
+          tabId: previousTabId,
+        },
+        binding: snapshot?.binding ?? { kind: 'tab', tabId: explicitTab.value },
+        boundTab: contextStore.getTab(explicitTab.value),
+      };
+    }
+    default:
+      return makeError('unknown_host_command', `Unknown host command: ${command}`, { command });
+  }
+}
+
 function explainUnavailable(context: ReturnType<typeof getSessionContext>, target: string) {
-  if ('error' in context) {
-    return context.error;
+  if (hasToolError(context)) {
+    return context;
   }
 
   if (context.snapshot.status === 'tab_unavailable') {
@@ -540,13 +700,15 @@ function handleStoreQuery(sessionId: string | undefined, tool: string, params: a
 
   switch (tool) {
     case 'get_requests': {
-      if ('error' in context) return context.error;
-      const [statusMin, statusMax] = params.status_range
-        ? params.status_range.split('-').map(Number)
+      const target = resolveTargetTabContext(context, params);
+      if (hasToolError(target)) return target;
+      const scopedParams = target.params as any;
+      const [statusMin, statusMax] = scopedParams.status_range
+        ? String(scopedParams.status_range).split('-').map(Number)
         : [undefined, undefined];
-      return contextStore.getRequests(context.tabId, {
-        urlPattern: params.url_pattern,
-        method: params.method,
+      return contextStore.getRequests(target.resolvedTabId, {
+        urlPattern: typeof scopedParams.url_pattern === 'string' ? scopedParams.url_pattern : undefined,
+        method: typeof scopedParams.method === 'string' ? scopedParams.method : undefined,
         statusMin,
         statusMax,
       }).map((request) => ({
@@ -558,21 +720,26 @@ function handleStoreQuery(sessionId: string | undefined, tool: string, params: a
         mimeType: request.mimeType,
         startTime: request.startTime,
         endTime: request.endTime,
-        ...(params.include_bodies ? {
+        ...(scopedParams.include_bodies ? {
           requestBody: request.requestBody,
           responseBody: request.responseBody?.slice(0, 10_000),
         } : {}),
       }));
     }
-    case 'get_request_detail':
-      if ('error' in context) return context.error;
-      return contextStore.getRequestById(context.tabId, params.request_id) || null;
+    case 'get_request_detail': {
+      const target = resolveTargetTabContext(context, params);
+      if (hasToolError(target)) return target;
+      const detail = contextStore.getRequestById(target.resolvedTabId, (target.params as any).request_id);
+      return detail ? withResolvedTabMetadata(detail, target) : null;
+    }
     case 'search_responses': {
-      if ('error' in context) return context.error;
-      const re = new RegExp(params.body_pattern, 'i');
-      return contextStore.getRequests(context.tabId)
+      const target = resolveTargetTabContext(context, params);
+      if (hasToolError(target)) return target;
+      const scopedParams = target.params as any;
+      const re = new RegExp(String(scopedParams.body_pattern), 'i');
+      return contextStore.getRequests(target.resolvedTabId)
         .filter((request) => request.responseBody && re.test(request.responseBody))
-        .filter((request) => !params.content_type || request.mimeType?.includes(params.content_type))
+        .filter((request) => !scopedParams.content_type || request.mimeType?.includes(String(scopedParams.content_type)))
         .map((request) => {
           const idx = request.responseBody!.search(re);
           const snippet = request.responseBody!.slice(Math.max(0, idx - 50), idx + 150);
@@ -586,70 +753,78 @@ function handleStoreQuery(sessionId: string | undefined, tool: string, params: a
           };
         });
     }
-    case 'get_console_logs':
-      if ('error' in context) return context.error;
-      return contextStore.getConsoleLogs(context.tabId, {
-        level: params.level,
-        pattern: params.pattern,
-        limit: params.limit,
+    case 'get_console_logs': {
+      const target = resolveTargetTabContext(context, params);
+      if (hasToolError(target)) return target;
+      const scopedParams = target.params as any;
+      return contextStore.getConsoleLogs(target.resolvedTabId, {
+        level: typeof scopedParams.level === 'string' ? scopedParams.level : undefined,
+        pattern: typeof scopedParams.pattern === 'string' ? scopedParams.pattern : undefined,
+        limit: typeof scopedParams.limit === 'number' ? scopedParams.limit : undefined,
       });
+    }
     case 'get_page_info': {
-      if ('error' in context) return context.error;
-      if (!context.pageInfo) {
-        return makeMissingPageInfoError(context.sessionId, context.tabId);
+      const target = resolveTargetTabContext(context, params);
+      if (hasToolError(target)) return target;
+      if (!target.pageInfo) {
+        return makeMissingPageInfoError(target.sessionId, target.boundTabId, target.resolvedTabId, target.usedBoundTab);
       }
-      const pageSummary = summarizePageInfo(context.pageInfo)!;
-      return {
+      const pageSummary = summarizePageInfo(target.pageInfo)!;
+      return withResolvedTabMetadata({
         ok: true,
-        sessionId: context.sessionId,
-        tabId: context.tabId,
+        sessionId: target.sessionId,
+        tabId: target.resolvedTabId,
         ...pageSummary,
-      };
+      }, target);
     }
     case 'get_page_text': {
-      if ('error' in context) return context.error;
-      if (!context.pageInfo) {
-        return makeMissingPageInfoError(context.sessionId, context.tabId);
+      const target = resolveTargetTabContext(context, params);
+      if (hasToolError(target)) return target;
+      const scopedParams = target.params as any;
+      if (!target.pageInfo) {
+        return makeMissingPageInfoError(target.sessionId, target.boundTabId, target.resolvedTabId, target.usedBoundTab);
       }
-      const text = context.pageInfo.visibleText ?? '';
-      const maxChars = clampPagePayloadChars(params.max_chars);
+      const text = target.pageInfo.visibleText ?? '';
+      const maxChars = clampPagePayloadChars(scopedParams.max_chars);
       const returnedText = text.slice(0, maxChars);
-      return {
+      return withResolvedTabMetadata({
         ok: true,
-        sessionId: context.sessionId,
-        tabId: context.tabId,
-        url: context.pageInfo.url,
-        title: context.pageInfo.title,
-        lastSeenAt: context.pageInfo.lastSeenAt,
+        sessionId: target.sessionId,
+        tabId: target.resolvedTabId,
+        url: target.pageInfo.url,
+        title: target.pageInfo.title,
+        lastSeenAt: target.pageInfo.lastSeenAt,
         chars: text.length,
         returnedChars: returnedText.length,
         truncated: text.length > maxChars,
         text: returnedText,
-      };
+      }, target);
     }
     case 'get_page_html': {
-      if ('error' in context) return context.error;
-      if (!context.pageInfo) {
-        return makeMissingPageInfoError(context.sessionId, context.tabId);
+      const target = resolveTargetTabContext(context, params);
+      if (hasToolError(target)) return target;
+      const scopedParams = target.params as any;
+      if (!target.pageInfo) {
+        return makeMissingPageInfoError(target.sessionId, target.boundTabId, target.resolvedTabId, target.usedBoundTab);
       }
-      const html = context.pageInfo.html ?? '';
-      const maxChars = clampPagePayloadChars(params.max_chars);
+      const html = target.pageInfo.html ?? '';
+      const maxChars = clampPagePayloadChars(scopedParams.max_chars);
       const returnedHtml = html.slice(0, maxChars);
-      return {
+      return withResolvedTabMetadata({
         ok: true,
-        sessionId: context.sessionId,
-        tabId: context.tabId,
-        url: context.pageInfo.url,
-        title: context.pageInfo.title,
-        lastSeenAt: context.pageInfo.lastSeenAt,
+        sessionId: target.sessionId,
+        tabId: target.resolvedTabId,
+        url: target.pageInfo.url,
+        title: target.pageInfo.title,
+        lastSeenAt: target.pageInfo.lastSeenAt,
         chars: html.length,
         returnedChars: returnedHtml.length,
         truncated: html.length > maxChars,
         html: returnedHtml,
-      };
+      }, target);
     }
     case 'get_status':
-      if ('error' in context) return context.error;
+      if (hasToolError(context)) return context;
       return {
         ok: true,
         sessionId: context.sessionId,
@@ -695,7 +870,7 @@ function handleStoreQuery(sessionId: string | undefined, tool: string, params: a
         },
       };
     case 'get_binding_status':
-      if ('error' in context) return context.error;
+      if (hasToolError(context)) return context;
       return {
         ok: true,
         sessionId: context.sessionId,
@@ -706,14 +881,14 @@ function handleStoreQuery(sessionId: string | undefined, tool: string, params: a
         pageInfo: summarizePageInfo(context.pageInfo),
       };
     case 'get_capabilities':
-      if ('error' in context) return context.error;
+      if (hasToolError(context)) return context;
       return {
         ok: true,
         sessionId: context.sessionId,
         ...getCapabilities(context),
       };
     case 'get_capture_stats':
-      if ('error' in context) return context.error;
+      if (hasToolError(context)) return context;
       return {
         ok: true,
         sessionId: context.sessionId,
@@ -723,7 +898,7 @@ function handleStoreQuery(sessionId: string | undefined, tool: string, params: a
     case 'explain_unavailable':
       return explainUnavailable(context, String(params.target || params.tool_name || ''));
     case 'self_check': {
-      if ('error' in context) return context.error;
+      if (hasToolError(context)) return context;
       const checks = [
         {
           name: 'session_snapshot',

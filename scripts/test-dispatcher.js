@@ -107,8 +107,13 @@ global.chrome = {
       if (cb) cb(tabs); else return Promise.resolve(tabs);
     },
     update: (tabId, props, cb) => {
-      // For navigate: simulate status complete after update
-      const updated = { ...TAB, url: props.url || TAB.url, status: 'complete' };
+      const source = WINDOW_TABS.find((tab) => tab.id === tabId) || TAB;
+      const updated = {
+        ...source,
+        url: props.url || source.url,
+        active: props.active === true ? true : source.active,
+        status: 'complete',
+      };
       if (cb) cb(updated); else return Promise.resolve(updated);
     },
     reload: (tabId, opts, cb) => { if (cb) cb(); else return Promise.resolve(); },
@@ -254,6 +259,13 @@ async function runTests() {
     );
     assert(activeOnly?.count === 2, `list_tabs active_only returns one active tab per window (${activeOnly?.count})`);
     assert(activeOnly?.tabs?.every((tab) => tab.active === true), 'list_tabs active_only filters to active tabs');
+  }
+
+  // activate_tab
+  {
+    const r = await assertOk(dispatchCommand('activate_tab', 43, {}), 'activate_tab');
+    assert(r?.tab?.tabId === 43, 'activate_tab returns the activated tab id');
+    assert(r?.tab?.active === true, 'activate_tab marks the returned tab active');
   }
 
   // get_page_content

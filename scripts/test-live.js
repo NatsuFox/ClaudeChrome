@@ -31,7 +31,9 @@ const TEST_PAGE_HTML = `<!doctype html>
 </head>
 <body>
   <div class="stack">
-    <h1>ClaudeChrome Live Test</h1>
+    <h1 id="page-title">ClaudeChrome Live Test</h1>
+    <div id="page-label">page-label:default</div>
+    <input id="note-input" value="" />
     <button id="selector-button">Selector Click</button>
     <button id="coord-button">Coordinate Click</button>
     <div id="selector-status">selector-clicked:0</div>
@@ -39,6 +41,12 @@ const TEST_PAGE_HTML = `<!doctype html>
   </div>
   <div id="deep-anchor">Deep Anchor</div>
   <script>
+    const label = new URLSearchParams(location.search).get('label') || 'default';
+    document.title = 'ClaudeChrome Live Test ' + label;
+    document.getElementById('page-title').textContent = 'ClaudeChrome Live Test ' + label;
+    document.getElementById('page-label').textContent = 'page-label:' + label;
+    document.getElementById('note-input').value = 'seed-' + label;
+
     localStorage.setItem('liveLocal', 'alpha');
     sessionStorage.setItem('liveSession', 'beta');
     document.cookie = 'livecookie=1; path=/';
@@ -524,7 +532,8 @@ async function main() {
   const debugPort = await reservePort();
   const hostWsPort = await reservePort();
   const httpPort = await startHttpServer();
-  const testUrl = `http://127.0.0.1:${httpPort}/test.html`;
+  const testUrl = `http://127.0.0.1:${httpPort}/test.html?label=alpha`;
+  const secondUrl = `http://127.0.0.1:${httpPort}/test.html?label=beta`;
   const sessionId = 'live-test-session';
 
   let panelClient = null;
@@ -768,6 +777,147 @@ async function main() {
       return sawSelector && sawCoord ? messages : null;
     }, 'console capture', 30000, 250);
     record('console capture', true, JSON.stringify(consoleMessages.slice(0, 4)));
+
+    await openTarget(debugPort, secondUrl);
+    const secondTarget = await waitFor(async () => {
+      const targets = await listTargets(debugPort);
+      return targets.find((target) => target.url === secondUrl) || null;
+    }, 'second test page target', 30000, 250);
+    record('second tab open', true, secondTarget.url);
+
+    const allTabsAfterSecond = unwrapCommand(
+      'list_tabs(after second tab)',
+      await ipcCommand(storePort, sessionId, 'list_tabs', { window_scope: 'all' })
+    );
+    const secondTabSummary = Array.isArray(allTabsAfterSecond.tabs)
+      ? allTabsAfterSecond.tabs.find((tab) => tab.url === secondUrl)
+      : null;
+    if (!secondTabSummary) {
+      throw makeError(`Could not locate second tab in list_tabs output: ${JSON.stringify(allTabsAfterSecond)}`);
+    }
+    record('second tab discovery', true, `tabId=${secondTabSummary.tabId}`);
+
+    const reactivatePrimary = unwrapMcpTextResult(
+      'browser__activate_tab(bound)',
+      await mcp.client.callTool({
+        name: 'browser__activate_tab',
+        arguments: { tab_id: boundTabId },
+      })
+    );
+    if (reactivatePrimary?.ok !== true || reactivatePrimary?.result?.tab?.tabId !== boundTabId) {
+      throw makeError(`Failed to reactivate the bound tab: ${JSON.stringify(reactivatePrimary)}`);
+    }
+    record('activate bound tab mcp', true, `tabId=${reactivatePrimary.result.tab.tabId}`);
+
+    const secondPage = unwrapMcpTextResult(
+      'browser__get_page_content(second tab)',
+      await mcp.client.callTool({
+        name: 'browser__get_page_content',
+        arguments: { tab_id: secondTabSummary.tabId, include_html: false },
+      })
+    );
+    if (
+      secondPage?.ok !== true ||
+      secondPage?.result?.resolvedTabId !== secondTabSummary.tabId ||
+      secondPage?.result?.url !== secondUrl ||
+      !String(secondPage?.result?.title || '').includes('beta')
+    ) {
+      throw makeError(`Cross-tab page content mismatch: ${JSON.stringify(secondPage)}`);
+    }
+    record('cross tab page content', true, `resolvedTab=${secondPage.result.resolvedTabId}`);
+
+    const crossTabType = unwrapMcpTextResult(
+      'browser__type(second tab)',
+      await mcp.client.callTool({
+        name: 'browser__type',
+        arguments: { tab_id: secondTabSummary.tabId, selector: '#note-input', text: 'cross-tab-note', clear: true },
+      })
+    );
+    if (crossTabType?.ok !== true || crossTabType?.result?.typed !== true || crossTabType?.result?.resolvedTabId !== secondTabSummary.tabId) {
+      throw makeError(`Cross-tab type mismatch: ${JSON.stringify(crossTabType)}`);
+    }
+    record('cross tab type', true, `resolvedTab=${crossTabType.result.resolvedTabId}`);
+
+    const secondInputValue = unwrapMcpTextResult(
+      'browser__evaluate_js(second tab)',
+      await mcp.client.callTool({
+        name: 'browser__evaluate_js',
+        arguments: { tab_id: secondTabSummary.tabId, expression: "document.querySelector('#note-input').value" },
+      })
+    );
+    if (secondInputValue?.ok !== true || secondInputValue?.result?.result !== 'cross-tab-note') {
+      throw makeError(`Cross-tab evaluate mismatch: ${JSON.stringify(secondInputValue)}`);
+    }
+    record('cross tab evaluate', true, `value=${secondInputValue.result.result}`);
+
+    const defaultStillBound = await ipcQuery(storePort, sessionId, 'get_page_info', {});
+    if (
+      defaultStillBound?.ok !== true ||
+      defaultStillBound?.resolvedTabId !== boundTabId ||
+      defaultStillBound?.url !== testUrl
+    ) {
+      throw makeError(`Default binding drifted before bind_tab: ${JSON.stringify(defaultStillBound)}`);
+    }
+    record('default binding isolation', true, `resolvedTab=${defaultStillBound.resolvedTabId}`);
+
+    const activateSecond = unwrapMcpTextResult(
+      'browser__activate_tab(second tab)',
+      await mcp.client.callTool({
+        name: 'browser__activate_tab',
+        arguments: { tab_id: secondTabSummary.tabId },
+      })
+    );
+    if (activateSecond?.ok !== true || activateSecond?.result?.tab?.tabId !== secondTabSummary.tabId) {
+      throw makeError(`Activate second tab mismatch: ${JSON.stringify(activateSecond)}`);
+    }
+    record('activate second tab', true, `tabId=${activateSecond.result.tab.tabId}`);
+
+    const activeTabsAfterActivate = unwrapCommand(
+      'list_tabs(active after activate second)',
+      await ipcCommand(storePort, sessionId, 'list_tabs', { window_scope: 'all', active_only: true })
+    );
+    const activeSecondTab = Array.isArray(activeTabsAfterActivate.tabs)
+      ? activeTabsAfterActivate.tabs.find((tab) => tab.tabId === secondTabSummary.tabId && tab.active === true)
+      : null;
+    if (!activeSecondTab) {
+      throw makeError(`Second tab was not active after activation: ${JSON.stringify(activeTabsAfterActivate)}`);
+    }
+    record('active second tab confirmation', true, `tabId=${activeSecondTab.tabId}`);
+
+    const bindSecond = unwrapMcpTextResult(
+      'browser__bind_tab(second tab)',
+      await mcp.client.callTool({
+        name: 'browser__bind_tab',
+        arguments: { tab_id: secondTabSummary.tabId },
+      })
+    );
+    if (bindSecond?.ok !== true || bindSecond?.binding?.tabId !== secondTabSummary.tabId) {
+      throw makeError(`Bind second tab mismatch: ${JSON.stringify(bindSecond)}`);
+    }
+    record('bind second tab', true, `tabId=${bindSecond.binding.tabId}`);
+
+    const reboundPage = await ipcQuery(storePort, sessionId, 'get_page_info', {});
+    if (reboundPage?.ok !== true || reboundPage?.resolvedTabId !== secondTabSummary.tabId || reboundPage?.url !== secondUrl) {
+      throw makeError(`Default binding did not move to the second tab: ${JSON.stringify(reboundPage)}`);
+    }
+    record('rebound default page info', true, `resolvedTab=${reboundPage.resolvedTabId}`);
+
+    const overrideBackToAlpha = unwrapMcpTextResult(
+      'browser__get_page_content(original tab after rebind)',
+      await mcp.client.callTool({
+        name: 'browser__get_page_content',
+        arguments: { tab_id: boundTabId, include_html: false },
+      })
+    );
+    if (
+      overrideBackToAlpha?.ok !== true ||
+      overrideBackToAlpha?.result?.resolvedTabId !== boundTabId ||
+      overrideBackToAlpha?.result?.url !== testUrl ||
+      !String(overrideBackToAlpha?.result?.title || '').includes('alpha')
+    ) {
+      throw makeError(`Cross-tab override back to the original tab failed: ${JSON.stringify(overrideBackToAlpha)}`);
+    }
+    record('post rebind override back', true, `resolvedTab=${overrideBackToAlpha.result.resolvedTabId}`);
 
     console.log('\nLive summary');
     console.log(JSON.stringify({ ok: report.every((item) => item.ok), report }, null, 2));

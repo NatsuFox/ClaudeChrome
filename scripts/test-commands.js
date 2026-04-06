@@ -18,6 +18,8 @@ let STORE_PORT    = 0;
 let WS_PORT       = 0;
 const SESSION_ID  = 'test-session-001';
 const TAB_ID      = 42;
+const OVERRIDE_TAB_ID = 99;
+const REBOUND_TAB_ID = 77;
 const TIMEOUT_MS  = 10_000;
 
 // ---------------------------------------------------------------------------
@@ -25,9 +27,10 @@ const TIMEOUT_MS  = 10_000;
 // ---------------------------------------------------------------------------
 const MOCK_RESULTS = {
   screenshot:       { dataUrl: 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==', format: 'png' },
+  activate_tab:     { tab: { tabId: TAB_ID, windowId: 1, title: 'Example', url: 'https://example.com', active: true, pinned: false, audible: false, discarded: false, status: 'complete' } },
   navigate:         { url: 'https://example.com', status: 'complete' },
   reload:           { status: 'complete' },
-  list_tabs:        { windowScope: 'last_focused', activeOnly: false, count: 2, tabs: [{ tabId: 42, windowId: 1, title: 'Example', url: 'https://example.com', active: true, pinned: false, audible: false, discarded: false, status: 'complete' }] },
+  list_tabs:        { windowScope: 'last_focused', activeOnly: false, count: 2, tabs: [{ tabId: TAB_ID, windowId: 1, title: 'Example', url: 'https://example.com', active: true, pinned: false, audible: false, discarded: false, status: 'complete' }] },
   get_page_content: { url: 'https://example.com', title: 'Example Domain', text: 'Example Domain\nThis domain is for use in illustrative examples.' },
   find_elements:    { elements: [{ tag: 'h1', id: '', text: 'Example Domain', rect: { x: 0, y: 0, width: 800, height: 40 } }] },
   evaluate_js:      { result: 2 },
@@ -110,6 +113,10 @@ function waitForPort(port, label, timeoutMs = 8000) {
   });
 }
 
+function lastBrowserCommand(wsMessages, command) {
+  return [...wsMessages].reverse().find((message) => message.type === 'browser_command' && message.command === command) || null;
+}
+
 // ---------------------------------------------------------------------------
 // Main
 // ---------------------------------------------------------------------------
@@ -138,14 +145,11 @@ async function main() {
   // --- Step 2: Connect mock WS client (simulates panel + extension)
   console.log('\n[2] Connecting mock WebSocket client...');
   const ws = new WebSocket(`ws://127.0.0.1:${WS_PORT}`);
-
-  // Track incoming messages and auto-respond to browser_command
   const wsMessages = [];
-  let wsReady = false;
 
   await new Promise((resolve, reject) => {
     const t = setTimeout(() => reject(new Error('WS connect timeout')), 5000);
-    ws.on('open', () => { clearTimeout(t); wsReady = true; resolve(); });
+    ws.on('open', () => { clearTimeout(t); resolve(); });
     ws.on('error', (e) => { clearTimeout(t); reject(e); });
   });
   pass('Mock WebSocket client connected');
@@ -155,7 +159,6 @@ async function main() {
     try { msg = JSON.parse(raw.toString()); } catch { return; }
     wsMessages.push(msg);
 
-    // Auto-respond to browser_command with canned mock result
     if (msg.type === 'browser_command') {
       const mockResult = MOCK_RESULTS[msg.command];
       ws.send(JSON.stringify({
@@ -177,10 +180,8 @@ async function main() {
     cols: 80, rows: 24,
   }));
 
-  // Wait briefly for session to be registered
   await new Promise((r) => setTimeout(r, 300));
 
-  // Verify session binding via IPC query
   const bindStatus = await ipcQuery({ sessionId: SESSION_ID, tool: 'get_binding_status', params: {} });
   assert(bindStatus.ok === true, 'Session registered and binding status query succeeds');
   assert(bindStatus.binding?.tabId === TAB_ID || bindStatus.summary?.boundTabId === TAB_ID,
@@ -188,9 +189,9 @@ async function main() {
 
   // --- Step 4: Test browser commands via IPC
   console.log('\n[4] Testing browser command coverage...');
-
   const commands = [
     { name: 'screenshot',       params: { format: 'png' } },
+    { name: 'activate_tab',     params: { tab_id: TAB_ID } },
     { name: 'navigate',         params: { url: 'https://example.com' } },
     { name: 'reload',           params: {} },
     { name: 'list_tabs',        params: {} },
@@ -231,38 +232,73 @@ async function main() {
     assert(commandNames.includes(name), `browser_command '${name}' seen on WS`);
   }
 
-  // All correlation IDs are unique
   const ids = cmdMessages.map((m) => m.id);
   const uniqueIds = new Set(ids);
   assert(uniqueIds.size === commands.length, `All correlation IDs are unique (${uniqueIds.size}/${commands.length})`);
 
-  // All tabId values match the registered tab
   const allCorrectTab = cmdMessages.every((m) => m.tabId === TAB_ID);
-  assert(allCorrectTab, `All browser_command messages carry correct tabId=${TAB_ID}`);
+  assert(allCorrectTab, `Default browser_command messages carry bound tabId=${TAB_ID}`);
 
-  // --- Step 6: Test unknown session error path
-  console.log('\n[6] Error path: unknown session...');
+  // --- Step 6: Explicit tab override and rebinding
+  console.log('\n[6] Testing tab override and rebinding...');
+  const overrideRes = await ipcQuery({
+    kind: 'command',
+    sessionId: SESSION_ID,
+    command: 'evaluate_js',
+    params: { expression: '1 + 1', tab_id: OVERRIDE_TAB_ID },
+  });
+  assert(overrideRes.ok === true, 'Cross-tab override command succeeds');
+  const overrideMessage = lastBrowserCommand(wsMessages, 'evaluate_js');
+  assert(overrideMessage?.tabId === OVERRIDE_TAB_ID, `Cross-tab override routes browser_command to tabId=${OVERRIDE_TAB_ID}`);
+
+  const bindRes = await ipcQuery({
+    kind: 'host_command',
+    sessionId: SESSION_ID,
+    command: 'bind_tab',
+    params: { tab_id: REBOUND_TAB_ID },
+  });
+  assert(bindRes.ok === true, 'bind_tab host command succeeds');
+  assert(bindRes.binding?.tabId === REBOUND_TAB_ID, `bind_tab updates binding to tabId=${REBOUND_TAB_ID}`);
+
+  const reboundStatus = await ipcQuery({ sessionId: SESSION_ID, tool: 'get_binding_status', params: {} });
+  assert(reboundStatus.ok === true, 'Binding status query still succeeds after bind_tab');
+  assert(reboundStatus.binding?.tabId === REBOUND_TAB_ID, `Binding status reflects rebound tabId=${REBOUND_TAB_ID}`);
+
+  const reboundCommand = await ipcQuery({
+    kind: 'command',
+    sessionId: SESSION_ID,
+    command: 'evaluate_js',
+    params: { expression: '2 + 2' },
+  });
+  assert(reboundCommand.ok === true, 'Post-bind default command succeeds');
+  const reboundMessage = lastBrowserCommand(wsMessages, 'evaluate_js');
+  assert(reboundMessage?.tabId === REBOUND_TAB_ID, `Post-bind default command routes to rebound tabId=${REBOUND_TAB_ID}`);
+
+  // --- Step 7: Error path: unknown session
+  console.log('\n[7] Error path: unknown session...');
   const errRes = await ipcQuery({ kind: 'command', sessionId: 'no-such-session', command: 'evaluate_js', params: { expression: '1' } });
   assert(typeof errRes.error === 'string', 'Unknown session returns error string');
   assert(errRes.error.includes('no-such-session'), `Error message names the missing session ("${errRes.error}")`);
 
-  // --- Step 7: Existing query tools still work
-  console.log('\n[7] Existing IPC query tools still work...');
+  // --- Step 8: Existing query tools still work
+  console.log('\n[8] Existing IPC query tools still work...');
   const caps = await ipcQuery({ sessionId: SESSION_ID, tool: 'get_capabilities', params: {} });
   assert(caps.ok === true, 'get_capabilities query succeeds');
   assert(Array.isArray(caps.implementedTools), 'get_capabilities returns implementedTools');
   assert(caps.implementedTools.includes('browser__click'), 'get_capabilities includes browser__click');
   assert(caps.implementedTools.includes('browser__get_cookies'), 'get_capabilities includes browser__get_cookies');
   assert(caps.implementedTools.includes('browser__list_tabs'), 'get_capabilities includes browser__list_tabs');
+  assert(caps.implementedTools.includes('browser__activate_tab'), 'get_capabilities includes browser__activate_tab');
+  assert(caps.implementedTools.includes('browser__bind_tab'), 'get_capabilities includes browser__bind_tab');
   assert(caps.families?.action?.available === true, 'get_capabilities marks action family available');
   assert(caps.families?.tabs?.available === true, 'get_capabilities marks tabs family available');
   assert(caps.families?.cookies?.available === true, 'get_capabilities marks cookies family available');
   assert(caps.families?.storage?.available === true, 'get_capabilities marks storage family available');
+  assert(caps.targeting?.overrideParam === 'tab_id', 'get_capabilities reports tab_id override support');
 
   const stats = await ipcQuery({ sessionId: SESSION_ID, tool: 'get_capture_stats', params: {} });
   assert(stats.ok === true, 'get_capture_stats query succeeds');
 
-  // --- Summary
   console.log('\n' + '='.repeat(56));
   console.log(`Results: \x1b[32m${passed} passed\x1b[0m, \x1b[31m${failed} failed\x1b[0m`);
   console.log('='.repeat(56) + '\n');
