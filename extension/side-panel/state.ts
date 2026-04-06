@@ -35,7 +35,7 @@ export interface PersistedPanelState {
 
 const ACCENT_COLORS = ['#7aa2f7', '#9ece6a', '#e0af68', '#f7768e', '#7dcfff', '#bb9af7'];
 const DEFAULT_RAIL_WIDTH = 152;
-const DEFAULT_CODEX_LAUNCH_ARGS = '-a never -s danger-full-access';
+const DEFAULT_CODEX_LAUNCH_ARGS = '-a never -s workspace-write';
 
 function createEmptyLaunchConfig(): AgentLaunchConfig {
   return {

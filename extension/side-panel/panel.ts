@@ -45,7 +45,7 @@ const MAX_RAIL_WIDTH = 320;
 const RAIL_AUTO_COLLAPSE_WIDTH = 56;
 const PANEL_AUTO_COLLAPSE_WIDTH = 72;
 const PANEL_AUTO_COLLAPSE_ARM_WIDTH = 144;
-const DEFAULT_CODEX_LAUNCH_ARGS = '-a never -s danger-full-access';
+const DEFAULT_CODEX_LAUNCH_ARGS = '-a never -s workspace-write';
 
 const statusIndicator = document.getElementById('status-indicator')!;
 const statusText = document.getElementById('status-text')!;
