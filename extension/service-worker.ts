@@ -37,8 +37,60 @@ const openPanelWindows = new Set<number>();
 
 let reqCounter = 0;
 
+// Circuit breaker to prevent resource exhaustion
+type CircuitBreakerState = {
+  tripped: boolean;
+  messageCount: number;
+  windowStart: number;
+  category: Record<string, number>;
+};
+
+const circuitBreakers = new Map<number, CircuitBreakerState>();
+const CIRCUIT_BREAKER_THRESHOLD = 500; // messages per minute
+const CIRCUIT_BREAKER_WINDOW = 60000; // 1 minute
+
 function nextReqId(): string {
   return `req_${Date.now()}_${++reqCounter}`;
+}
+
+function checkCircuitBreaker(tabId: number, category: string): boolean {
+  const now = Date.now();
+  let state = circuitBreakers.get(tabId);
+
+  if (!state) {
+    state = {
+      tripped: false,
+      messageCount: 0,
+      windowStart: now,
+      category: {},
+    };
+    circuitBreakers.set(tabId, state);
+  }
+
+  // Reset window
+  if (now - state.windowStart > CIRCUIT_BREAKER_WINDOW) {
+    if (state.tripped) {
+      console.log(`[ClaudeChrome] Circuit breaker reset for tab ${tabId}. Previous window: ${state.messageCount} messages`);
+    }
+    state.messageCount = 0;
+    state.windowStart = now;
+    state.tripped = false;
+    state.category = {};
+  }
+
+  state.messageCount++;
+  state.category[category] = (state.category[category] || 0) + 1;
+
+  // Trip breaker if threshold exceeded
+  if (state.messageCount > CIRCUIT_BREAKER_THRESHOLD && !state.tripped) {
+    state.tripped = true;
+    console.warn(
+      `[ClaudeChrome] Circuit breaker tripped for tab ${tabId}: ${state.messageCount} messages in 1 minute`,
+      `Breakdown:`, state.category
+    );
+  }
+
+  return state.tripped;
 }
 
 function cloneTabSummary(tab: TabSummary): TabSummary {
@@ -114,7 +166,12 @@ function tabSummaryFromChromeTab(tab: chrome.tabs.Tab): TabSummary | null {
   };
 }
 
-function forwardContextUpdate(category: 'network' | 'console' | 'page_info' | 'tab_state', payload: unknown): void {
+function forwardContextUpdate(category: 'network' | 'console' | 'page_info' | 'tab_state', payload: unknown, tabId?: number): void {
+  // Check circuit breaker if tabId provided
+  if (tabId != null && checkCircuitBreaker(tabId, category)) {
+    return; // Drop message if circuit breaker tripped
+  }
+
   chrome.runtime.sendMessage(
     { type: 'context_update', category, payload },
     () => void chrome.runtime.lastError
@@ -124,13 +181,13 @@ function forwardContextUpdate(category: 'network' | 'console' | 'page_info' | 't
 function pushTabState(tabId: number): void {
   const context = tabContexts.get(tabId);
   if (!context) return;
-  forwardContextUpdate('tab_state', cloneTabSummary(context.tab));
+  forwardContextUpdate('tab_state', cloneTabSummary(context.tab), tabId);
 }
 
 function pushPageInfo(tabId: number): void {
   const context = tabContexts.get(tabId);
   if (!context?.pageInfo) return;
-  forwardContextUpdate('page_info', clonePageInfo(context.pageInfo));
+  forwardContextUpdate('page_info', clonePageInfo(context.pageInfo), tabId);
 }
 
 function isInjectableUrl(url?: string): boolean {
@@ -338,7 +395,7 @@ chrome.webRequest.onBeforeRequest.addListener(
     evictOldRequests(context);
     updateTabSummary(details.tabId, { available: true, lastSeenAt: Date.now() });
     pushTabState(details.tabId);
-    forwardContextUpdate('network', cloneRequest(entry));
+    forwardContextUpdate('network', cloneRequest(entry), details.tabId);
   },
   { urls: ['<all_urls>'] },
   ['requestBody']
@@ -358,7 +415,7 @@ chrome.webRequest.onSendHeaders.addListener(
       }
     }
 
-    forwardContextUpdate('network', cloneRequest(entry));
+    forwardContextUpdate('network', cloneRequest(entry), details.tabId);
   },
   { urls: ['<all_urls>'] },
   ['requestHeaders']
@@ -384,7 +441,7 @@ chrome.webRequest.onHeadersReceived.addListener(
       entry.mimeType = contentType.value;
     }
 
-    forwardContextUpdate('network', cloneRequest(entry));
+    forwardContextUpdate('network', cloneRequest(entry), details.tabId);
   },
   { urls: ['<all_urls>'] },
   ['responseHeaders']
@@ -399,7 +456,7 @@ chrome.webRequest.onCompleted.addListener(
 
     entry.endTime = details.timeStamp;
     entry.status = details.statusCode;
-    forwardContextUpdate('network', cloneRequest(entry));
+    forwardContextUpdate('network', cloneRequest(entry), details.tabId);
   },
   { urls: ['<all_urls>'] }
 );
@@ -410,7 +467,7 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     const entry = findRequestForBody(sender.tab.id, msg.url, msg.method);
     if (!entry) return;
     entry.responseBody = msg.body;
-    forwardContextUpdate('network', cloneRequest(entry));
+    forwardContextUpdate('network', cloneRequest(entry), sender.tab.id);
     return;
   }
 
@@ -434,7 +491,7 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
       lastSeenAt: Date.now(),
     });
     pushTabState(sender.tab.id);
-    forwardContextUpdate('console', cloneConsoleEntry(entry));
+    forwardContextUpdate('console', cloneConsoleEntry(entry), sender.tab.id);
     return;
   }
 

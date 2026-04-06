@@ -95,7 +95,74 @@ function sendStatus(client: WebSocket, status: 'connected' | 'disconnected' | 'e
   client.send(JSON.stringify({ type: 'status', status, message }));
 }
 
+// Message rate tracking for diagnostics
+type RateCounter = {
+  count: number;
+  windowStart: number;
+  byCategory: Record<string, number>;
+};
+
+const messageRates = new Map<number, RateCounter>();
+const RATE_WINDOW_MS = 60000; // 1 minute
+
+function trackMessageRate(category: string, tabId?: number): void {
+  if (tabId == null) return;
+
+  const now = Date.now();
+  let counter = messageRates.get(tabId);
+
+  if (!counter) {
+    counter = { count: 0, windowStart: now, byCategory: {} };
+    messageRates.set(tabId, counter);
+  }
+
+  // Reset window
+  if (now - counter.windowStart > RATE_WINDOW_MS) {
+    if (counter.count > 0) {
+      appendConnectionLog('message_rate', {
+        tabId,
+        count: counter.count,
+        rate: (counter.count / (RATE_WINDOW_MS / 1000)).toFixed(2) + ' msg/sec',
+        breakdown: counter.byCategory,
+      });
+    }
+    counter.count = 0;
+    counter.windowStart = now;
+    counter.byCategory = {};
+  }
+
+  counter.count++;
+  counter.byCategory[category] = (counter.byCategory[category] || 0) + 1;
+}
+
 function handleContextUpdate(msg: { category: string; payload: unknown }): void {
+  // Log message size and track rate
+  const payloadSize = JSON.stringify(msg.payload).length;
+  let tabId: number | undefined;
+
+  // Extract tabId from payload
+  if (msg.category === 'network') {
+    tabId = (msg.payload as StoredRequest).tabId;
+  } else if (msg.category === 'console') {
+    tabId = (msg.payload as StoredConsoleEntry).tabId;
+  } else if (msg.category === 'page_info') {
+    tabId = (msg.payload as StoredPageInfo).tabId;
+  } else if (msg.category === 'tab_state') {
+    tabId = (msg.payload as StoredTabSummary).tabId;
+  }
+
+  // Track rate
+  trackMessageRate(msg.category, tabId);
+
+  // Log large messages
+  if (payloadSize > 50000) { // > 50KB
+    appendConnectionLog('large_message', {
+      category: msg.category,
+      tabId,
+      size: payloadSize,
+    });
+  }
+
   switch (msg.category) {
     case 'network': {
       const request = msg.payload as StoredRequest;
