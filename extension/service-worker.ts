@@ -29,7 +29,7 @@ type SidePanelApi = typeof chrome.sidePanel & {
 };
 
 const tabContexts = new Map<number, TabContextState>();
-const MAX_REQUESTS = 5000;
+const MAX_REQUESTS = 200;
 const MAX_CONSOLE = 2000;
 const SIDE_PANEL_PATH = 'side-panel/panel.html';
 const sidePanelApi = chrome.sidePanel as SidePanelApi;

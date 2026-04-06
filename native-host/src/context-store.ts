@@ -64,7 +64,7 @@ type TabContext = {
 export class ContextStore {
   private tabContexts = new Map<number, TabContext>();
 
-  private readonly maxRequests = 5000;
+  private readonly maxRequests = 200;
   private readonly maxLogs = 2000;
 
   private ensureTabContext(tabId: number): TabContext {

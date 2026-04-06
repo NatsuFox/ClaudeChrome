@@ -1,5 +1,5 @@
-const MAX_VISIBLE_TEXT_CHARS = 200_000;
-const MAX_HTML_CHARS = 500_000;
+const MAX_VISIBLE_TEXT_CHARS = 50_000;
+const MAX_HTML_CHARS = 100_000;
 const PAGE_INFO_DEBOUNCE_MS = 250;
 
 function safeSendMessage(message: Record<string, unknown>): void {
@@ -42,11 +42,13 @@ if (root?.dataset.claudechromeInjectorInstalled === '1') {
     });
   }
 
-  new MutationObserver(() => queuePageInfoSend(PAGE_INFO_DEBOUNCE_MS)).observe(document.documentElement, {
-    childList: true,
-    subtree: true,
-    characterData: true,
-  });
+  // DISABLED: Continuous DOM monitoring causes resource exhaustion (issue #2)
+  // Only capture page_info on navigation events (load, popstate, hashchange)
+  // new MutationObserver(() => queuePageInfoSend(PAGE_INFO_DEBOUNCE_MS)).observe(document.documentElement, {
+  //   childList: true,
+  //   subtree: true,
+  //   characterData: true,
+  // });
 
   // Bridge: listen for messages from page-script (via window.postMessage).
   window.addEventListener('message', (event) => {

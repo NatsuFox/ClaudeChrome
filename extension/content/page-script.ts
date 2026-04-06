@@ -46,9 +46,20 @@
     try {
       const resp = await origFetch.apply(this, args);
       const clone = resp.clone();
+
+      // Skip large or non-text responses to prevent memory exhaustion
+      const contentType = clone.headers.get('content-type') || '';
+      const contentLength = clone.headers.get('content-length');
+      const isText = /^(text\/|application\/(json|javascript|xml))/i.test(contentType);
+      const MAX_BODY_SIZE = 65536; // 64KB
+
+      if (!isText || (contentLength && parseInt(contentLength, 10) > MAX_BODY_SIZE)) {
+        return resp;
+      }
+
       // Read body async, don't block
       clone.text().then((body) => {
-        POST('captured_body', { url, method, body: body.slice(0, 500_000) });
+        POST('captured_body', { url, method, body: body.slice(0, MAX_BODY_SIZE) });
       }).catch(() => {});
       return resp;
     } catch (e) {
@@ -69,8 +80,17 @@
   XMLHttpRequest.prototype.send = function (body?: any) {
     this.addEventListener('load', function () {
       try {
+        const contentType = this.getResponseHeader('content-type') || '';
+        const contentLength = this.getResponseHeader('content-length');
+        const isText = /^(text\/|application\/(json|javascript|xml))/i.test(contentType);
+        const MAX_BODY_SIZE = 65536; // 64KB
+
+        if (!isText || (contentLength && parseInt(contentLength, 10) > MAX_BODY_SIZE)) {
+          return;
+        }
+
         const text = typeof this.responseText === 'string'
-          ? this.responseText.slice(0, 500_000)
+          ? this.responseText.slice(0, MAX_BODY_SIZE)
           : '';
         POST('captured_body', {
           url: (this as any).__cc_url,
