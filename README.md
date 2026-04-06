@@ -4,20 +4,43 @@
   <img src="assets/logo-with-texts.png" alt="ClaudeChrome logo" width="420" />
 </p>
 
-ClaudeChrome 是一个浏览器原生框架，目标是把 Agent 智能真正带进 Chrome，而不是让 Agent 停留在你正在使用的页面之外。
+ClaudeChrome 是一个浏览器原生扩展，目标是把 Agent 智能真正带进 Chrome。
 
-目前它已经把 Claude、Codex 和 shell 工作流直接嵌入 Chrome；长期来看也计划支持更多主流浏览器。它的核心价值并不只是 Web 调试：ClaudeChrome 会让 Agent 持续绑定到真实页面，因此它可以抓取网站、执行 JavaScript、模仿现有网站的原生风格、把内容摄入知识系统，并在不依赖手动上下文搬运的前提下维持更长的交互式工作流。
+目前它已经把 Claude、Codex 和 shell 工作流直接嵌入 Chrome；长期也计划支持更多主流浏览器。它的核心价值包括但不限于 Web 调试：ClaudeChrome 会让 Agent 持续绑定到真实页面，因此它可以抓取网站、执行 JavaScript、模仿现有网站的原生风格、把内容摄入知识系统，并在不依赖手动上下文搬运的前提下维持更长的交互式工作流。
 
-主 README 语言：中文  
-English version: [README.en.md](README.en.md)
+Switch to English version: [README.en.md](README.en.md)
 
 落地页: [https://natsufox.github.io/ClaudeChrome/](https://natsufox.github.io/ClaudeChrome/)
 
 友情链接: [LINUX DO](https://linux.do)
 
+## 🎉 最新进展
+
+- **2026-04-06**
+  - 感谢 [@zuiyi233](https://github.com/zuiyi233) 的使用、反馈和 PR，这解决了 Windows 上的大部分兼容性问题，并加入了中英双语界面。
+  - 移除了参数设置按钮，添加了一个配置面板，用于统一配置 Agent CLI 的启动参数、工作目录和环境信息注入等选项。
+  - 更新了中文版的 README，很快会发布 0.0.1 版本的 release，以便安装和使用。
+
+- **2026-04-05**
+  - 开源项目发布，欢迎大家试用！目前 README 里已经有了安装和使用指南，后续会持续更新更清晰的文档和演示视频。
+
+## 🎯 近期计划
+
+- **Release 0.0.2**
+  - [ ] 加入多标签页协作支持，在注册机等场景上验证并录制 demo
+  - [ ] 加入改变页面元素和样式的接口，以强化扩展在页面调试、主题设计等方面的能力
+  - [ ] 版本发布
+
+- **Release 0.0.1**
+  - [x] 制作落地页和演示视频，完善开源 repo，展示核心功能和使用场景
+  - [ ] 在 Windows 上修复兼容性问题，确保功能可用
+  - [ ] 版本发布
+
 ## 演示画廊
 
-GitHub 的 README 渲染并不能稳定展示内联 `<video>` 或 `<iframe>` 播放器，因此这里继续使用可点击的 GIF 预览图，并跳转到仓库内附带的 MP4 录屏。每个条目都同时保留了快速预览 GIF、README 尺寸 MP4 和高清宣传版 MP4。
+GitHub 的 README 渲染并不能稳定展示内联 `<video>` 或 `<iframe>` 播放器，因此这里使用可点击的 GIF 预览图，点击后可跳转到仓库内附带的 MP4 录屏。
+
+**很快会发布 0.0.1 版本的 release，避免 clone repo 导致需要一并下载所有 demo 录屏和落地页的情况。**
 
 <table>
   <tr>
@@ -83,9 +106,9 @@ ClaudeChrome 当前由两个本地组件协同工作：
 - 一个构建到 `dist/` 中的 Chrome 扩展
 - 一个运行在 `native-host/dist/main.js` 的本地 Node.js host，侧边栏通过 WebSocket 与它连接
 
-如果你只是想在本地运行项目，请优先参考面向普通使用者的指南。如果你准备修改代码、执行测试，或者研究 host / extension 的内部实现，再看下面的开发者指南。
+如果你只是想在本地运行项目，请优先参考用户指南。如果你准备修改代码、执行测试，或者研究 host / extension 的内部实现，再看下面的开发者指南。
 
-### 1. 普通使用者指南
+### 1. 用户指南
 
 这一路径适合希望以最少环节完成可靠本地部署的人。
 
@@ -93,19 +116,18 @@ ClaudeChrome 当前由两个本地组件协同工作：
 
 - Google Chrome，并且可以访问 `chrome://extensions`
 - 较新的 Node.js LTS 版本，以及 `npm`
-- `PATH` 中可调用的 `bash`
-- 可选：如果你想启动 Claude pane，需要 `PATH` 中可调用的 `claude`
-- 可选：如果你想启动 Codex pane，需要 `PATH` 中可调用的 `codex`
 
 说明：
 
 - macOS 和 Linux 的常规环境通常已经自带 `bash`。
-- 在 Windows 上，请安装 Git Bash 或 WSL，并确保 `bash` 可以从 `PATH` 调用。
-- 如果你只是想先验证本地桥接是否正常，建议先启动一个 Shell pane，这样就不依赖 `claude` 或 `codex`。
+- 在 Windows 上，请安装 Git Bash 或 WSL，并确保 `bash`，`claude` 和 `codex` 已经写入 `PATH` 全局变量。
+- 如果你只是想先验证本地桥接是否正常，建议先启动一个 Shell pane，这样就不依赖于 `claude` 或 `codex` 的安装情况。
 
 #### 第 1 步：安装依赖并构建本地产物
 
 ```bash
+cd ClaudeChrome
+
 npm install
 npm install --prefix native-host
 npm run package
@@ -154,7 +176,7 @@ npm --prefix native-host run start
 #### 第 5 步：启动第一个 pane
 
 1. 保持目标浏览器标签页处于激活状态。
-2. 先点击 `+ Shell`，这是最稳妥的第一轮 smoke test。
+2. 先点击 `+ Shell`，可以对桥接情况做基本检查。
 3. Shell 正常后，如果相关 CLI 已安装，再尝试 `+ Claude` 或 `+ Codex`。
 4. 新建 pane 会在创建会话时绑定到当前激活的标签页。
 
@@ -284,8 +306,9 @@ npm run test:live
 - 侧边栏默认地址是 `127.0.0.1:9999`；如果不设置 `CLAUDECHROME_WS_PORT`，host 默认会使用随机端口。
 - `npm run install:host` 会注册一个 Chrome native-messaging manifest，但当前仓库本地开发和 `npm run test:live` 的主路径仍然是直接启动 host，并通过 WebSocket 连接侧边栏。
 - `bash` 是 Shell、Claude 和 Codex pane 的统一启动器。如果目标平台没有 `bash`，需要先安装。
-- Claude pane 会调用 `claude --setting-sources user,project,local --mcp-config ...`，并附带 ClaudeChrome 的会话级系统引导。
-- Codex pane 会调用 `codex`，并注入 ClaudeChrome 浏览器桥接所需的 MCP server 配置；启动时还会带上一条会话引导，提醒 Agent 优先围绕当前绑定标签页和 `claudechrome-browser` MCP 工具工作。
+- Claude pane 会调用 `claude --setting-sources user,project,local --mcp-config ...`；浏览器会话语义通过 `claudechrome-browser` MCP 工具暴露，而不是把页面上下文塞进启动 prompt。
+- Codex pane 会调用 `codex`，并注入 ClaudeChrome 浏览器桥接所需的 MCP server 配置。默认启动选项使用 `-a never -s workspace-write`，这样既能在当前会话工作区内直接写文件，也不会把默认权限扩大到 unrestricted full access。
+- 如果没有显式设置 `CLAUDECHROME_CWD`，host 会给每个 session 创建独立的工作目录 `runtime/sessions/<sessionId>/workspace`，避免新的浏览器会话默认掉进 ClaudeChrome 仓库根目录。
 - Windows 下可以直接使用 `scripts/start-windows.cmd` 或 `powershell -ExecutionPolicy Bypass -File scripts/start-windows.ps1` 启动 host；脚本会复用与 runtime 一致的 Git Bash 探测逻辑，并在缺少依赖或构建产物时自动补全安装与构建。
 - 如果你需要同时运行多个本地 host 实例，请用 `CLAUDECHROME_WS_PORT`、`CLAUDECHROME_RUNTIME_DIR` 等环境变量把它们隔离开，而不是共享同一个 runtime 目录。
 

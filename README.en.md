@@ -4,17 +4,43 @@
   <img src="assets/logo-with-texts.png" alt="ClaudeChrome logo" width="420" />
 </p>
 
-ClaudeChrome is a browser-native framework for bringing agent intelligence into Chrome instead of leaving the agent outside the page you are actually working on.
+ClaudeChrome is a browser-native extension built to bring agent intelligence directly into Chrome.
 
-Today it embeds Claude, Codex, and shell workflows directly into Chrome; over time it is meant to support more mainstream browsers as well. The important idea is broader than web debugging: ClaudeChrome keeps the agent attached to the live page so it can crawl sites, execute JavaScript, mimic native styles from existing websites, ingest content into knowledge systems, and sustain longer interactive workflows without forcing manual context transfer back into a separate terminal.
+Today it already embeds Claude, Codex, and shell workflows directly into Chrome, and longer term it is intended to support more mainstream browsers as well. Its core value includes, but is not limited to, web debugging: ClaudeChrome keeps the agent attached to the live page so it can crawl sites, execute JavaScript, mimic native styles from existing websites, ingest content into knowledge systems, and sustain longer interactive workflows without forcing manual context transfer.
+
+Switch to Chinese version: [README.md](README.md)
 
 Landing page: [https://natsufox.github.io/ClaudeChrome/](https://natsufox.github.io/ClaudeChrome/)
 
 Friend link: [LINUX DO](https://linux.do)
 
+## 🎉 Latest updates
+
+- **2026-04-06**
+  - Thanks to [@zuiyi233](https://github.com/zuiyi233) for using ClaudeChrome, sharing feedback, and contributing the PR. It resolved most Windows compatibility issues and added a bilingual Chinese/English UI.
+  - Removed the old parameter settings button and added a configuration panel for centralized Agent CLI launch arguments, working directories, environment-info injection, and related options.
+  - Updated the README and will publish the `0.0.1` release soon so installation and usage are easier.
+
+- **2026-04-05**
+  - The open-source project is now public and ready for people to try. The README already includes installation and usage guides, and clearer docs and demo videos will continue to follow.
+
+## 🎯 Near-term roadmap
+
+- **Release 0.0.2**
+  - [ ] Add multi-tab collaboration support, validate it in sign-up flow scenarios, and record a demo
+  - [ ] Add interfaces for changing page elements and styles, strengthening the extension for page debugging, theme design, and similar workflows
+  - [ ] Publish the release
+
+- **Release 0.0.1**
+  - [x] Build the landing page and demo videos, improve the open-source repo, and present the core features and use cases
+  - [ ] Fix Windows compatibility issues and make sure the main flows are usable
+  - [ ] Publish the release
+
 ## Demo gallery
 
-GitHub README rendering does not reliably show inline `<video>` or `<iframe>` players here, so this gallery uses clickable GIF previews that open the bundled MP4 recordings. Each entry keeps its quick-view GIF, README-sized MP4, and HD promo MP4 together.
+GitHub README rendering does not reliably show inline `<video>` or `<iframe>` players here, so this gallery uses clickable GIF previews that open the bundled MP4 recordings.
+
+**A `0.0.1` release will be published soon so people do not need to clone the repo and download all demo recordings and landing-page assets together.**
 
 <table>
   <tr>
@@ -90,19 +116,18 @@ This path is for people who want a reliable local setup with the fewest moving p
 
 - Google Chrome with access to `chrome://extensions`
 - a recent Node.js LTS release with `npm`
-- `bash` on your `PATH`
-- optional: `claude` on your `PATH` if you want to launch Claude panes
-- optional: `codex` on your `PATH` if you want to launch Codex panes
 
 Notes:
 
 - macOS and Linux already provide `bash` in normal setups.
-- On Windows, install Git Bash or WSL and make sure `bash` is callable from `PATH`.
-- If you only want to verify the local bridge first, start with a Shell pane. That avoids depending on `claude` or `codex`.
+- On Windows, install Git Bash or WSL and make sure `bash`, `claude`, and `codex` are all available globally on `PATH`.
+- If you only want to verify the local bridge first, start with a Shell pane. That avoids depending on whether `claude` or `codex` is already installed.
 
 #### Step 1: Install dependencies and build the local artifacts
 
 ```bash
+cd ClaudeChrome
+
 npm install
 npm install --prefix native-host
 npm run package
@@ -151,7 +176,7 @@ Leave that process running. On successful startup, the host should log events su
 #### Step 5: Launch your first pane
 
 1. Keep the target browser tab active.
-2. Click `+ Shell` for the safest first smoke test.
+2. Click `+ Shell` first for a basic bridge check.
 3. After Shell works, try `+ Claude` or `+ Codex` if those CLIs are installed.
 4. New panes bind to the current active tab when the session is created.
 
@@ -281,8 +306,10 @@ Useful live-test environment overrides:
 - The side panel default is `127.0.0.1:9999`; the host defaults to a random port unless `CLAUDECHROME_WS_PORT` is set.
 - `npm run install:host` registers a Chrome native-messaging manifest, but current repo-local development and `npm run test:live` work by launching the host directly and connecting the panel over WebSocket.
 - `bash` is the launcher for Shell, Claude, and Codex panes. On platforms where `bash` is not already present, install it first.
-- Claude panes invoke `claude --setting-sources user,project,local --mcp-config ...`.
-- Codex panes invoke `codex` with injected MCP server configuration for the ClaudeChrome browser bridge.
+- Claude panes invoke `claude --setting-sources user,project,local --mcp-config ...`; browser session semantics are exposed through the `claudechrome-browser` MCP tool rather than by stuffing page context into the launch prompt.
+- Codex panes invoke `codex` with injected MCP server configuration for the ClaudeChrome browser bridge. The default launch options use `-a never -s workspace-write`, so sessions can write directly inside their workspace without silently expanding the default permission model to unrestricted full access.
+- If `CLAUDECHROME_CWD` is not set explicitly, the host creates an isolated working directory for each session at `runtime/sessions/<sessionId>/workspace`, so new browser sessions do not drop into the ClaudeChrome repo root by default.
+- On Windows, you can start the host directly with `scripts/start-windows.cmd` or `powershell -ExecutionPolicy Bypass -File scripts/start-windows.ps1`; those scripts reuse the same Git Bash detection logic as the runtime and automatically fill in missing install/build steps when needed.
 - If you need multiple local host instances, isolate them with `CLAUDECHROME_WS_PORT`, `CLAUDECHROME_RUNTIME_DIR`, and related environment variables instead of sharing one runtime directory.
 
 ## What ClaudeChrome is for
