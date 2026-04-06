@@ -28,6 +28,7 @@ module.exports = {
         { from: 'extension/manifest.json', to: 'manifest.json' },
         { from: 'extension/side-panel/panel.html', to: 'side-panel/panel.html' },
         { from: 'extension/side-panel/panel.css', to: 'side-panel/panel.css' },
+        { from: 'extension/side-panel/config-panel.css', to: 'side-panel/config-panel.css' },
         {
           from: 'node_modules/@xterm/xterm/css/xterm.css',
           to: 'side-panel/xterm.css',
