@@ -28,6 +28,7 @@ import {
   removePane,
   removeWorkspace,
   type PaneLayout,
+  type PanelLanguage,
   type PanelTheme,
   type PersistedPanelState,
 } from './state';
@@ -61,6 +62,7 @@ const btnLaunchDefaults = document.getElementById('btn-launch-defaults')!;
 const btnAddShellPane = document.getElementById('btn-add-shell-pane')!;
 const btnAddClaudePane = document.getElementById('btn-add-claude-pane')!;
 const btnAddCodexPane = document.getElementById('btn-add-codex-pane')!;
+const btnLanguageToggle = document.getElementById('btn-language-toggle') as HTMLButtonElement;
 const btnThemeToggle = document.getElementById('btn-theme-toggle') as HTMLButtonElement;
 const btnTogglePanel = document.getElementById('btn-toggle-panel') as HTMLButtonElement;
 
@@ -142,9 +144,9 @@ function normalizeTheme(theme: unknown): PanelTheme {
 }
 
 function updateThemeToggleButton(): void {
-  const nextTheme = panelState.theme === 'light' ? 'dark' : 'light';
-  btnThemeToggle.textContent = nextTheme === 'light' ? '浅色' : '深色';
-  btnThemeToggle.title = `切换到${nextTheme === 'light' ? '浅色' : '深色'}主题`;
+  const currentTheme = panelState.theme;
+  btnThemeToggle.textContent = currentTheme === 'light' ? '浅色' : '深色';
+  btnThemeToggle.title = `当前主题：${currentTheme === 'light' ? '浅色' : '深色'}`;
   btnThemeToggle.setAttribute('aria-label', btnThemeToggle.title);
 }
 
@@ -172,6 +174,28 @@ async function setTheme(theme: PanelTheme): Promise<void> {
 
 function toggleTheme(): void {
   void setTheme(panelState.theme === 'light' ? 'dark' : 'light');
+}
+
+function updateLanguageToggleButton(): void {
+  const currentLanguage = panelState.language;
+  btnLanguageToggle.textContent = currentLanguage === 'zh' ? '中文' : 'English';
+  btnLanguageToggle.title = `当前语言：${currentLanguage === 'zh' ? '中文' : 'English'}`;
+  btnLanguageToggle.setAttribute('aria-label', btnLanguageToggle.title);
+}
+
+async function setLanguage(language: PanelLanguage): Promise<void> {
+  if (panelState.language === language) {
+    updateLanguageToggleButton();
+    return;
+  }
+
+  panelState.language = language;
+  updateLanguageToggleButton();
+  await saveState();
+}
+
+function toggleLanguage(): void {
+  void setLanguage(panelState.language === 'zh' ? 'en' : 'zh');
 }
 
 function setStatus(state: 'connected' | 'disconnected' | 'connecting' | 'error', message?: string): void {
@@ -1197,6 +1221,7 @@ function renderWorkspaceStage(): void {
 function render(): void {
   const sessionIdToRefocus = focusedTerminalSessionId();
   applyTheme();
+  updateLanguageToggleButton();
   applyRailWidth();
   applyLayoutState();
   renderWorkspaceRail();
@@ -1312,6 +1337,10 @@ btnAddClaudePane.addEventListener('click', () => {
 
 btnAddCodexPane.addEventListener('click', () => {
   addPane('codex');
+});
+
+btnLanguageToggle.addEventListener('click', () => {
+  toggleLanguage();
 });
 
 btnThemeToggle.addEventListener('click', () => {
