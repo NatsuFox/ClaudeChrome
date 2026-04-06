@@ -1,4 +1,5 @@
 import { buildAgentLaunch, type AgentType } from './agent-runtime.js';
+import { buildBrowserRetargetNotice, buildBrowserSessionNotice } from './browser-context-injection.js';
 import { ContextStore } from './context-store.js';
 import { PtyBridge } from './pty-bridge.js';
 
@@ -175,7 +176,13 @@ export class SessionManager {
     session.bindingTabId = tabId;
     session.lastActiveAt = Date.now();
     session.statusMessage = `已绑定标签页 ${tabId}`;
+    const boundTab = this.contextStore.getTab(tabId);
     this.broadcastSnapshot();
+    this.emitSystemNotice(session, buildBrowserRetargetNotice({
+      bindingTabId: tabId,
+      boundTabTitle: boundTab?.title || undefined,
+      boundTabUrl: boundTab?.url || undefined,
+    }));
   }
 
   restartSession(sessionId: string, cwd?: string, agentType?: AgentType, launchArgs?: string): void {
@@ -278,6 +285,11 @@ export class SessionManager {
       bridge.spawn(launch);
       session.processState = 'running';
       session.statusMessage = `${displayAgentName(session.agentType)} 已启动`;
+      this.emitSystemNotice(session, buildBrowserSessionNotice({
+        bindingTabId: session.bindingTabId,
+        boundTabTitle: boundTab?.title || undefined,
+        boundTabUrl: boundTab?.url || undefined,
+      }));
     } catch (error) {
       session.pty = null;
       session.processState = 'error';

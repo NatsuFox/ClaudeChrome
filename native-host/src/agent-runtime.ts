@@ -1,5 +1,6 @@
 import * as fs from 'node:fs';
 import * as path from 'node:path';
+import { buildBrowserSessionGuidance } from './browser-context-injection.js';
 import type { PtySpawnOptions } from './pty-bridge.js';
 
 export type AgentType = 'claude' | 'codex' | 'shell';
@@ -78,42 +79,6 @@ function wrapWithLoginShell(command: string, args: string[], cwd: string, env: N
     cols,
     rows,
   };
-}
-
-function truncatePromptValue(value: string | undefined, maxLength = 200): string | undefined {
-  const trimmed = value?.trim();
-  if (!trimmed) {
-    return undefined;
-  }
-  if (trimmed.length <= maxLength) {
-    return trimmed;
-  }
-  return `${trimmed.slice(0, maxLength - 1)}…`;
-}
-
-function buildBrowserSessionGuidance(options: AgentLaunchOptions, requireAck = false): string {
-  const parts = [
-    'You are running inside ClaudeChrome.',
-    `This session is bound to browser tab #${options.bindingTabId}.`,
-  ];
-
-  const tabTitle = truncatePromptValue(options.boundTabTitle);
-  const tabUrl = truncatePromptValue(options.boundTabUrl);
-  if (tabTitle) {
-    parts.push(`Bound tab title: ${tabTitle}.`);
-  }
-  if (tabUrl) {
-    parts.push(`Bound tab URL: ${tabUrl}.`);
-  }
-
-  parts.push('When a task depends on the current page, tab state, DOM, browser requests, console output, cookies, storage, or page actions, use the injected claudechrome-browser MCP tools first.');
-  parts.push('Treat the bound browser tab as the primary session context before falling back to local workspace inspection or generic web fetches.');
-  parts.push('Do not make code or filesystem changes until the user asks.');
-  if (requireAck) {
-    parts.push('Reply with one short readiness note and then wait for the next user instruction.');
-  }
-
-  return parts.join(' ');
 }
 
 function ensureSessionDir(runtimeDir: string, sessionId: string): string {
@@ -221,7 +186,11 @@ function buildClaudeLaunch(options: AgentLaunchOptions): PtySpawnOptions {
       '--mcp-config',
       configPath,
       '--append-system-prompt',
-      buildBrowserSessionGuidance(options),
+      buildBrowserSessionGuidance({
+        bindingTabId: options.bindingTabId,
+        boundTabTitle: options.boundTabTitle,
+        boundTabUrl: options.boundTabUrl,
+      }),
       ...splitCommandLine(options.launchArgs),
     ],
     options.cwd,
@@ -246,7 +215,11 @@ function buildCodexLaunch(options: AgentLaunchOptions): PtySpawnOptions {
       '-c',
       `mcp_servers.claudechrome-browser.env={CLAUDECHROME_STORE_PORT="${options.storePort}",CLAUDECHROME_SESSION_ID="${sessionId}"}`,
       ...splitCommandLine(options.launchArgs),
-      buildBrowserSessionGuidance(options, true),
+      buildBrowserSessionGuidance({
+        bindingTabId: options.bindingTabId,
+        boundTabTitle: options.boundTabTitle,
+        boundTabUrl: options.boundTabUrl,
+      }, true),
     ],
     options.cwd,
     env,

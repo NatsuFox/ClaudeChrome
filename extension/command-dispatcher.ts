@@ -9,6 +9,7 @@ export async function dispatchCommand(
 ): Promise<unknown> {
   switch (command) {
     case 'list_tabs':         return cmdListTabs(tabId, params);
+    case 'activate_tab':      return cmdActivateTab(tabId, params);
     case 'screenshot':        return cmdScreenshot(tabId, params);
     case 'navigate':          return cmdNavigate(tabId, params);
     case 'reload':            return cmdReload(tabId, params);
@@ -79,6 +80,17 @@ async function cmdListTabs(
     count: summaries.length,
     tabs: summaries,
   };
+}
+
+async function cmdActivateTab(
+  tabId: number,
+  _params: Record<string, unknown>
+): Promise<{ tab: ReturnType<typeof summarizeTabForList> }> {
+  const tab = await chrome.tabs.update(tabId, { active: true });
+  if (!tab?.id) {
+    throw new Error(`Tab unavailable: ${tabId}`);
+  }
+  return { tab: summarizeTabForList(tab as chrome.tabs.Tab & { id: number }) };
 }
 
 // --- Screenshot ---
@@ -347,11 +359,18 @@ async function cmdWaitFor(
 // --- Cookies ---
 
 async function cmdGetCookies(
-  _tabId: number,
+  tabId: number,
   params: Record<string, unknown>
 ): Promise<{ cookies: chrome.cookies.Cookie[] }> {
   const details: chrome.cookies.GetAllDetails = {};
-  if (typeof params.url === 'string') details.url = params.url;
+  if (typeof params.url === 'string') {
+    details.url = params.url;
+  } else {
+    const tab = await chrome.tabs.get(tabId).catch(() => null);
+    if (tab?.url) {
+      details.url = tab.url;
+    }
+  }
   if (typeof params.name === 'string') details.name = params.name;
   if (typeof params.domain === 'string') details.domain = params.domain;
   const cookies = await chrome.cookies.getAll(details);

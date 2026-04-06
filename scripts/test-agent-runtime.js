@@ -91,8 +91,12 @@ test('Claude launch appends browser-session system guidance', () => {
   assert.strictEqual(launch.command, 'bash');
   assert.strictEqual(launch.args[0], '--login');
   assert(launch.args[2].includes('--append-system-prompt'));
-  assert(launch.args[2].includes('browser tab #17'));
-  assert(launch.args[2].includes('claudechrome-browser MCP tools first'));
+  assert(launch.args[2].includes('session_mode: browser_attached'));
+  assert(launch.args[2].includes('targeting_model: session_default_tab_with_per_call_override'));
+  assert(launch.args[2].includes('browser__session_context'));
+  assert(launch.args[2].includes('browser__list_tabs'));
+  assert(launch.args[2].includes('browser__bind_tab'));
+  assert(launch.args[2].includes('avoid external/headless browser tools'));
   assert(launch.args[2].includes('https://example.com/path?x=1'));
 });
 
@@ -118,9 +122,12 @@ test('Windows Codex launch normalizes bridge path and includes startup guidance 
 
   assert.strictEqual(launch.command, fakeBash);
   assert(launch.args[2].includes('C:/Repo/native-host/dist/mcp-stdio-bridge.js'));
-  assert(launch.args[2].includes('browser tab #42'));
+  assert(launch.args[2].includes('session_mode: browser_attached'));
+  assert(launch.args[2].includes('targeting_model: session_default_tab_with_per_call_override'));
   assert(launch.args[2].includes('Bound Product Page'));
-  assert(launch.args[2].includes('Reply with one short readiness note'));
+  assert(launch.args[2].includes('browser__session_context'));
+  assert(launch.args[2].includes('browser__bind_tab'));
+  assert(launch.args[2].includes('reply with one short readiness note'));
 });
 
 test('Explicit bash override wins over platform discovery on Windows', () => {

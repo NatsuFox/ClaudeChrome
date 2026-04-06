@@ -256,6 +256,13 @@ async function runTests() {
     assert(activeOnly?.tabs?.every((tab) => tab.active === true), 'list_tabs active_only filters to active tabs');
   }
 
+  // activate_tab
+  {
+    const r = await assertOk(dispatchCommand('activate_tab', 43, {}), 'activate_tab');
+    assert(r?.tab?.tabId === 42 || r?.tab?.tabId === 43, 'activate_tab returns tab summary');
+    assert(r?.tab?.active === true, 'activate_tab returns active tab summary');
+  }
+
   // get_page_content
   {
     const r = await assertOk(dispatchCommand('get_page_content', 42, {}), 'get_page_content');

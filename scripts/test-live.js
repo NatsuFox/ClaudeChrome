@@ -762,7 +762,8 @@ async function main() {
 
     const consoleMessages = await waitFor(async () => {
       const logs = await ipcQuery(storePort, sessionId, 'get_console_logs', { limit: 20 });
-      const messages = Array.isArray(logs) ? logs.map((entry) => entry.message || '') : [];
+      const entries = logs?.ok === true && Array.isArray(logs.entries) ? logs.entries : [];
+      const messages = entries.map((entry) => entry.message || '');
       const sawSelector = messages.some((message) => String(message).includes('selector-click'));
       const sawCoord = messages.some((message) => String(message).includes('coord-click'));
       return sawSelector && sawCoord ? messages : null;
