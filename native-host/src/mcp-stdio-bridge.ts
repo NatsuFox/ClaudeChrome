@@ -101,7 +101,7 @@ async function main() {
 
   server.tool(
     'browser__get_requests',
-    'List captured HTTP requests from the browser tab bound to this session',
+    'List captured HTTP requests from the browser tab bound to this session. Use this when the current task depends on page network activity rather than local workspace files.',
     {
       url_pattern: z.string().optional().describe('Regex to filter URLs'),
       method: z.string().optional().describe('HTTP method filter'),
@@ -153,7 +153,7 @@ async function main() {
 
   server.tool(
     'browser__get_page_info',
-    'Get current page identity and direct-capture summary for the browser tab bound to this session',
+    'Get current page identity and direct-capture summary for the browser tab bound to this session. Prefer this over local file inspection when the task is about the current page.',
     {},
     async () => {
       const result = await queryStore('get_page_info', {});
@@ -196,8 +196,18 @@ async function main() {
   );
 
   server.tool(
+    'browser__session_context',
+    'Get the current bound browser session context and suggested next browser tools. Call this first when the task depends on the current page or bound-tab session state.',
+    {},
+    async () => {
+      const result = await queryStore('get_session_context', {});
+      return { content: [{ type: 'text', text: JSON.stringify(result, null, 2) }] };
+    }
+  );
+
+  server.tool(
     'browser__binding_status',
-    'Get the current tab binding and page context status for this session',
+    'Get the current tab binding and page context status for this session. Use this to confirm which bound tab the current agent session should reason about.',
     {},
     async () => {
       const result = await queryStore('get_binding_status', {});
@@ -207,7 +217,7 @@ async function main() {
 
   server.tool(
     'browser__capabilities',
-    'List which browser MCP tool families are currently available for this session',
+    'List which browser MCP tool families are currently available for this session so the agent can choose session-bound browser tools before falling back to unrelated local inspection.',
     {},
     async () => {
       const result = await queryStore('get_capabilities', {});
@@ -428,6 +438,111 @@ async function main() {
     async () => {
       const result = await sendCommand('get_selection', {});
       return { content: [{ type: 'text', text: JSON.stringify(result) }] };
+    }
+  );
+
+  server.tool(
+    'browser__set_element_text',
+    'Set the text content of an element in the browser tab bound to this session',
+    {
+      selector: z.string().describe('CSS selector for target element'),
+      text: z.string().describe('New text content'),
+    },
+    async (params) => {
+      const result = await sendCommand('set_element_text', params, 10000);
+      return { content: [{ type: 'text', text: JSON.stringify(result, null, 2) }] };
+    }
+  );
+
+  server.tool(
+    'browser__set_element_html',
+    'Set the HTML content of an element in the browser tab bound to this session',
+    {
+      selector: z.string().describe('CSS selector for target element'),
+      html: z.string().describe('New HTML content'),
+      sanitize: z.boolean().optional().describe('Sanitize HTML to prevent XSS (default: true)'),
+    },
+    async (params) => {
+      const result = await sendCommand('set_element_html', params, 10000);
+      return { content: [{ type: 'text', text: JSON.stringify(result, null, 2) }] };
+    }
+  );
+
+  server.tool(
+    'browser__set_element_style',
+    'Set inline CSS styles on an element in the browser tab bound to this session',
+    {
+      selector: z.string().describe('CSS selector for target element'),
+      styles: z.record(z.string()).describe('CSS properties as key-value pairs (e.g., {"color": "red", "fontSize": "16px"})'),
+    },
+    async (params) => {
+      const result = await sendCommand('set_element_style', params, 10000);
+      return { content: [{ type: 'text', text: JSON.stringify(result, null, 2) }] };
+    }
+  );
+
+  server.tool(
+    'browser__add_element_class',
+    'Add CSS class(es) to an element in the browser tab bound to this session',
+    {
+      selector: z.string().describe('CSS selector for target element'),
+      classes: z.union([z.string(), z.array(z.string())]).describe('Class name(s) to add'),
+    },
+    async (params) => {
+      const result = await sendCommand('add_element_class', params, 10000);
+      return { content: [{ type: 'text', text: JSON.stringify(result, null, 2) }] };
+    }
+  );
+
+  server.tool(
+    'browser__remove_element_class',
+    'Remove CSS class(es) from an element in the browser tab bound to this session',
+    {
+      selector: z.string().describe('CSS selector for target element'),
+      classes: z.union([z.string(), z.array(z.string())]).describe('Class name(s) to remove'),
+    },
+    async (params) => {
+      const result = await sendCommand('remove_element_class', params, 10000);
+      return { content: [{ type: 'text', text: JSON.stringify(result, null, 2) }] };
+    }
+  );
+
+  server.tool(
+    'browser__get_computed_style',
+    'Get computed CSS styles of an element in the browser tab bound to this session',
+    {
+      selector: z.string().describe('CSS selector for target element'),
+      properties: z.array(z.string()).optional().describe('Specific CSS properties to get (default: common properties)'),
+    },
+    async (params) => {
+      const result = await sendCommand('get_computed_style', params, 10000);
+      return { content: [{ type: 'text', text: JSON.stringify(result, null, 2) }] };
+    }
+  );
+
+  server.tool(
+    'browser__get_element_properties',
+    'Get comprehensive properties of an element in the browser tab bound to this session',
+    {
+      selector: z.string().describe('CSS selector for target element'),
+    },
+    async (params) => {
+      const result = await sendCommand('get_element_properties', params, 10000);
+      return { content: [{ type: 'text', text: JSON.stringify(result, null, 2) }] };
+    }
+  );
+
+  server.tool(
+    'browser__highlight_element',
+    'Add a visual highlight overlay to an element in the browser tab bound to this session for debugging',
+    {
+      selector: z.string().describe('CSS selector for target element'),
+      color: z.string().optional().describe('Highlight color (default: "red")'),
+      duration: z.number().optional().describe('Auto-remove after milliseconds (0 = permanent, default: 0)'),
+    },
+    async (params) => {
+      const result = await sendCommand('highlight_element', params, 10000);
+      return { content: [{ type: 'text', text: JSON.stringify(result, null, 2) }] };
     }
   );
 
