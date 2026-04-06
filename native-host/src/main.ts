@@ -16,8 +16,8 @@ const CONNECTION_LOG_PATH = process.env.CLAUDECHROME_CONNECTION_LOG_PATH || path
 const STORE_PORT = parseInt(process.env.CLAUDECHROME_STORE_PORT || '0', 10);
 const STORE_SOCKET_PATH = process.env.CLAUDECHROME_STORE_SOCKET || path.join(RUNTIME_DIR, 'store.sock');
 const MCP_BRIDGE_SCRIPT = path.resolve(__dirname, 'mcp-stdio-bridge.js');
-const PROJECT_ROOT = path.resolve(__dirname, '..', '..');
-const DEFAULT_CWD = process.env.CLAUDECHROME_CWD || PROJECT_ROOT;
+const SESSION_WORKSPACE_ROOT = path.join(RUNTIME_DIR, 'sessions');
+const EXPLICIT_CWD = process.env.CLAUDECHROME_CWD?.trim() || null;
 
 const clients = new Set<WebSocket>();
 const contextStore = new ContextStore();
@@ -124,6 +124,17 @@ function handleContextUpdate(msg: { category: string; payload: unknown }): void 
   }
 }
 
+function resolveSessionCwd(sessionId: string): string {
+  if (EXPLICIT_CWD) {
+    fs.mkdirSync(EXPLICIT_CWD, { recursive: true });
+    return EXPLICIT_CWD;
+  }
+
+  const cwd = path.join(SESSION_WORKSPACE_ROOT, sessionId, 'workspace');
+  fs.mkdirSync(cwd, { recursive: true });
+  return cwd;
+}
+
 function handleClientMessage(msg: any): void {
   switch (msg.type) {
     case 'session_create':
@@ -134,7 +145,7 @@ function handleClientMessage(msg: any): void {
         bindingTabId: msg.binding?.tabId,
         cols: msg.cols,
         rows: msg.rows,
-        cwd: DEFAULT_CWD,
+        cwd: resolveSessionCwd(msg.sessionId),
         launchArgs: typeof msg.launchArgs === 'string' ? msg.launchArgs : undefined,
       });
       break;
@@ -149,7 +160,7 @@ function handleClientMessage(msg: any): void {
     case 'session_restart':
       sessionManager.restartSession(
         msg.sessionId,
-        DEFAULT_CWD,
+        resolveSessionCwd(msg.sessionId),
         msg.agentType as AgentType | undefined,
         typeof msg.launchArgs === 'string' ? msg.launchArgs : undefined,
       );
@@ -345,6 +356,7 @@ const IMPLEMENTED_SESSION_TOOLS = [
   'browser__get_page_html',
   'browser__list_tabs',
   'browser__status',
+  'browser__session_context',
   'browser__binding_status',
   'browser__capabilities',
   'browser__capture_stats',
@@ -442,6 +454,41 @@ function makeMissingPageInfoError(sessionId: string, tabId: number) {
   });
 }
 
+function summarizeSessionContext(context: Exclude<ReturnType<typeof getSessionContext>, { error: unknown }>) {
+  const suggestedNextTools: string[] = [];
+
+  if (context.pageInfo) {
+    suggestedNextTools.push('browser__get_page_text', 'browser__get_page_info');
+  } else {
+    suggestedNextTools.push('browser__binding_status', 'browser__get_page_info');
+  }
+
+  if (context.stats.requestCount > 0) {
+    suggestedNextTools.push('browser__get_requests');
+  }
+  if (context.stats.consoleCount > 0) {
+    suggestedNextTools.push('browser__get_console_logs');
+  }
+
+  suggestedNextTools.push('browser__capabilities');
+
+  return {
+    ok: true,
+    sessionId: context.sessionId,
+    binding: context.snapshot.binding,
+    sessionStatus: context.snapshot.status,
+    sessionStatusMessage: context.snapshot.statusMessage ?? null,
+    boundTab: context.tab,
+    pageInfo: summarizePageInfo(context.pageInfo),
+    capture: {
+      requestCount: context.stats.requestCount,
+      consoleCount: context.stats.consoleCount,
+      hasPageInfo: context.stats.hasPageInfo,
+    },
+    suggestedNextTools: [...new Set(suggestedNextTools)],
+  };
+}
+
 function getCapabilities(context: ReturnType<typeof getSessionContext>) {
   const hasContext = !('error' in context) && context.snapshot.status !== 'tab_unavailable';
   return {
@@ -466,7 +513,7 @@ function getCapabilities(context: ReturnType<typeof getSessionContext>) {
       },
       introspection: {
         available: true,
-        tools: ['browser__status', 'browser__binding_status', 'browser__capabilities', 'browser__capture_stats', 'browser__explain_unavailable', 'browser__self_check'],
+        tools: ['browser__status', 'browser__session_context', 'browser__binding_status', 'browser__capabilities', 'browser__capture_stats', 'browser__explain_unavailable', 'browser__self_check'],
       },
       cookies: {
         available: true,
@@ -694,6 +741,9 @@ function handleStoreQuery(sessionId: string | undefined, tool: string, params: a
           },
         },
       };
+    case 'get_session_context':
+      if ('error' in context) return context.error;
+      return summarizeSessionContext(context);
     case 'get_binding_status':
       if ('error' in context) return context.error;
       return {
