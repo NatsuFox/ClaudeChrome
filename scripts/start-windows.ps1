@@ -14,6 +14,37 @@ function Test-CommandAvailable([string]$Name) {
     return $null -ne (Get-Command $Name -ErrorAction SilentlyContinue)
 }
 
+function Find-BashCommand() {
+    if ($env:CLAUDECHROME_BASH_PATH) {
+        if (Test-Path $env:CLAUDECHROME_BASH_PATH) {
+            return $env:CLAUDECHROME_BASH_PATH
+        }
+        throw "CLAUDECHROME_BASH_PATH points to a missing file: $($env:CLAUDECHROME_BASH_PATH)"
+    }
+
+    $bashCommand = Get-Command bash -ErrorAction SilentlyContinue
+    if ($null -ne $bashCommand -and $bashCommand.Source) {
+        return $bashCommand.Source
+    }
+
+    $candidates = @(
+        $(if ($env:ProgramFiles) { Join-Path $env:ProgramFiles 'Git\bin\bash.exe' }),
+        $(if ($env:ProgramFiles) { Join-Path $env:ProgramFiles 'Git\usr\bin\bash.exe' }),
+        $(if ($env:'ProgramFiles(x86)') { Join-Path $env:'ProgramFiles(x86)' 'Git\bin\bash.exe' }),
+        $(if ($env:'ProgramFiles(x86)') { Join-Path $env:'ProgramFiles(x86)' 'Git\usr\bin\bash.exe' }),
+        $(if ($env:LOCALAPPDATA) { Join-Path $env:LOCALAPPDATA 'Programs\Git\bin\bash.exe' }),
+        $(if ($env:LOCALAPPDATA) { Join-Path $env:LOCALAPPDATA 'Programs\Git\usr\bin\bash.exe' })
+    ) | Where-Object { $_ }
+
+    foreach ($candidate in $candidates) {
+        if (Test-Path $candidate) {
+            return $candidate
+        }
+    }
+
+    return $null
+}
+
 $scriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 $repoRoot = Split-Path -Parent $scriptDir
 
@@ -32,23 +63,30 @@ if (-not (Test-CommandAvailable "npm")) {
     throw "npm was not found. Install npm and make sure npm is on PATH."
 }
 
-if (-not (Test-CommandAvailable "bash")) {
-    throw "bash was not found. On Windows, install Git Bash or WSL and make sure bash is on PATH."
+$bashCommand = Find-BashCommand
+if (-not $bashCommand) {
+    throw "bash was not found. Install Git Bash or WSL, or set CLAUDECHROME_BASH_PATH to bash.exe."
 }
+$env:CLAUDECHROME_BASH_PATH = $bashCommand
 
 $nodeVersion = node -v
 $npmVersion = npm -v
-$bashVersion = (& bash --version | Select-Object -First 1)
+$bashVersion = (& $bashCommand --version | Select-Object -First 1)
 
 Write-Host "Node: $nodeVersion"
 Write-Host "npm:  $npmVersion"
 Write-Host "bash: $bashVersion"
+Write-Host "bash path: $bashCommand"
 
 $extensionManifest = Join-Path $repoRoot 'dist/manifest.json'
 $nativeHostEntry = Join-Path $repoRoot 'native-host/dist/main.js'
+$rootNodeModules = Join-Path $repoRoot 'node_modules'
+$nativeHostNodeModules = Join-Path $repoRoot 'native-host/node_modules'
 
-if ($Rebuild -or -not (Test-Path $extensionManifest) -or -not (Test-Path $nativeHostEntry)) {
-    Write-Section "Artifacts missing or -Rebuild was provided; installing and building"
+$needsInstallOrBuild = $Rebuild -or -not (Test-Path $extensionManifest) -or -not (Test-Path $nativeHostEntry) -or -not (Test-Path $rootNodeModules) -or -not (Test-Path $nativeHostNodeModules)
+
+if ($needsInstallOrBuild) {
+    Write-Section "Dependencies or build artifacts missing; installing and building"
     npm install
     if ($LASTEXITCODE -ne 0) { throw "Root npm install failed." }
 
@@ -59,9 +97,11 @@ if ($Rebuild -or -not (Test-Path $extensionManifest) -or -not (Test-Path $native
     if ($LASTEXITCODE -ne 0) { throw "npm run package failed." }
 }
 else {
-    Write-Section "Build artifacts already exist; skipping install/build"
+    Write-Section "Dependencies and build artifacts already exist; skipping install/build"
     Write-Host "Extension manifest: $extensionManifest"
     Write-Host "Host entry: $nativeHostEntry"
+    Write-Host "Root node_modules: $rootNodeModules"
+    Write-Host "Native host node_modules: $nativeHostNodeModules"
 }
 
 Write-Section "Starting ClaudeChrome native-host"

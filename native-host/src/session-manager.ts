@@ -259,6 +259,7 @@ export class SessionManager {
     });
 
     try {
+      const boundTab = this.contextStore.getTab(session.bindingTabId);
       const launch = buildAgentLaunch({
         sessionId: session.sessionId,
         agentType: session.agentType,
@@ -269,6 +270,9 @@ export class SessionManager {
         mcpBridgeScript: this.mcpBridgeScript,
         storeSocketPath: this.storeSocketPath,
         storePort: this.storePort,
+        bindingTabId: session.bindingTabId,
+        boundTabTitle: boundTab?.title || undefined,
+        boundTabUrl: boundTab?.url || undefined,
         launchArgs: session.launchArgs,
       });
       bridge.spawn(launch);

@@ -6,6 +6,14 @@
     window.postMessage({ source: 'claudechrome-page', type, ...data }, '*');
   };
 
+  const resolveCapturedUrl = (value: string | URL) => {
+    try {
+      return new URL(String(value), window.location.href).toString();
+    } catch {
+      return String(value);
+    }
+  };
+
   const getFetchRequestMeta = (args: Parameters<typeof fetch>) => {
     const [input, init] = args;
     let method = typeof init?.method === 'string' && init.method
@@ -14,13 +22,13 @@
     let url = '';
 
     if (typeof input === 'string') {
-      url = input;
+      url = resolveCapturedUrl(input);
     } else if (input instanceof URL) {
-      url = input.toString();
+      url = resolveCapturedUrl(input);
     } else if (input && typeof input === 'object') {
       const request = input as Request;
       if (typeof request.url === 'string') {
-        url = request.url;
+        url = resolveCapturedUrl(request.url);
       }
       if ((!init?.method || typeof init.method !== 'string') && typeof request.method === 'string' && request.method) {
         method = request.method;
@@ -54,7 +62,7 @@
 
   XMLHttpRequest.prototype.open = function (method: string, url: string | URL, ...rest: any[]) {
     (this as any).__cc_method = method;
-    (this as any).__cc_url = String(url);
+    (this as any).__cc_url = resolveCapturedUrl(url);
     return origOpen.apply(this, [method, url, ...rest] as any);
   };
 

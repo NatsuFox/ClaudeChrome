@@ -284,8 +284,9 @@ npm run test:live
 - 侧边栏默认地址是 `127.0.0.1:9999`；如果不设置 `CLAUDECHROME_WS_PORT`，host 默认会使用随机端口。
 - `npm run install:host` 会注册一个 Chrome native-messaging manifest，但当前仓库本地开发和 `npm run test:live` 的主路径仍然是直接启动 host，并通过 WebSocket 连接侧边栏。
 - `bash` 是 Shell、Claude 和 Codex pane 的统一启动器。如果目标平台没有 `bash`，需要先安装。
-- Claude pane 会调用 `claude --setting-sources user,project,local --mcp-config ...`。
-- Codex pane 会调用 `codex`，并注入 ClaudeChrome 浏览器桥接所需的 MCP server 配置。
+- Claude pane 会调用 `claude --setting-sources user,project,local --mcp-config ...`，并附带 ClaudeChrome 的会话级系统引导。
+- Codex pane 会调用 `codex`，并注入 ClaudeChrome 浏览器桥接所需的 MCP server 配置；启动时还会带上一条会话引导，提醒 Agent 优先围绕当前绑定标签页和 `claudechrome-browser` MCP 工具工作。
+- Windows 下可以直接使用 `scripts/start-windows.cmd` 或 `powershell -ExecutionPolicy Bypass -File scripts/start-windows.ps1` 启动 host；脚本会复用与 runtime 一致的 Git Bash 探测逻辑，并在缺少依赖或构建产物时自动补全安装与构建。
 - 如果你需要同时运行多个本地 host 实例，请用 `CLAUDECHROME_WS_PORT`、`CLAUDECHROME_RUNTIME_DIR` 等环境变量把它们隔离开，而不是共享同一个 runtime 目录。
 
 ## ClaudeChrome 是为了解决什么问题
