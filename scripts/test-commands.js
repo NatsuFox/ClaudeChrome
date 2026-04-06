@@ -37,6 +37,14 @@ const MOCK_RESULTS = {
   wait_for:         { satisfied: true, elapsed: 50 },
   get_cookies:      { cookies: [{ name: 'session', value: 'abc123', domain: 'example.com' }] },
   get_storage:      { localStorage: { theme: 'dark', userId: '42' }, sessionStorage: { draft: 'hello' } },
+  set_element_text: { success: true, previousText: 'Old Text' },
+  set_element_html: { success: true, previousHtml: '<span>Old HTML</span>' },
+  set_element_style: { success: true, previousStyles: { color: 'blue', fontSize: '14px' } },
+  add_element_class: { success: true, addedClasses: ['highlight'], currentClasses: ['highlight', 'existing'] },
+  remove_element_class: { success: true, removedClasses: ['highlight'], currentClasses: ['existing'] },
+  get_computed_style: { success: true, styles: { color: 'rgb(0, 0, 0)', fontSize: '16px', display: 'block' } },
+  get_element_properties: { success: true, properties: { tagName: 'DIV', id: 'main', className: 'container', attributes: {}, textContent: 'Hello', innerHTML: '<span>Hello</span>', dimensions: { width: 300, height: 200 }, position: { top: 100, left: 50, bottom: 300, right: 350 } } },
+  highlight_element: { success: true, highlightId: 'highlight-123' },
 };
 
 // ---------------------------------------------------------------------------
@@ -203,6 +211,14 @@ async function main() {
     { name: 'wait_for',         params: { condition: 'load' } },
     { name: 'get_cookies',      params: {} },
     { name: 'get_storage',      params: { storage_type: 'both' } },
+    { name: 'set_element_text', params: { selector: 'h1', text: 'New Title' } },
+    { name: 'set_element_html', params: { selector: '#content', html: '<p>New content</p>' } },
+    { name: 'set_element_style', params: { selector: '.box', styles: { color: 'red', fontSize: '20px' } } },
+    { name: 'add_element_class', params: { selector: '.item', classes: ['active', 'highlight'] } },
+    { name: 'remove_element_class', params: { selector: '.item', classes: 'highlight' } },
+    { name: 'get_computed_style', params: { selector: 'body', properties: ['color', 'fontSize'] } },
+    { name: 'get_element_properties', params: { selector: '#main' } },
+    { name: 'highlight_element', params: { selector: '.target', color: 'blue', duration: 2000 } },
   ];
 
   for (const { name, params } of commands) {
@@ -254,10 +270,18 @@ async function main() {
   assert(caps.implementedTools.includes('browser__click'), 'get_capabilities includes browser__click');
   assert(caps.implementedTools.includes('browser__get_cookies'), 'get_capabilities includes browser__get_cookies');
   assert(caps.implementedTools.includes('browser__list_tabs'), 'get_capabilities includes browser__list_tabs');
+  assert(caps.implementedTools.includes('browser__session_context'), 'get_capabilities includes browser__session_context');
   assert(caps.families?.action?.available === true, 'get_capabilities marks action family available');
   assert(caps.families?.tabs?.available === true, 'get_capabilities marks tabs family available');
   assert(caps.families?.cookies?.available === true, 'get_capabilities marks cookies family available');
   assert(caps.families?.storage?.available === true, 'get_capabilities marks storage family available');
+  assert(caps.families?.introspection?.tools?.includes('browser__session_context'), 'get_capabilities lists browser__session_context in introspection tools');
+
+  const sessionContext = await ipcQuery({ sessionId: SESSION_ID, tool: 'get_session_context', params: {} });
+  assert(sessionContext.ok === true, 'get_session_context query succeeds');
+  assert(sessionContext.binding?.tabId === TAB_ID, `get_session_context reports bound tabId ${TAB_ID}`);
+  assert(Array.isArray(sessionContext.suggestedNextTools), 'get_session_context returns suggestedNextTools');
+  assert(sessionContext.suggestedNextTools.includes('browser__get_page_info'), 'get_session_context suggests browser__get_page_info');
 
   const stats = await ipcQuery({ sessionId: SESSION_ID, tool: 'get_capture_stats', params: {} });
   assert(stats.ok === true, 'get_capture_stats query succeeds');

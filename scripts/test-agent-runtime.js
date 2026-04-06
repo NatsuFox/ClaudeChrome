@@ -75,9 +75,6 @@ function baseOptions(overrides = {}) {
     mcpBridgeScript: '/tmp/claudechrome-runtime/mcp-stdio-bridge.js',
     storeSocketPath: '/tmp/claudechrome-runtime/store.sock',
     storePort: 43121,
-    bindingTabId: 17,
-    boundTabTitle: 'ClaudeChrome Test Tab',
-    boundTabUrl: 'https://example.com/path?x=1',
     launchArgs: '--search',
     ...overrides,
   };
@@ -86,17 +83,17 @@ function baseOptions(overrides = {}) {
 console.log('\n\x1b[1mClaudeChrome — Agent Runtime Launch Tests\x1b[0m');
 console.log('='.repeat(48));
 
-test('Claude launch appends browser-session system guidance', () => {
+test('Claude launch stays MCP-based without startup prompt injection', () => {
   const launch = withPlatform('linux', () => buildAgentLaunch(baseOptions({ agentType: 'claude' })));
   assert.strictEqual(launch.command, 'bash');
   assert.strictEqual(launch.args[0], '--login');
-  assert(launch.args[2].includes('--append-system-prompt'));
-  assert(launch.args[2].includes('browser tab #17'));
-  assert(launch.args[2].includes('claudechrome-browser MCP tools first'));
-  assert(launch.args[2].includes('https://example.com/path?x=1'));
+  assert(launch.args[2].includes('--mcp-config'));
+  assert(launch.args[2].includes('--search'));
+  assert(!launch.args[2].includes('--append-system-prompt'));
+  assert(!launch.args[2].includes('browser tab #'));
 });
 
-test('Windows Codex launch normalizes bridge path and includes startup guidance prompt', () => {
+test('Windows Codex launch normalizes bridge path without adding prompt text', () => {
   const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'claudechrome-agent-runtime-'));
   const fakeBash = path.join(tempRoot, 'Git', 'bin', 'bash.exe');
   fs.mkdirSync(path.dirname(fakeBash), { recursive: true });
@@ -110,17 +107,14 @@ test('Windows Codex launch normalizes bridge path and includes startup guidance 
   }, () => buildAgentLaunch(baseOptions({
     agentType: 'codex',
     mcpBridgeScript: 'C:\\Repo\\native-host\\dist\\mcp-stdio-bridge.js',
-    launchArgs: '-a never -s danger-full-access',
-    bindingTabId: 42,
-    boundTabTitle: 'Bound Product Page',
-    boundTabUrl: 'https://example.com/products/42',
+    launchArgs: '-a never -s workspace-write',
   }))));
 
   assert.strictEqual(launch.command, fakeBash);
   assert(launch.args[2].includes('C:/Repo/native-host/dist/mcp-stdio-bridge.js'));
-  assert(launch.args[2].includes('browser tab #42'));
-  assert(launch.args[2].includes('Bound Product Page'));
-  assert(launch.args[2].includes('Reply with one short readiness note'));
+  assert(launch.args[2].includes('-a'));
+  assert(launch.args[2].includes('workspace-write'));
+  assert(!launch.args[2].includes('Reply with one short readiness note'));
 });
 
 test('Explicit bash override wins over platform discovery on Windows', () => {
