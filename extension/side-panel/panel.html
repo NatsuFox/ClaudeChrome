@@ -11,40 +11,40 @@
   <div id="panel-shell">
     <div id="toolbar">
       <div class="toolbar-cluster toolbar-brand-cluster">
-        <img class="toolbar-brand-logo" src="../branding/logo.svg" alt="ClaudeChrome logo">
+        <img class="toolbar-brand-logo" src="../branding/logo.svg" alt="ClaudeChrome 标志">
         <span class="toolbar-brand-name">ClaudeChrome</span>
       </div>
 
       <div class="toolbar-cluster toolbar-status-cluster">
         <span id="status-indicator" class="disconnected"></span>
-        <span id="status-text">Disconnected</span>
-        <span id="focused-binding" class="toolbar-chip">No focused pane</span>
+        <span id="status-text">未连接</span>
+        <span id="focused-binding" class="toolbar-chip">未选中面板</span>
       </div>
 
       <div class="toolbar-cluster toolbar-action-cluster">
-        <button id="btn-launch-defaults" title="Edit default startup arguments for Claude and Codex panes">Launch Defaults</button>
-        <button id="btn-add-shell-pane" title="Add a shell pane to the active workspace">+ Shell</button>
-        <button id="btn-add-claude-pane" title="Add a Claude pane to the active workspace">+ Claude</button>
-        <button id="btn-add-codex-pane" title="Add a Codex pane to the active workspace">+ Codex</button>
+        <button id="btn-launch-defaults" title="设置 Claude 和 Codex 面板的默认启动选项">默认启动项</button>
+        <button id="btn-add-shell-pane" title="在当前工作区中添加一个终端面板">+ 终端</button>
+        <button id="btn-add-claude-pane" title="在当前工作区中添加一个 Claude 面板">+ Claude</button>
+        <button id="btn-add-codex-pane" title="在当前工作区中添加一个 Codex 面板">+ Codex</button>
       </div>
 
       <div class="toolbar-cluster toolbar-connection-cluster">
-        <label id="ws-port-label" for="ws-port">Port</label>
+        <label id="ws-port-label" for="ws-port">端口</label>
         <input id="ws-port" type="number" min="1" max="65535" inputmode="numeric" value="9999">
-        <button id="btn-apply-port" title="Save port and reconnect">Apply</button>
-        <button id="btn-reconnect" title="Reconnect">↻</button>
+        <button id="btn-apply-port" title="保存端口并重新连接">应用</button>
+        <button id="btn-reconnect" title="重新连接">↻</button>
       </div>
 
       <div class="toolbar-cluster toolbar-layout-cluster">
-        <button id="btn-theme-toggle" type="button" title="Toggle light/dark theme">&#9788;</button>
-        <button id="btn-toggle-panel" type="button" title="Close the Chrome side panel for this window">Close Panel</button>
+        <button id="btn-theme-toggle" type="button" title="切换浅色或深色主题">&#9788;</button>
+        <button id="btn-toggle-panel" type="button" title="关闭当前窗口的侧边栏">关闭侧边栏</button>
       </div>
     </div>
 
     <div id="shell">
       <div id="workspace-stage"></div>
-      <button id="workspace-rail-edge-toggle" class="edge-toggle workspace-edge-toggle" type="button" title="Expand workspace sidebar">
-        Tabs
+      <button id="workspace-rail-edge-toggle" class="edge-toggle workspace-edge-toggle" type="button" title="展开工作区列表">
+        工作区
       </button>
       <div id="workspace-rail-resizer" aria-hidden="true"></div>
       <aside id="workspace-rail"></aside>

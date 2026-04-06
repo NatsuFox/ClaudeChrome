@@ -6,12 +6,34 @@
     window.postMessage({ source: 'claudechrome-page', type, ...data }, '*');
   };
 
+  const getFetchRequestMeta = (args: Parameters<typeof fetch>) => {
+    const [input, init] = args;
+    let method = typeof init?.method === 'string' && init.method
+      ? init.method
+      : 'GET';
+    let url = '';
+
+    if (typeof input === 'string') {
+      url = input;
+    } else if (input instanceof URL) {
+      url = input.toString();
+    } else if (input && typeof input === 'object') {
+      const request = input as Request;
+      if (typeof request.url === 'string') {
+        url = request.url;
+      }
+      if ((!init?.method || typeof init.method !== 'string') && typeof request.method === 'string' && request.method) {
+        method = request.method;
+      }
+    }
+
+    return { method, url };
+  };
+
   // --- Patch fetch ---
   const origFetch = window.fetch;
   window.fetch = async function (...args: Parameters<typeof fetch>) {
-    const req = new Request(...args);
-    const method = req.method;
-    const url = req.url;
+    const { method, url } = getFetchRequestMeta(args);
 
     try {
       const resp = await origFetch.apply(this, args);

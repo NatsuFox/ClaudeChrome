@@ -64,7 +64,7 @@ function displayAgentName(agentType: AgentType): string {
     case 'codex':
       return 'Codex';
     case 'shell':
-      return 'Shell';
+      return '终端';
     default:
       return 'Claude';
   }
@@ -136,7 +136,7 @@ export class SessionManager {
       createdAt: Date.now(),
       lastActiveAt: Date.now(),
       processState: 'starting',
-      statusMessage: `Starting ${displayAgentName(options.agentType)}...`,
+      statusMessage: `正在启动 ${displayAgentName(options.agentType)}…`,
       pty: null,
       outputBuffer: '',
       shellInputBuffer: '',
@@ -174,7 +174,7 @@ export class SessionManager {
     if (!session) return;
     session.bindingTabId = tabId;
     session.lastActiveAt = Date.now();
-    session.statusMessage = `Bound to tab ${tabId}`;
+    session.statusMessage = `已绑定标签页 ${tabId}`;
     this.broadcastSnapshot();
   }
 
@@ -191,7 +191,7 @@ export class SessionManager {
       session.launchArgs = launchArgs;
     }
     session.lastActiveAt = Date.now();
-    session.statusMessage = `Restarting ${displayAgentName(session.agentType)}...`;
+    session.statusMessage = `正在重启 ${displayAgentName(session.agentType)}…`;
 
     const previous = session.pty;
     session.pty = null;
@@ -273,7 +273,7 @@ export class SessionManager {
       });
       bridge.spawn(launch);
       session.processState = 'running';
-      session.statusMessage = `${displayAgentName(session.agentType)} ready`;
+      session.statusMessage = `${displayAgentName(session.agentType)} 已启动`;
     } catch (error) {
       session.pty = null;
       session.processState = 'error';
@@ -286,7 +286,7 @@ export class SessionManager {
     session.processState = 'exited';
     session.lastActiveAt = Date.now();
     session.shellInputBuffer = '';
-    session.statusMessage = `${agentName} exited with code ${code}`;
+    session.statusMessage = `${agentName} 已结束（退出码 ${code}）`;
     this.sessions.delete(session.sessionId);
     this.broadcast({ type: 'session_closed', sessionId: session.sessionId });
     this.broadcastSnapshot();
@@ -333,7 +333,7 @@ export class SessionManager {
     const agentName = command === 'codex' ? 'Codex' : 'Claude';
     this.emitSystemNotice(
       session,
-      `${agentName} started from a Shell pane will not bind to the current Chrome tab. Open a dedicated ${agentName} pane instead.`,
+      `在终端面板中启动的 ${agentName} 不会自动关联当前网页。建议直接新建 ${agentName} 面板。`,
     );
   }
 
@@ -382,7 +382,7 @@ export class SessionManager {
       status = 'starting';
     } else if (!boundTab || !boundTab.available) {
       status = 'tab_unavailable';
-      statusMessage = statusMessage || 'Bound tab unavailable';
+      statusMessage = statusMessage || '当前绑定的标签页不可用';
     } else {
       status = 'connected';
     }

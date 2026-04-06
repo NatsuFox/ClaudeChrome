@@ -35,11 +35,12 @@ export interface PersistedPanelState {
 
 const ACCENT_COLORS = ['#7aa2f7', '#9ece6a', '#e0af68', '#f7768e', '#7dcfff', '#bb9af7'];
 const DEFAULT_RAIL_WIDTH = 152;
+const DEFAULT_CODEX_LAUNCH_ARGS = '-a never -s danger-full-access';
 
 function createEmptyLaunchConfig(): AgentLaunchConfig {
   return {
     claude: '',
-    codex: '',
+    codex: DEFAULT_CODEX_LAUNCH_ARGS,
   };
 }
 
@@ -48,23 +49,57 @@ function colorForIndex(index: number): string {
 }
 
 function workspaceTitle(index: number): string {
-  return `Workspace ${index + 1}`;
+  return `工作区 ${index + 1}`;
 }
 
 function paneTitle(agentType: AgentType, index: number): string {
   const label = agentType === 'codex'
     ? 'Codex'
     : agentType === 'shell'
-      ? 'Shell'
+      ? '终端'
       : 'Claude';
   return `${label} ${index + 1}`;
+}
+
+function localizeLegacyWorkspaceTitle(title: string): string {
+  const normalMatch = /^Workspace (\d+)$/.exec(title);
+  if (normalMatch) {
+    return `工作区 ${normalMatch[1]}`;
+  }
+
+  const recoveredMatch = /^Recovered (\d+)$/.exec(title);
+  if (recoveredMatch) {
+    return `恢复工作区 ${recoveredMatch[1]}`;
+  }
+
+  return title;
+}
+
+function localizeLegacyWorkspaceHint(hint: string): string {
+  if (hint === 'Focused browser tab binding') {
+    return '关联当前标签页';
+  }
+  if (hint === 'Recovered from host') {
+    return '从主机恢复';
+  }
+  return hint;
+}
+
+function localizeLegacyPaneTitle(title: string): string {
+  const match = /^(Claude|Codex|Shell) (\d+)$/.exec(title);
+  if (!match) {
+    return title;
+  }
+
+  const label = match[1] === 'Shell' ? '终端' : match[1];
+  return `${label} ${match[2]}`;
 }
 
 export function createWorkspace(index: number): WorkspaceTab {
   return {
     workspaceId: crypto.randomUUID(),
     title: workspaceTitle(index),
-    hint: 'Focused browser tab binding',
+    hint: '关联当前标签页',
     accentColor: colorForIndex(index),
     paneIds: [],
   };
@@ -160,9 +195,15 @@ export function removeWorkspace(state: PersistedPanelState, workspaceId: string)
 export function ensureValidState(state: PersistedPanelState, fallbackPort: string): PersistedPanelState {
   const nextState: PersistedPanelState = {
     activeWorkspaceId: state.activeWorkspaceId,
-    workspaces: state.workspaces.map((workspace) => ({ ...workspace, paneIds: [...workspace.paneIds] })),
+    workspaces: state.workspaces.map((workspace) => ({
+      ...workspace,
+      title: localizeLegacyWorkspaceTitle(workspace.title),
+      hint: localizeLegacyWorkspaceHint(workspace.hint),
+      paneIds: [...workspace.paneIds],
+    })),
     panes: state.panes.map((pane) => ({
       ...pane,
+      title: localizeLegacyPaneTitle(pane.title),
       launchOverrides: {
         ...createEmptyLaunchConfig(),
         ...(pane.launchOverrides || {}),

@@ -21,14 +21,54 @@ function escapeTomlBasicString(value: string): string {
   return value.replace(/\\/g, '\\\\').replace(/"/g, '\\"');
 }
 
+function normalizePathForToml(value: string): string {
+  return process.platform === 'win32' ? value.replace(/\\/g, '/') : value;
+}
+
 function shellQuote(value: string): string {
   return `'${value.replace(/'/g, `'\\''`)}'`;
+}
+
+function existingPath(candidates: Array<string | undefined>): string | null {
+  for (const candidate of candidates) {
+    if (!candidate) continue;
+    if (fs.existsSync(candidate)) {
+      return candidate;
+    }
+  }
+  return null;
+}
+
+function resolveBashCommand(): string {
+  const override = process.env.CLAUDECHROME_BASH_PATH?.trim();
+  if (override) {
+    return override;
+  }
+
+  if (process.platform !== 'win32') {
+    return 'bash';
+  }
+
+  const programFiles = process.env.ProgramFiles;
+  const programFilesX86 = process.env['ProgramFiles(x86)'];
+  const localAppData = process.env.LOCALAPPDATA;
+
+  const gitBash = existingPath([
+    programFiles ? path.join(programFiles, 'Git', 'bin', 'bash.exe') : undefined,
+    programFiles ? path.join(programFiles, 'Git', 'usr', 'bin', 'bash.exe') : undefined,
+    programFilesX86 ? path.join(programFilesX86, 'Git', 'bin', 'bash.exe') : undefined,
+    programFilesX86 ? path.join(programFilesX86, 'Git', 'usr', 'bin', 'bash.exe') : undefined,
+    localAppData ? path.join(localAppData, 'Programs', 'Git', 'bin', 'bash.exe') : undefined,
+    localAppData ? path.join(localAppData, 'Programs', 'Git', 'usr', 'bin', 'bash.exe') : undefined,
+  ]);
+
+  return gitBash || 'bash';
 }
 
 function wrapWithLoginShell(command: string, args: string[], cwd: string, env: NodeJS.ProcessEnv, cols: number, rows: number): PtySpawnOptions {
   const commandLine = ['exec', shellQuote(command), ...args.map(shellQuote)].join(' ');
   return {
-    command: 'bash',
+    command: resolveBashCommand(),
     args: ['--login', '-ic', commandLine],
     cwd,
     env,
@@ -152,7 +192,7 @@ function buildClaudeLaunch(options: AgentLaunchOptions): PtySpawnOptions {
 
 function buildCodexLaunch(options: AgentLaunchOptions): PtySpawnOptions {
   const env = { ...process.env };
-  const bridgeScript = escapeTomlBasicString(options.mcpBridgeScript);
+  const bridgeScript = escapeTomlBasicString(normalizePathForToml(options.mcpBridgeScript));
   const sessionId = escapeTomlBasicString(options.sessionId);
 
   return wrapWithLoginShell(
@@ -175,7 +215,7 @@ function buildCodexLaunch(options: AgentLaunchOptions): PtySpawnOptions {
 
 function buildShellLaunch(options: AgentLaunchOptions): PtySpawnOptions {
   return {
-    command: 'bash',
+    command: resolveBashCommand(),
     args: ['--login'],
     cwd: options.cwd,
     env: { ...process.env },
