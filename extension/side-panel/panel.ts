@@ -97,15 +97,16 @@ function agentLabel(agentType: AgentType): string {
 }
 
 function connectionStateLabel(state: 'connected' | 'disconnected' | 'connecting' | 'error'): string {
+  const t = translations[panelState.language];
   switch (state) {
     case 'connected':
-      return '已连接';
+      return t.statusConnected;
     case 'connecting':
-      return '连接中';
+      return t.statusConnecting;
     case 'error':
-      return '错误';
+      return t.statusError;
     default:
-      return '未连接';
+      return t.statusDisconnected;
   }
 }
 
@@ -145,6 +146,97 @@ function normalizeTheme(theme: unknown): PanelTheme {
 
 function normalizeLanguage(language: unknown): PanelLanguage {
   return language === 'en' ? 'en' : 'zh';
+}
+
+const translations = {
+  zh: {
+    statusDisconnected: '未连接',
+    statusConnecting: '连接中',
+    statusConnected: '已连接',
+    statusError: '连接错误',
+    noFocusedPane: '未选中面板',
+    portLabel: '端口',
+    applyButton: '应用',
+    reconnectButton: '↻',
+    launchDefaultsButton: '默认启动项',
+    addShellButton: '+ 终端',
+    addClaudeButton: '+ Claude',
+    addCodexButton: '+ Codex',
+    closePanelButton: '关闭侧边栏',
+    workspaceToggle: '工作区',
+    launchDefaultsTitle: '设置 Claude 和 Codex 面板的默认启动选项',
+    addShellTitle: '在当前工作区中添加一个终端面板',
+    addClaudeTitle: '在当前工作区中添加一个 Claude 面板',
+    addCodexTitle: '在当前工作区中添加一个 Codex 面板',
+    applyPortTitle: '保存端口并重新连接',
+    reconnectTitle: '重新连接',
+    closePanelTitle: '关闭当前窗口的侧边栏',
+    workspaceToggleTitle: '展开工作区列表',
+  },
+  en: {
+    statusDisconnected: 'Disconnected',
+    statusConnecting: 'Connecting',
+    statusConnected: 'Connected',
+    statusError: 'Connection Error',
+    noFocusedPane: 'No Pane Selected',
+    portLabel: 'Port',
+    applyButton: 'Apply',
+    reconnectButton: '↻',
+    launchDefaultsButton: 'Launch Defaults',
+    addShellButton: '+ Shell',
+    addClaudeButton: '+ Claude',
+    addCodexButton: '+ Codex',
+    closePanelButton: 'Close Panel',
+    workspaceToggle: 'Workspaces',
+    launchDefaultsTitle: 'Set default launch options for Claude and Codex panes',
+    addShellTitle: 'Add a terminal pane to the current workspace',
+    addClaudeTitle: 'Add a Claude pane to the current workspace',
+    addCodexTitle: 'Add a Codex pane to the current workspace',
+    applyPortTitle: 'Save port and reconnect',
+    reconnectTitle: 'Reconnect',
+    closePanelTitle: 'Close the sidebar for the current window',
+    workspaceToggleTitle: 'Expand workspace list',
+  },
+};
+
+function updateUILanguage(): void {
+  const lang = panelState.language;
+  const t = translations[lang];
+
+  // Update status text if disconnected
+  if (statusIndicator.className === 'disconnected') {
+    statusText.textContent = t.statusDisconnected;
+  }
+
+  // Update focused binding text
+  if (focusedBinding.textContent === '未选中面板' || focusedBinding.textContent === 'No Pane Selected') {
+    focusedBinding.textContent = t.noFocusedPane;
+  }
+
+  // Update port label
+  const portLabel = document.getElementById('ws-port-label');
+  if (portLabel) portLabel.textContent = t.portLabel;
+
+  // Update buttons
+  btnApplyPort.textContent = t.applyButton;
+  btnApplyPort.title = t.applyPortTitle;
+  btnReconnect.title = t.reconnectTitle;
+  btnLaunchDefaults.textContent = t.launchDefaultsButton;
+  btnLaunchDefaults.title = t.launchDefaultsTitle;
+  btnAddShellPane.textContent = t.addShellButton;
+  btnAddShellPane.title = t.addShellTitle;
+  btnAddClaudePane.textContent = t.addClaudeButton;
+  btnAddClaudePane.title = t.addClaudeTitle;
+  btnAddCodexPane.textContent = t.addCodexButton;
+  btnAddCodexPane.title = t.addCodexTitle;
+  btnTogglePanel.textContent = t.closePanelButton;
+  btnTogglePanel.title = t.closePanelTitle;
+
+  const workspaceToggle = document.getElementById('workspace-rail-edge-toggle');
+  if (workspaceToggle) {
+    workspaceToggle.textContent = t.workspaceToggle;
+    workspaceToggle.title = t.workspaceToggleTitle;
+  }
 }
 
 function updateThemeToggleButton(): void {
@@ -190,11 +282,13 @@ function updateLanguageToggleButton(): void {
 async function setLanguage(language: PanelLanguage): Promise<void> {
   if (panelState.language === language) {
     updateLanguageToggleButton();
+    updateUILanguage();
     return;
   }
 
   panelState.language = language;
   updateLanguageToggleButton();
+  updateUILanguage();
   await saveState();
 }
 
@@ -1227,6 +1321,7 @@ function render(): void {
   const sessionIdToRefocus = focusedTerminalSessionId();
   applyTheme();
   updateLanguageToggleButton();
+  updateUILanguage();
   applyRailWidth();
   applyLayoutState();
   renderWorkspaceRail();
