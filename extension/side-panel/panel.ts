@@ -143,6 +143,10 @@ function normalizeTheme(theme: unknown): PanelTheme {
   return theme === 'light' ? 'light' : 'dark';
 }
 
+function normalizeLanguage(language: unknown): PanelLanguage {
+  return language === 'en' ? 'en' : 'zh';
+}
+
 function updateThemeToggleButton(): void {
   const currentTheme = panelState.theme;
   btnThemeToggle.textContent = currentTheme === 'light' ? '浅色' : '深色';
@@ -305,6 +309,7 @@ async function loadState(): Promise<void> {
     };
   });
   panelState.theme = normalizeTheme(rawState?.theme ?? legacyTheme ?? panelState.theme);
+  panelState.language = normalizeLanguage(rawState?.language ?? panelState.language);
   panelState.wsPort = portInput.value;
   panelState.railWidth = clampRailWidth(panelState.railWidth);
   panelState.panelCollapsed = false;
