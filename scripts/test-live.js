@@ -579,6 +579,88 @@ async function main() {
       const ready = await panelClient.evaluate(`document.readyState === 'complete' && !!document.getElementById('ws-port') && !!document.getElementById('btn-apply-port')`);
       return ready ? true : null;
     }, 'panel DOM ready', 30000, 100);
+
+    const localizationCheck = await panelClient.evaluate(`(() => {
+      const read = () => ({
+        languageButton: document.getElementById('btn-language-toggle')?.textContent?.trim() || '',
+        themeButton: document.getElementById('btn-theme-toggle')?.textContent?.trim() || '',
+        themeTitle: document.getElementById('btn-theme-toggle')?.title || '',
+        closeButton: document.getElementById('btn-toggle-panel')?.textContent?.trim() || '',
+        addShellButton: document.getElementById('btn-add-shell-pane')?.textContent?.trim() || '',
+        workspaceEdge: document.getElementById('workspace-rail-edge-toggle')?.textContent?.trim() || '',
+        workspaceTitle: document.querySelector('.workspace-tab-title')?.textContent?.trim() || '',
+        workspaceHint: document.querySelector('.workspace-tab-hint')?.textContent?.trim() || '',
+      });
+      const before = read();
+      document.getElementById('btn-language-toggle')?.click();
+      const after = read();
+      return { before, after };
+    })()`);
+    if (
+      localizationCheck?.before?.languageButton !== '中文' ||
+      localizationCheck?.before?.themeButton !== '深色' ||
+      localizationCheck?.before?.closeButton !== '关闭侧边栏' ||
+      localizationCheck?.before?.addShellButton !== '+ 终端' ||
+      localizationCheck?.before?.workspaceEdge !== '收起' ||
+      localizationCheck?.before?.workspaceTitle !== '工作区 1' ||
+      localizationCheck?.before?.workspaceHint !== '关联当前标签页' ||
+      localizationCheck?.after?.languageButton !== 'English' ||
+      localizationCheck?.after?.themeButton !== 'Dark' ||
+      localizationCheck?.after?.themeTitle !== 'Current theme: Dark' ||
+      localizationCheck?.after?.closeButton !== 'Close Panel' ||
+      localizationCheck?.after?.addShellButton !== '+ Shell' ||
+      localizationCheck?.after?.workspaceEdge !== 'Collapse' ||
+      localizationCheck?.after?.workspaceTitle !== 'Workspace 1' ||
+      localizationCheck?.after?.workspaceHint !== 'Focused browser tab binding'
+    ) {
+      throw makeError(`Language toggle localization mismatch: ${JSON.stringify(localizationCheck)}`);
+    }
+    record('panel localization toggle', true, JSON.stringify(localizationCheck));
+
+    const configLocalizationCheck = await panelClient.evaluate(`(() => {
+      const readConfig = () => ({
+        title: document.getElementById('config-title')?.textContent?.trim() || '',
+        defaultsTab: document.querySelector('.config-tab[data-tab="defaults"]')?.textContent?.trim() || '',
+        debugTab: document.querySelector('.config-tab[data-tab="prompt-debug"]')?.textContent?.trim() || '',
+        claudeHeading: document.querySelector('#claude-config-section h3')?.textContent?.trim() || '',
+        workingDirLabel: document.querySelector('label[for="claude-working-dir"]')?.textContent?.trim() || '',
+        promptModeLabel: document.querySelector('label[for="claude-prompt-mode"]')?.textContent?.trim() || '',
+        resetLabel: document.getElementById('config-reset')?.textContent?.trim() || '',
+        saveLabel: document.getElementById('config-save')?.textContent?.trim() || '',
+        closeTitle: document.getElementById('config-close')?.getAttribute('title') || '',
+      });
+      document.getElementById('btn-launch-defaults')?.click();
+      const english = readConfig();
+      document.getElementById('btn-language-toggle')?.click();
+      const chinese = readConfig();
+      document.getElementById('config-close')?.click();
+      document.getElementById('btn-language-toggle')?.click();
+      return { english, chinese };
+    })()`);
+    if (
+      configLocalizationCheck?.english?.title !== 'Default startup settings' ||
+      configLocalizationCheck?.english?.defaultsTab !== 'Startup settings' ||
+      configLocalizationCheck?.english?.debugTab !== 'Prompt injection debug' ||
+      configLocalizationCheck?.english?.claudeHeading !== 'Claude default settings' ||
+      configLocalizationCheck?.english?.workingDirLabel !== 'Working directory' ||
+      configLocalizationCheck?.english?.promptModeLabel !== 'Browser context prompt mode' ||
+      configLocalizationCheck?.english?.resetLabel !== 'Restore product defaults' ||
+      configLocalizationCheck?.english?.saveLabel !== 'Save default settings' ||
+      configLocalizationCheck?.english?.closeTitle !== 'Close' ||
+      configLocalizationCheck?.chinese?.title !== '默认启动设置' ||
+      configLocalizationCheck?.chinese?.defaultsTab !== '启动设置' ||
+      configLocalizationCheck?.chinese?.debugTab !== '提示注入调试' ||
+      configLocalizationCheck?.chinese?.claudeHeading !== 'Claude 默认配置' ||
+      configLocalizationCheck?.chinese?.workingDirLabel !== '工作目录' ||
+      configLocalizationCheck?.chinese?.promptModeLabel !== '浏览器环境提示模式' ||
+      configLocalizationCheck?.chinese?.resetLabel !== '恢复产品默认' ||
+      configLocalizationCheck?.chinese?.saveLabel !== '保存默认设置' ||
+      configLocalizationCheck?.chinese?.closeTitle !== '关闭'
+    ) {
+      throw makeError(`Config panel localization mismatch: ${JSON.stringify(configLocalizationCheck)}`);
+    }
+    record('config panel localization toggle', true, JSON.stringify(configLocalizationCheck));
+
     const panelConfig = await panelClient.evaluate(`(() => {
       const input = document.getElementById('ws-port');
       const button = document.getElementById('btn-apply-port');

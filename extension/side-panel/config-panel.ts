@@ -3,14 +3,11 @@ import {
   clearLaunchConfigAgent,
   cloneLaunchConfig,
   createDefaultLaunchConfig,
+  type PanelLanguage,
 } from './state';
 
 export interface ConfigPanelContext {
   scope: 'defaults' | 'pane';
-  title: string;
-  description: string;
-  saveLabel: string;
-  resetLabel: string;
   agentType?: LaunchConfigAgentType;
   paneId?: string;
   previewTab?: {
@@ -18,6 +15,129 @@ export interface ConfigPanelContext {
     title?: string;
     url?: string;
   } | null;
+}
+
+type ConfigPanelTranslations = {
+  closeTitle: string;
+  defaultsTitle: string;
+  defaultsDescription: string;
+  defaultsSaveLabel: string;
+  defaultsResetLabel: string;
+  paneTitle: string;
+  paneDescription: string;
+  paneSaveLabel: string;
+  paneResetLabel: string;
+  tabDefaults: string;
+  tabPromptDebug: string;
+  claudeDefaultsHeading: string;
+  codexDefaultsHeading: string;
+  launchArgsLabel: string;
+  workingDirLabel: string;
+  promptModeLabel: string;
+  promptModeDefault: string;
+  promptModeCustom: string;
+  promptModeNone: string;
+  customPromptLabel: string;
+  claudeLaunchArgsPlaceholder: string;
+  codexLaunchArgsPlaceholder: string;
+  workingDirPlaceholder: string;
+  workingDirHint: string;
+  claudePromptHint: string;
+  codexPromptHint: string;
+  customPromptPlaceholder: string;
+  claudePreviewHeading: string;
+  codexPreviewHeading: string;
+  claudePromptDisabledTransport: string;
+  codexPromptDisabledTransport: string;
+  promptInjectionDisabled: string;
+  claudePromptTransport: string;
+  codexPromptTransport: string;
+};
+
+const translations: Record<PanelLanguage, ConfigPanelTranslations> = {
+  zh: {
+    closeTitle: '关闭',
+    defaultsTitle: '默认启动设置',
+    defaultsDescription: '在这里配置 Claude 与 Codex 的全局默认启动参数、工作目录，以及浏览器环境提示注入策略。',
+    defaultsSaveLabel: '保存默认设置',
+    defaultsResetLabel: '恢复产品默认',
+    paneTitle: '{agent} 面板设置',
+    paneDescription: '这里可以覆盖该面板自己的启动参数、工作目录和浏览器环境提示。点击重置可恢复为继承全局默认。',
+    paneSaveLabel: '保存面板设置',
+    paneResetLabel: '恢复全局默认',
+    tabDefaults: '启动设置',
+    tabPromptDebug: '提示注入调试',
+    claudeDefaultsHeading: 'Claude 默认配置',
+    codexDefaultsHeading: 'Codex 默认配置',
+    launchArgsLabel: '启动参数',
+    workingDirLabel: '工作目录',
+    promptModeLabel: '浏览器环境提示模式',
+    promptModeDefault: '默认浏览器上下文',
+    promptModeCustom: '默认上下文 + 自定义追加',
+    promptModeNone: '禁用注入',
+    customPromptLabel: '自定义追加提示',
+    claudeLaunchArgsPlaceholder: '例如: -m opus',
+    codexLaunchArgsPlaceholder: '例如: -a never -s workspace-write',
+    workingDirPlaceholder: '留空则使用当前会话工作区',
+    workingDirHint: '支持绝对路径，或相对于当前 ClaudeChrome 启动目录的相对路径',
+    claudePromptHint: '默认会注入 ClaudeChrome 的浏览器绑定信息；自定义模式会在其后追加你的提示',
+    codexPromptHint: 'Codex 没有独立的 system prompt 参数，ClaudeChrome 会把该上下文作为启动时的首条上下文指令传入',
+    customPromptPlaceholder: '输入需要追加到默认浏览器上下文后的额外提示...',
+    claudePreviewHeading: 'Claude 注入预览',
+    codexPreviewHeading: 'Codex 注入预览',
+    claudePromptDisabledTransport: 'Claude 不会追加任何 ClaudeChrome 浏览器环境系统提示。',
+    codexPromptDisabledTransport: 'Codex 不会注入任何 ClaudeChrome 启动上下文。',
+    promptInjectionDisabled: '已禁用浏览器环境提示注入。',
+    claudePromptTransport: 'Claude 会通过 --append-system-prompt 注入以下浏览器环境提示。',
+    codexPromptTransport: 'Codex CLI 没有独立的 system prompt 参数，ClaudeChrome 会把以下内容作为启动时的首条上下文指令传入。',
+  },
+  en: {
+    closeTitle: 'Close',
+    defaultsTitle: 'Default startup settings',
+    defaultsDescription: 'Configure the global default launch args, working directories, and browser-context prompt behavior for Claude and Codex panes here.',
+    defaultsSaveLabel: 'Save default settings',
+    defaultsResetLabel: 'Restore product defaults',
+    paneTitle: '{agent} pane settings',
+    paneDescription: 'Override launch args, working directory, and browser-context prompt behavior for this pane. Reset to inherit the global defaults again.',
+    paneSaveLabel: 'Save pane settings',
+    paneResetLabel: 'Restore global defaults',
+    tabDefaults: 'Startup settings',
+    tabPromptDebug: 'Prompt injection debug',
+    claudeDefaultsHeading: 'Claude default settings',
+    codexDefaultsHeading: 'Codex default settings',
+    launchArgsLabel: 'Launch args',
+    workingDirLabel: 'Working directory',
+    promptModeLabel: 'Browser context prompt mode',
+    promptModeDefault: 'Default browser context',
+    promptModeCustom: 'Default context + custom addition',
+    promptModeNone: 'Disable injection',
+    customPromptLabel: 'Custom appended prompt',
+    claudeLaunchArgsPlaceholder: 'For example: -m opus',
+    codexLaunchArgsPlaceholder: 'For example: -a never -s workspace-write',
+    workingDirPlaceholder: 'Leave empty to use the current session workspace',
+    workingDirHint: 'Supports absolute paths, or paths relative to the ClaudeChrome launch directory',
+    claudePromptHint: 'ClaudeChrome injects browser-binding context by default; custom mode appends your prompt after it',
+    codexPromptHint: 'Codex has no separate system prompt flag, so ClaudeChrome sends this context as the first startup instruction',
+    customPromptPlaceholder: 'Enter extra instructions to append after the default browser context...',
+    claudePreviewHeading: 'Claude injection preview',
+    codexPreviewHeading: 'Codex injection preview',
+    claudePromptDisabledTransport: 'Claude will not append any ClaudeChrome browser-context system prompt.',
+    codexPromptDisabledTransport: 'Codex will not inject any ClaudeChrome startup context.',
+    promptInjectionDisabled: 'Browser-context prompt injection is disabled.',
+    claudePromptTransport: 'Claude will inject the following browser-context prompt via --append-system-prompt.',
+    codexPromptTransport: 'Codex CLI has no separate system prompt flag, so ClaudeChrome sends the following content as the first startup instruction.',
+  },
+};
+
+function formatMessage(template: string, values: Record<string, string | number>): string {
+  return Object.entries(values).reduce(
+    (result, [key, value]) => result.replaceAll(`{${key}}`, String(value)),
+    template,
+  );
+}
+
+function agentLabel(agentType: LaunchConfigAgentType): string {
+  return agentType === 'codex' ? 'Codex' : 'Claude';
 }
 
 export class ConfigPanel {
@@ -51,14 +171,8 @@ export class ConfigPanel {
   private codexPromptTransport: HTMLElement;
   private codexPromptPreview: HTMLElement;
 
-  private currentContext: ConfigPanelContext = {
-    scope: 'defaults',
-    title: '默认启动设置',
-    description: '',
-    saveLabel: '保存',
-    resetLabel: '重置为默认',
-  };
-
+  private language: PanelLanguage = 'zh';
+  private currentContext: ConfigPanelContext = { scope: 'defaults' };
   private resetConfig: AgentLaunchConfig = createDefaultLaunchConfig();
   private onSaveCallback: ((config: AgentLaunchConfig, context: ConfigPanelContext) => void) | null = null;
 
@@ -94,6 +208,20 @@ export class ConfigPanel {
     this.codexPromptPreview = document.getElementById('codex-prompt-preview')!;
 
     this.bindEvents();
+    this.applyLocale();
+    this.applyContext();
+  }
+
+  public setLanguage(language: PanelLanguage): void {
+    this.language = language;
+    this.applyLocale();
+    this.applyContext();
+    this.updatePromptPreview('claude');
+    this.updatePromptPreview('codex');
+  }
+
+  private locale(): ConfigPanelTranslations {
+    return translations[this.language];
   }
 
   private bindEvents(): void {
@@ -142,6 +270,7 @@ export class ConfigPanel {
       ? createDefaultLaunchConfig()
       : clearLaunchConfigAgent(cloneLaunchConfig(config), context.agentType!);
 
+    this.applyLocale();
     this.applyContext();
     this.loadConfig(config);
     this.switchTab('defaults');
@@ -159,12 +288,69 @@ export class ConfigPanel {
     this.onSaveCallback = callback;
   }
 
+  private applyLocale(): void {
+    const t = this.locale();
+
+    this.closeBtn.setAttribute('title', t.closeTitle);
+    this.closeBtn.setAttribute('aria-label', t.closeTitle);
+
+    this.setText('.config-tab[data-tab="defaults"]', t.tabDefaults);
+    this.setText('.config-tab[data-tab="prompt-debug"]', t.tabPromptDebug);
+
+    this.setText('#claude-config-section h3', t.claudeDefaultsHeading);
+    this.setText('#codex-config-section h3', t.codexDefaultsHeading);
+    this.setText('#claude-debug-section h3', t.claudePreviewHeading);
+    this.setText('#codex-debug-section h3', t.codexPreviewHeading);
+
+    this.setText('label[for="claude-launch-args"]', t.launchArgsLabel);
+    this.setText('label[for="codex-launch-args"]', t.launchArgsLabel);
+    this.setText('label[for="claude-working-dir"]', t.workingDirLabel);
+    this.setText('label[for="codex-working-dir"]', t.workingDirLabel);
+    this.setText('label[for="claude-prompt-mode"]', t.promptModeLabel);
+    this.setText('label[for="codex-prompt-mode"]', t.promptModeLabel);
+    this.setText('label[for="claude-custom-prompt"]', t.customPromptLabel);
+    this.setText('label[for="codex-custom-prompt"]', t.customPromptLabel);
+
+    this.claudeLaunchArgs.placeholder = t.claudeLaunchArgsPlaceholder;
+    this.codexLaunchArgs.placeholder = t.codexLaunchArgsPlaceholder;
+    this.claudeWorkingDir.placeholder = t.workingDirPlaceholder;
+    this.codexWorkingDir.placeholder = t.workingDirPlaceholder;
+    this.claudeCustomPrompt.placeholder = t.customPromptPlaceholder;
+    this.codexCustomPrompt.placeholder = t.customPromptPlaceholder;
+
+    this.setHint(
+      this.claudeLaunchArgs,
+      this.language === 'zh' ? 'Claude 面板的默认 CLI 启动参数' : 'Default CLI launch args for Claude panes',
+    );
+    this.setHint(
+      this.codexLaunchArgs,
+      this.language === 'zh' ? 'Codex 面板的默认 CLI 启动参数' : 'Default CLI launch args for Codex panes',
+    );
+    this.setHint(this.claudeWorkingDir, t.workingDirHint);
+    this.setHint(this.codexWorkingDir, t.workingDirHint);
+    this.setHint(this.claudePromptMode, t.claudePromptHint);
+    this.setHint(this.codexPromptMode, t.codexPromptHint);
+
+    this.setSelectOptions(this.claudePromptMode, [t.promptModeDefault, t.promptModeCustom, t.promptModeNone]);
+    this.setSelectOptions(this.codexPromptMode, [t.promptModeDefault, t.promptModeCustom, t.promptModeNone]);
+  }
+
   private applyContext(): void {
-    this.titleEl.textContent = this.currentContext.title;
-    this.descriptionEl.textContent = this.currentContext.description;
-    this.descriptionEl.style.display = this.currentContext.description ? 'block' : 'none';
-    this.saveBtn.textContent = this.currentContext.saveLabel;
-    this.resetBtn.textContent = this.currentContext.resetLabel;
+    const t = this.locale();
+    if (this.currentContext.scope === 'defaults') {
+      this.titleEl.textContent = t.defaultsTitle;
+      this.descriptionEl.textContent = t.defaultsDescription;
+      this.saveBtn.textContent = t.defaultsSaveLabel;
+      this.resetBtn.textContent = t.defaultsResetLabel;
+    } else {
+      const agent = agentLabel(this.currentContext.agentType ?? 'claude');
+      this.titleEl.textContent = formatMessage(t.paneTitle, { agent });
+      this.descriptionEl.textContent = t.paneDescription;
+      this.saveBtn.textContent = t.paneSaveLabel;
+      this.resetBtn.textContent = t.paneResetLabel;
+    }
+
+    this.descriptionEl.style.display = this.descriptionEl.textContent ? 'block' : 'none';
 
     const singleAgent = this.currentContext.scope === 'pane' ? this.currentContext.agentType ?? null : null;
     this.setSectionVisibility(this.claudeSection, !singleAgent || singleAgent === 'claude');
@@ -175,6 +361,28 @@ export class ConfigPanel {
 
   private setSectionVisibility(element: HTMLElement, visible: boolean): void {
     element.style.display = visible ? '' : 'none';
+  }
+
+  private setText(selector: string, text: string): void {
+    const element = this.overlay.querySelector<HTMLElement>(selector);
+    if (element) {
+      element.textContent = text;
+    }
+  }
+
+  private setHint(control: HTMLElement, text: string): void {
+    const hint = control.parentElement?.querySelector<HTMLElement>('.config-hint');
+    if (hint) {
+      hint.textContent = text;
+    }
+  }
+
+  private setSelectOptions(select: HTMLSelectElement, labels: [string, string, string] | string[]): void {
+    labels.forEach((label, index) => {
+      if (select.options[index]) {
+        select.options[index].textContent = label;
+      }
+    });
   }
 
   private switchTab(tabName: string): void {
@@ -229,26 +437,27 @@ export class ConfigPanel {
   }
 
   private updatePromptPreview(agent: LaunchConfigAgentType): void {
+    const t = this.locale();
     const startup = this.getConfig()[agent];
     const transportEl = agent === 'claude' ? this.claudePromptTransport : this.codexPromptTransport;
     const previewEl = agent === 'claude' ? this.claudePromptPreview : this.codexPromptPreview;
-    const promptText = this.buildPromptPreview(agent, startup);
+    const promptText = this.buildPromptPreview(startup);
 
     if (startup.systemPromptMode === 'none') {
       transportEl.textContent = agent === 'claude'
-        ? 'Claude 不会追加任何 ClaudeChrome 浏览器环境系统提示。'
-        : 'Codex 不会注入任何 ClaudeChrome 启动上下文。';
-      previewEl.textContent = '已禁用浏览器环境提示注入。';
+        ? t.claudePromptDisabledTransport
+        : t.codexPromptDisabledTransport;
+      previewEl.textContent = t.promptInjectionDisabled;
       return;
     }
 
     transportEl.textContent = agent === 'claude'
-      ? 'Claude 会通过 --append-system-prompt 注入以下浏览器环境提示。'
-      : 'Codex CLI 没有独立的 system prompt 参数，ClaudeChrome 会把以下内容作为启动时的首条上下文指令传入。';
+      ? t.claudePromptTransport
+      : t.codexPromptTransport;
     previewEl.textContent = promptText;
   }
 
-  private buildPromptPreview(agent: LaunchConfigAgentType, startup: AgentStartupOptions): string {
+  private buildPromptPreview(startup: AgentStartupOptions): string {
     const previewTab = this.currentContext.previewTab;
     const lines = [
       'You are running inside ClaudeChrome, a browser-attached agent session.',

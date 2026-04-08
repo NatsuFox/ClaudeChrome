@@ -1083,6 +1083,18 @@ html.theme-light .pane-agent-select:focus {
     0 0 8px rgba(53,184,255,0.12);
 }
 
+/* Language toggle button */
+#btn-language-toggle {
+  min-width: 56px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  padding: 3px 7px;
+  border-radius: var(--radius-md);
+  opacity: 0.75;
+  flex-shrink: 0;
+}
+
 /* Theme toggle button */
 #btn-theme-toggle {
   min-width: 56px;
