@@ -579,6 +579,44 @@ async function main() {
       const ready = await panelClient.evaluate(`document.readyState === 'complete' && !!document.getElementById('ws-port') && !!document.getElementById('btn-apply-port')`);
       return ready ? true : null;
     }, 'panel DOM ready', 30000, 100);
+
+    const localizationCheck = await panelClient.evaluate(`(() => {
+      const read = () => ({
+        languageButton: document.getElementById('btn-language-toggle')?.textContent?.trim() || '',
+        themeButton: document.getElementById('btn-theme-toggle')?.textContent?.trim() || '',
+        themeTitle: document.getElementById('btn-theme-toggle')?.title || '',
+        closeButton: document.getElementById('btn-toggle-panel')?.textContent?.trim() || '',
+        addShellButton: document.getElementById('btn-add-shell-pane')?.textContent?.trim() || '',
+        workspaceEdge: document.getElementById('workspace-rail-edge-toggle')?.textContent?.trim() || '',
+        workspaceTitle: document.querySelector('.workspace-tab-title')?.textContent?.trim() || '',
+        workspaceHint: document.querySelector('.workspace-tab-hint')?.textContent?.trim() || '',
+      });
+      const before = read();
+      document.getElementById('btn-language-toggle')?.click();
+      const after = read();
+      return { before, after };
+    })()`);
+    if (
+      localizationCheck?.before?.languageButton !== '中文' ||
+      localizationCheck?.before?.themeButton !== '深色' ||
+      localizationCheck?.before?.closeButton !== '关闭侧边栏' ||
+      localizationCheck?.before?.addShellButton !== '+ 终端' ||
+      localizationCheck?.before?.workspaceEdge !== '收起' ||
+      localizationCheck?.before?.workspaceTitle !== '工作区 1' ||
+      localizationCheck?.before?.workspaceHint !== '关联当前标签页' ||
+      localizationCheck?.after?.languageButton !== 'English' ||
+      localizationCheck?.after?.themeButton !== 'Dark' ||
+      localizationCheck?.after?.themeTitle !== 'Current theme: Dark' ||
+      localizationCheck?.after?.closeButton !== 'Close Panel' ||
+      localizationCheck?.after?.addShellButton !== '+ Shell' ||
+      localizationCheck?.after?.workspaceEdge !== 'Collapse' ||
+      localizationCheck?.after?.workspaceTitle !== 'Workspace 1' ||
+      localizationCheck?.after?.workspaceHint !== 'Focused browser tab binding'
+    ) {
+      throw makeError(`Language toggle localization mismatch: ${JSON.stringify(localizationCheck)}`);
+    }
+    record('panel localization toggle', true, JSON.stringify(localizationCheck));
+
     const panelConfig = await panelClient.evaluate(`(() => {
       const input = document.getElementById('ws-port');
       const button = document.getElementById('btn-apply-port');
