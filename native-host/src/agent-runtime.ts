@@ -3,6 +3,21 @@ import * as path from 'node:path';
 import type { PtySpawnOptions } from './pty-bridge.js';
 
 export type AgentType = 'claude' | 'codex' | 'shell';
+export type SystemPromptMode = 'default' | 'custom' | 'none';
+export type PromptTransport = 'append-system-prompt' | 'initial-prompt' | 'disabled';
+
+export interface AgentStartupOptions {
+  launchArgs: string;
+  workingDirectory: string;
+  systemPromptMode: SystemPromptMode;
+  customSystemPrompt: string;
+}
+
+export interface BoundTabContext {
+  tabId: number;
+  title?: string;
+  url?: string;
+}
 
 export interface AgentLaunchOptions {
   sessionId: string;
@@ -15,7 +30,24 @@ export interface AgentLaunchOptions {
   storeSocketPath: string;
   storePort: number;
   launchArgs?: string;
+  startupOptions?: AgentStartupOptions;
+  boundTab?: BoundTabContext | null;
 }
+
+export interface AgentLaunchDiagnostics {
+  transport: PromptTransport;
+  configuredWorkingDirectory: string;
+  resolvedWorkingDirectory: string;
+  launchArgs: string;
+  effectivePrompt: string;
+}
+
+export interface AgentLaunchPlan {
+  spawn: PtySpawnOptions;
+  diagnostics: AgentLaunchDiagnostics;
+}
+
+export const DEFAULT_CODEX_LAUNCH_ARGS = '-a never -s workspace-write';
 
 function escapeTomlBasicString(value: string): string {
   return value.replace(/\\/g, '\\\\').replace(/"/g, '\\"');
@@ -153,7 +185,86 @@ function splitCommandLine(value: string | undefined): string[] {
   return args;
 }
 
-function buildClaudeLaunch(options: AgentLaunchOptions): PtySpawnOptions {
+export function defaultStartupOptionsForAgent(agentType: AgentType): AgentStartupOptions {
+  return {
+    launchArgs: agentType === 'codex' ? DEFAULT_CODEX_LAUNCH_ARGS : '',
+    workingDirectory: '',
+    systemPromptMode: 'default',
+    customSystemPrompt: '',
+  };
+}
+
+export function normalizeStartupOptions(agentType: AgentType, value: Partial<AgentStartupOptions> | undefined): AgentStartupOptions {
+  const defaults = defaultStartupOptionsForAgent(agentType);
+  return {
+    launchArgs: typeof value?.launchArgs === 'string' ? value.launchArgs : defaults.launchArgs,
+    workingDirectory: typeof value?.workingDirectory === 'string' ? value.workingDirectory : defaults.workingDirectory,
+    systemPromptMode: value?.systemPromptMode === 'custom' || value?.systemPromptMode === 'none'
+      ? value.systemPromptMode
+      : defaults.systemPromptMode,
+    customSystemPrompt: typeof value?.customSystemPrompt === 'string' ? value.customSystemPrompt : defaults.customSystemPrompt,
+  };
+}
+
+function buildBoundTabLines(boundTab?: BoundTabContext | null): string[] {
+  if (!boundTab) {
+    return [
+      '- tabId: <unknown>',
+      '- title: <not available yet>',
+      '- url: <not available yet>',
+    ];
+  }
+
+  return [
+    `- tabId: ${boundTab.tabId}`,
+    `- title: ${boundTab.title?.trim() || '<untitled>'}`,
+    `- url: ${boundTab.url?.trim() || '<unknown>'}`,
+  ];
+}
+
+function buildEffectiveStartupPrompt(options: AgentLaunchOptions, startupOptions: AgentStartupOptions): string {
+  if (startupOptions.systemPromptMode === 'none') {
+    return '';
+  }
+
+  const lines = [
+    'You are running inside ClaudeChrome, a browser-attached agent session.',
+    'Use the `claudechrome-browser` MCP server as the source of truth for live browser state.',
+    'When the user says "this page", "the current tab", or similar, treat it as the tab bound to this session unless they explicitly specify another tab.',
+    'Prefer browser tools and live page inspection over static assumptions.',
+    'Current bound tab at launch:',
+    ...buildBoundTabLines(options.boundTab),
+  ];
+
+  if (startupOptions.systemPromptMode === 'custom' && startupOptions.customSystemPrompt.trim()) {
+    lines.push('', 'Additional custom startup instructions:', startupOptions.customSystemPrompt.trim());
+  }
+
+  return lines.join('\n');
+}
+
+export function formatLaunchDiagnosticsNotice(agentType: AgentType, diagnostics: AgentLaunchDiagnostics): string {
+  const label = agentType === 'codex' ? 'Codex' : agentType === 'shell' ? '终端' : 'Claude';
+  const lines = [
+    `${label} 启动配置已应用`,
+    `工作目录: ${diagnostics.resolvedWorkingDirectory}`,
+    `启动参数: ${diagnostics.launchArgs || '无'}`,
+  ];
+
+  if (diagnostics.transport === 'disabled') {
+    lines.push('浏览器环境提示: 已禁用');
+    return lines.join('\n');
+  }
+
+  lines.push(
+    `浏览器环境提示: ${diagnostics.transport === 'append-system-prompt' ? '通过 --append-system-prompt 注入' : '作为启动时的首条上下文指令注入'}`,
+    '注入内容:',
+    diagnostics.effectivePrompt,
+  );
+  return lines.join('\n');
+}
+
+function buildClaudeLaunch(options: AgentLaunchOptions, startupOptions: AgentStartupOptions): AgentLaunchPlan {
   const sessionDir = ensureSessionDir(options.runtimeDir, options.sessionId);
   const configPath = path.join(sessionDir, 'claude-mcp-config.json');
   const env = { ...process.env };
@@ -174,64 +285,93 @@ function buildClaudeLaunch(options: AgentLaunchOptions): PtySpawnOptions {
 
   fs.writeFileSync(configPath, JSON.stringify(config, null, 2));
 
-  return wrapWithLoginShell(
-    'claude',
-    [
-      '--setting-sources',
-      'user,project,local',
-      '--mcp-config',
-      configPath,
-      ...splitCommandLine(options.launchArgs),
-    ],
-    options.cwd,
-    env,
-    options.cols,
-    options.rows,
-  );
-}
+  const effectivePrompt = buildEffectiveStartupPrompt(options, startupOptions);
+  const args = [
+    '--setting-sources',
+    'user,project,local',
+    '--mcp-config',
+    configPath,
+  ];
 
-function buildCodexLaunch(options: AgentLaunchOptions): PtySpawnOptions {
-  const env = { ...process.env };
-  const bridgeScript = escapeTomlBasicString(normalizePathForToml(options.mcpBridgeScript));
-  const sessionId = escapeTomlBasicString(options.sessionId);
+  if (effectivePrompt) {
+    args.push('--append-system-prompt', effectivePrompt);
+  }
 
-  return wrapWithLoginShell(
-    'codex',
-    [
-      '-c',
-      'mcp_servers.claudechrome-browser.command="node"',
-      '-c',
-      `mcp_servers.claudechrome-browser.args=["${bridgeScript}"]`,
-      '-c',
-      `mcp_servers.claudechrome-browser.env={CLAUDECHROME_STORE_PORT="${options.storePort}",CLAUDECHROME_SESSION_ID="${sessionId}"}`,
-      ...splitCommandLine(options.launchArgs),
-    ],
-    options.cwd,
-    env,
-    options.cols,
-    options.rows,
-  );
-}
+  args.push(...splitCommandLine(startupOptions.launchArgs));
 
-function buildShellLaunch(options: AgentLaunchOptions): PtySpawnOptions {
   return {
-    command: resolveBashCommand(),
-    args: ['--login'],
-    cwd: options.cwd,
-    env: { ...process.env },
-    cols: options.cols,
-    rows: options.rows,
+    spawn: wrapWithLoginShell('claude', args, options.cwd, env, options.cols, options.rows),
+    diagnostics: {
+      transport: effectivePrompt ? 'append-system-prompt' : 'disabled',
+      configuredWorkingDirectory: startupOptions.workingDirectory.trim(),
+      resolvedWorkingDirectory: options.cwd,
+      launchArgs: startupOptions.launchArgs.trim(),
+      effectivePrompt,
+    },
   };
 }
 
-export function buildAgentLaunch(options: AgentLaunchOptions): PtySpawnOptions {
+function buildCodexLaunch(options: AgentLaunchOptions, startupOptions: AgentStartupOptions): AgentLaunchPlan {
+  const env = { ...process.env };
+  const bridgeScript = escapeTomlBasicString(normalizePathForToml(options.mcpBridgeScript));
+  const sessionId = escapeTomlBasicString(options.sessionId);
+  const effectivePrompt = buildEffectiveStartupPrompt(options, startupOptions);
+
+  const args = [
+    '-c',
+    'mcp_servers.claudechrome-browser.command="node"',
+    '-c',
+    `mcp_servers.claudechrome-browser.args=["${bridgeScript}"]`,
+    '-c',
+    `mcp_servers.claudechrome-browser.env={CLAUDECHROME_STORE_PORT="${options.storePort}",CLAUDECHROME_SESSION_ID="${sessionId}"}`,
+    ...splitCommandLine(startupOptions.launchArgs),
+  ];
+
+  if (effectivePrompt) {
+    args.push(effectivePrompt);
+  }
+
+  return {
+    spawn: wrapWithLoginShell('codex', args, options.cwd, env, options.cols, options.rows),
+    diagnostics: {
+      transport: effectivePrompt ? 'initial-prompt' : 'disabled',
+      configuredWorkingDirectory: startupOptions.workingDirectory.trim(),
+      resolvedWorkingDirectory: options.cwd,
+      launchArgs: startupOptions.launchArgs.trim(),
+      effectivePrompt,
+    },
+  };
+}
+
+function buildShellLaunch(options: AgentLaunchOptions, startupOptions: AgentStartupOptions): AgentLaunchPlan {
+  return {
+    spawn: {
+      command: resolveBashCommand(),
+      args: ['--login'],
+      cwd: options.cwd,
+      env: { ...process.env },
+      cols: options.cols,
+      rows: options.rows,
+    },
+    diagnostics: {
+      transport: 'disabled',
+      configuredWorkingDirectory: startupOptions.workingDirectory.trim(),
+      resolvedWorkingDirectory: options.cwd,
+      launchArgs: startupOptions.launchArgs.trim(),
+      effectivePrompt: '',
+    },
+  };
+}
+
+export function buildAgentLaunch(options: AgentLaunchOptions): AgentLaunchPlan {
+  const startupOptions = normalizeStartupOptions(options.agentType, options.startupOptions);
   switch (options.agentType) {
     case 'claude':
-      return buildClaudeLaunch(options);
+      return buildClaudeLaunch(options, startupOptions);
     case 'codex':
-      return buildCodexLaunch(options);
+      return buildCodexLaunch(options, startupOptions);
     case 'shell':
-      return buildShellLaunch(options);
+      return buildShellLaunch(options, startupOptions);
     default:
       throw new Error(`Unsupported agent type: ${String(options.agentType)}`);
   }

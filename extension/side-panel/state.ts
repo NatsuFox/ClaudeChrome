@@ -1,4 +1,4 @@
-import type { AgentLaunchConfig, AgentType } from '../shared/types';
+import type { AgentLaunchConfig, AgentStartupOptions, AgentType, LaunchConfigAgentType } from '../shared/types';
 
 export type PanelTheme = 'dark' | 'light';
 
@@ -35,25 +35,67 @@ export interface PersistedPanelState {
 
 const ACCENT_COLORS = ['#7aa2f7', '#9ece6a', '#e0af68', '#f7768e', '#7dcfff', '#bb9af7'];
 const DEFAULT_RAIL_WIDTH = 152;
-const DEFAULT_CODEX_LAUNCH_ARGS = '-a never -s workspace-write';
+export const DEFAULT_CODEX_LAUNCH_ARGS = '-a never -s workspace-write';
 
-function createEmptyStartupOptions(): import('../shared/types').AgentStartupOptions {
+export function createStartupOptions(initialLaunchArgs = ''): AgentStartupOptions {
   return {
-    launchArgs: '',
+    launchArgs: initialLaunchArgs,
     workingDirectory: '',
     systemPromptMode: 'default',
     customSystemPrompt: '',
   };
 }
 
-function createEmptyLaunchConfig(): AgentLaunchConfig {
+export function createDefaultLaunchConfig(): AgentLaunchConfig {
   return {
-    claude: createEmptyStartupOptions(),
-    codex: {
-      ...createEmptyStartupOptions(),
-      launchArgs: DEFAULT_CODEX_LAUNCH_ARGS,
-    },
+    claude: createStartupOptions(),
+    codex: createStartupOptions(DEFAULT_CODEX_LAUNCH_ARGS),
   };
+}
+
+export function createOverrideLaunchConfig(): AgentLaunchConfig {
+  return {
+    claude: createStartupOptions(),
+    codex: createStartupOptions(),
+  };
+}
+
+export function cloneStartupOptions(options: AgentStartupOptions): AgentStartupOptions {
+  return {
+    launchArgs: options.launchArgs,
+    workingDirectory: options.workingDirectory,
+    systemPromptMode: options.systemPromptMode,
+    customSystemPrompt: options.customSystemPrompt,
+  };
+}
+
+export function cloneLaunchConfig(config: AgentLaunchConfig): AgentLaunchConfig {
+  return {
+    claude: cloneStartupOptions(config.claude),
+    codex: cloneStartupOptions(config.codex),
+  };
+}
+
+export function hasExplicitStartupOptions(options: AgentStartupOptions): boolean {
+  return Boolean(
+    options.launchArgs.trim()
+    || options.workingDirectory.trim()
+    || options.systemPromptMode !== 'default'
+    || options.customSystemPrompt.trim(),
+  );
+}
+
+export function startupOptionsEqual(left: AgentStartupOptions, right: AgentStartupOptions): boolean {
+  return left.launchArgs.trim() === right.launchArgs.trim()
+    && left.workingDirectory.trim() === right.workingDirectory.trim()
+    && left.systemPromptMode === right.systemPromptMode
+    && left.customSystemPrompt.trim() === right.customSystemPrompt.trim();
+}
+
+export function clearLaunchConfigAgent(config: AgentLaunchConfig, agentType: LaunchConfigAgentType): AgentLaunchConfig {
+  const next = cloneLaunchConfig(config);
+  next[agentType] = createStartupOptions();
+  return next;
 }
 
 function colorForIndex(index: number): string {
@@ -126,7 +168,7 @@ export function createPane(workspaceId: string, agentType: AgentType, index: num
     sizeRatio: 1,
     agentType,
     bindingTabId: null,
-    launchOverrides: createEmptyLaunchConfig(),
+    launchOverrides: createOverrideLaunchConfig(),
   };
 }
 
@@ -138,7 +180,7 @@ export function createDefaultState(wsPort: string): PersistedPanelState {
     activeWorkspaceId: workspace.workspaceId,
     workspaces: [workspace],
     panes: [pane],
-    launchDefaults: createEmptyLaunchConfig(),
+    launchDefaults: createDefaultLaunchConfig(),
     theme: 'dark',
     wsPort,
     railWidth: DEFAULT_RAIL_WIDTH,
@@ -216,9 +258,9 @@ export function ensureValidState(state: PersistedPanelState, fallbackPort: strin
     panes: state.panes.map((pane) => ({
       ...pane,
       title: localizeLegacyPaneTitle(pane.title),
-      launchOverrides: migrateLaunchConfig(pane.launchOverrides),
+      launchOverrides: migrateLaunchConfig(pane.launchOverrides, 'overrides'),
     })),
-    launchDefaults: migrateLaunchConfig(state.launchDefaults),
+    launchDefaults: migrateLaunchConfig(state.launchDefaults, 'defaults'),
     theme: state.theme === 'light' ? 'light' : 'dark',
     wsPort: state.wsPort || fallbackPort,
     railWidth: typeof state.railWidth === 'number' ? state.railWidth : DEFAULT_RAIL_WIDTH,
@@ -246,14 +288,13 @@ export function ensureValidState(state: PersistedPanelState, fallbackPort: strin
   return nextState;
 }
 
-function migrateLaunchConfig(config: any): AgentLaunchConfig {
-  const base = createEmptyLaunchConfig();
+function migrateLaunchConfig(config: any, kind: 'defaults' | 'overrides'): AgentLaunchConfig {
+  const base = kind === 'defaults' ? createDefaultLaunchConfig() : createOverrideLaunchConfig();
 
   if (!config) {
     return base;
   }
 
-  // Handle legacy string format
   if (typeof config.claude === 'string') {
     base.claude.launchArgs = config.claude;
   } else if (config.claude && typeof config.claude === 'object') {

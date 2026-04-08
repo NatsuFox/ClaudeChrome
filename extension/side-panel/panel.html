@@ -52,87 +52,97 @@
     </div>
   </div>
 
-  <div id="config-panel-overlay" class="config-overlay" style="display: none;">
+  <div id="config-panel-overlay" class="config-overlay" style="display: none;" tabindex="-1" aria-hidden="true">
     <div class="config-panel">
       <div class="config-header">
-        <h2>配置面板</h2>
+        <div class="config-heading">
+          <h2 id="config-title">默认启动设置</h2>
+          <p id="config-description" class="config-description"></p>
+        </div>
         <button id="config-close" class="config-close-btn" title="关闭">&times;</button>
       </div>
 
       <div class="config-content">
         <div class="config-tabs">
-          <button class="config-tab active" data-tab="defaults">默认启动项</button>
-          <button class="config-tab" data-tab="advanced">高级选项</button>
+          <button class="config-tab active" data-tab="defaults">启动设置</button>
+          <button class="config-tab" data-tab="prompt-debug">提示注入调试</button>
         </div>
 
         <div class="config-tab-content" id="tab-defaults">
-          <div class="config-section">
+          <div class="config-section" id="claude-config-section">
             <h3>Claude 默认配置</h3>
 
             <div class="config-field">
               <label for="claude-launch-args">启动参数</label>
               <input type="text" id="claude-launch-args" placeholder="例如: -m opus">
-              <span class="config-hint">Claude 面板的默认启动参数</span>
+              <span class="config-hint">Claude 面板的默认 CLI 启动参数</span>
             </div>
 
             <div class="config-field">
               <label for="claude-working-dir">工作目录</label>
-              <input type="text" id="claude-working-dir" placeholder="留空使用当前标签页目录">
-              <span class="config-hint">指定 Claude 的默认工作目录</span>
+              <input type="text" id="claude-working-dir" placeholder="留空则使用当前会话工作区">
+              <span class="config-hint">支持绝对路径，或相对于当前 ClaudeChrome 启动目录的相对路径</span>
             </div>
 
             <div class="config-field">
-              <label for="claude-prompt-mode">系统提示模式</label>
+              <label for="claude-prompt-mode">浏览器环境提示模式</label>
               <select id="claude-prompt-mode">
-                <option value="default">默认</option>
-                <option value="custom">自定义</option>
-                <option value="none">无</option>
+                <option value="default">默认浏览器上下文</option>
+                <option value="custom">默认上下文 + 自定义追加</option>
+                <option value="none">禁用注入</option>
               </select>
-              <span class="config-hint">选择系统提示的注入方式</span>
+              <span class="config-hint">默认会注入 ClaudeChrome 的浏览器绑定信息；自定义模式会在其后追加你的提示</span>
             </div>
 
             <div class="config-field" id="claude-custom-prompt-field" style="display: none;">
-              <label for="claude-custom-prompt">自定义系统提示</label>
-              <textarea id="claude-custom-prompt" rows="4" placeholder="输入自定义系统提示..."></textarea>
+              <label for="claude-custom-prompt">自定义追加提示</label>
+              <textarea id="claude-custom-prompt" rows="4" placeholder="输入需要追加到默认浏览器上下文后的额外提示..."></textarea>
             </div>
           </div>
 
-          <div class="config-section">
+          <div class="config-section" id="codex-config-section">
             <h3>Codex 默认配置</h3>
 
             <div class="config-field">
               <label for="codex-launch-args">启动参数</label>
               <input type="text" id="codex-launch-args" placeholder="例如: -a never -s workspace-write">
-              <span class="config-hint">Codex 面板的默认启动参数</span>
+              <span class="config-hint">Codex 面板的默认 CLI 启动参数</span>
             </div>
 
             <div class="config-field">
               <label for="codex-working-dir">工作目录</label>
-              <input type="text" id="codex-working-dir" placeholder="留空使用当前标签页目录">
-              <span class="config-hint">指定 Codex 的默认工作目录</span>
+              <input type="text" id="codex-working-dir" placeholder="留空则使用当前会话工作区">
+              <span class="config-hint">支持绝对路径，或相对于当前 ClaudeChrome 启动目录的相对路径</span>
             </div>
 
             <div class="config-field">
-              <label for="codex-prompt-mode">系统提示模式</label>
+              <label for="codex-prompt-mode">浏览器环境提示模式</label>
               <select id="codex-prompt-mode">
-                <option value="default">默认</option>
-                <option value="custom">自定义</option>
-                <option value="none">无</option>
+                <option value="default">默认浏览器上下文</option>
+                <option value="custom">默认上下文 + 自定义追加</option>
+                <option value="none">禁用注入</option>
               </select>
-              <span class="config-hint">选择系统提示的注入方式</span>
+              <span class="config-hint">Codex 没有独立的 system prompt 参数，ClaudeChrome 会把该上下文作为启动时的首条上下文指令传入</span>
             </div>
 
             <div class="config-field" id="codex-custom-prompt-field" style="display: none;">
-              <label for="codex-custom-prompt">自定义系统提示</label>
-              <textarea id="codex-custom-prompt" rows="4" placeholder="输入自定义系统提示..."></textarea>
+              <label for="codex-custom-prompt">自定义追加提示</label>
+              <textarea id="codex-custom-prompt" rows="4" placeholder="输入需要追加到默认浏览器上下文后的额外提示..."></textarea>
             </div>
           </div>
         </div>
 
-        <div class="config-tab-content" id="tab-advanced" style="display: none;">
-          <div class="config-section">
-            <h3>高级选项</h3>
-            <p class="config-placeholder">高级配置选项将在后续版本中添加</p>
+        <div class="config-tab-content" id="tab-prompt-debug" style="display: none;">
+          <div class="config-section" id="claude-debug-section">
+            <h3>Claude 注入预览</h3>
+            <p id="claude-prompt-transport" class="config-preview-note"></p>
+            <pre id="claude-prompt-preview" class="config-preview"></pre>
+          </div>
+
+          <div class="config-section" id="codex-debug-section">
+            <h3>Codex 注入预览</h3>
+            <p id="codex-prompt-transport" class="config-preview-note"></p>
+            <pre id="codex-prompt-preview" class="config-preview"></pre>
           </div>
         </div>
       </div>

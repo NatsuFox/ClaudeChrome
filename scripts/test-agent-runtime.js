@@ -6,7 +6,7 @@ const fs = require('fs');
 const os = require('os');
 const path = require('path');
 
-const { buildAgentLaunch } = require(path.resolve(__dirname, '../native-host/dist/agent-runtime.js'));
+const { buildAgentLaunch, DEFAULT_CODEX_LAUNCH_ARGS } = require(path.resolve(__dirname, '../native-host/dist/agent-runtime.js'));
 
 let passed = 0;
 let failed = 0;
@@ -75,7 +75,17 @@ function baseOptions(overrides = {}) {
     mcpBridgeScript: '/tmp/claudechrome-runtime/mcp-stdio-bridge.js',
     storeSocketPath: '/tmp/claudechrome-runtime/store.sock',
     storePort: 43121,
-    launchArgs: '--search',
+    startupOptions: {
+      launchArgs: '--search',
+      workingDirectory: '',
+      systemPromptMode: 'default',
+      customSystemPrompt: '',
+    },
+    boundTab: {
+      tabId: 42,
+      title: 'Example page',
+      url: 'https://example.com/docs',
+    },
     ...overrides,
   };
 }
@@ -83,23 +93,34 @@ function baseOptions(overrides = {}) {
 console.log('\n\x1b[1mClaudeChrome — Agent Runtime Launch Tests\x1b[0m');
 console.log('='.repeat(48));
 
-test('Claude launch stays MCP-based without startup prompt injection', () => {
-  const launch = withPlatform('linux', () => buildAgentLaunch(baseOptions({ agentType: 'claude' })));
-  assert.strictEqual(launch.command, 'bash');
-  assert.strictEqual(launch.args[0], '--login');
-  assert(launch.args[2].includes('--mcp-config'));
-  assert(launch.args[2].includes('--search'));
-  assert(!launch.args[2].includes('--append-system-prompt'));
-  assert(!launch.args[2].includes('browser tab #'));
+test('Claude launch appends browser-aware startup prompt', () => {
+  const plan = withPlatform('linux', () => buildAgentLaunch(baseOptions({
+    agentType: 'claude',
+    startupOptions: {
+      launchArgs: '--search',
+      workingDirectory: '',
+      systemPromptMode: 'custom',
+      customSystemPrompt: 'Always mention the injected browser context in your first reply.',
+    },
+  })));
+
+  assert.strictEqual(plan.spawn.command, 'bash');
+  assert.strictEqual(plan.spawn.args[0], '--login');
+  assert(plan.spawn.args[2].includes('--mcp-config'));
+  assert(plan.spawn.args[2].includes('--append-system-prompt'));
+  assert(plan.spawn.args[2].includes('https://example.com/docs'));
+  assert(plan.spawn.args[2].includes('Always mention the injected browser context'));
+  assert.strictEqual(plan.diagnostics.transport, 'append-system-prompt');
+  assert(plan.diagnostics.effectivePrompt.includes('Example page'));
 });
 
-test('Windows Codex launch normalizes bridge path without adding prompt text', () => {
+test('Codex launch carries browser context as initial startup instructions', () => {
   const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'claudechrome-agent-runtime-'));
   const fakeBash = path.join(tempRoot, 'Git', 'bin', 'bash.exe');
   fs.mkdirSync(path.dirname(fakeBash), { recursive: true });
   fs.writeFileSync(fakeBash, '');
 
-  const launch = withPlatform('win32', () => withEnv({
+  const plan = withPlatform('win32', () => withEnv({
     CLAUDECHROME_BASH_PATH: undefined,
     ProgramFiles: tempRoot,
     'ProgramFiles(x86)': undefined,
@@ -107,30 +128,36 @@ test('Windows Codex launch normalizes bridge path without adding prompt text', (
   }, () => buildAgentLaunch(baseOptions({
     agentType: 'codex',
     mcpBridgeScript: 'C:\\Repo\\native-host\\dist\\mcp-stdio-bridge.js',
-    launchArgs: '-a never -s workspace-write',
+    startupOptions: {
+      launchArgs: DEFAULT_CODEX_LAUNCH_ARGS,
+      workingDirectory: '',
+      systemPromptMode: 'default',
+      customSystemPrompt: '',
+    },
   }))));
 
-  assert.strictEqual(launch.command, fakeBash);
-  assert(launch.args[2].includes('C:/Repo/native-host/dist/mcp-stdio-bridge.js'));
-  assert(launch.args[2].includes('-a'));
-  assert(launch.args[2].includes('workspace-write'));
-  assert(!launch.args[2].includes('Reply with one short readiness note'));
+  assert.strictEqual(plan.spawn.command, fakeBash);
+  assert(plan.spawn.args[2].includes('C:/Repo/native-host/dist/mcp-stdio-bridge.js'));
+  assert(plan.spawn.args[2].includes('workspace-write'));
+  assert(plan.spawn.args[2].includes('You are running inside ClaudeChrome'));
+  assert(plan.spawn.args[2].includes('https://example.com/docs'));
+  assert.strictEqual(plan.diagnostics.transport, 'initial-prompt');
 });
 
-test('Explicit bash override wins over platform discovery on Windows', () => {
-  const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'claudechrome-agent-runtime-override-'));
-  const overrideBash = path.join(tempRoot, 'portable', 'bash.exe');
-  fs.mkdirSync(path.dirname(overrideBash), { recursive: true });
-  fs.writeFileSync(overrideBash, '');
+test('Disabling prompt injection leaves launch transport disabled', () => {
+  const plan = withPlatform('linux', () => buildAgentLaunch(baseOptions({
+    agentType: 'claude',
+    startupOptions: {
+      launchArgs: '--search',
+      workingDirectory: '',
+      systemPromptMode: 'none',
+      customSystemPrompt: '',
+    },
+  })));
 
-  const launch = withPlatform('win32', () => withEnv({
-    CLAUDECHROME_BASH_PATH: overrideBash,
-    ProgramFiles: path.join(tempRoot, 'unused'),
-    'ProgramFiles(x86)': undefined,
-    LOCALAPPDATA: undefined,
-  }, () => buildAgentLaunch(baseOptions({ agentType: 'shell' }))));
-
-  assert.strictEqual(launch.command, overrideBash);
+  assert.strictEqual(plan.diagnostics.transport, 'disabled');
+  assert.strictEqual(plan.diagnostics.effectivePrompt, '');
+  assert(!plan.spawn.args[2].includes('--append-system-prompt'));
 });
 
 console.log(`\nResults: \x1b[32m${passed} passed\x1b[0m, \x1b[31m${failed} failed\x1b[0m`);

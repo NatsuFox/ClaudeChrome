@@ -1,4 +1,10 @@
-import { buildAgentLaunch, type AgentType } from './agent-runtime.js';
+import {
+  buildAgentLaunch,
+  formatLaunchDiagnosticsNotice,
+  normalizeStartupOptions,
+  type AgentStartupOptions,
+  type AgentType,
+} from './agent-runtime.js';
 import { ContextStore } from './context-store.js';
 import { PtyBridge } from './pty-bridge.js';
 
@@ -20,7 +26,7 @@ type AgentSession = {
   cols: number;
   rows: number;
   cwd: string;
-  launchArgs: string;
+  startupOptions: AgentStartupOptions;
 };
 
 export interface SessionSnapshot {
@@ -46,7 +52,7 @@ export interface CreateSessionOptions {
   cols: number;
   rows: number;
   cwd: string;
-  launchArgs?: string;
+  startupOptions?: AgentStartupOptions;
 }
 
 export interface SessionManagerOptions {
@@ -79,7 +85,7 @@ export class SessionManager {
   private readonly runtimeDir: string;
   private readonly mcpBridgeScript: string;
   private storeSocketPath: string;
-  private storePort: number = 0;
+  private storePort = 0;
   private readonly broadcast: (message: object) => void;
   private readonly sessions = new Map<string, AgentSession>();
 
@@ -117,12 +123,14 @@ export class SessionManager {
   }
 
   createSession(options: CreateSessionOptions): SessionSnapshot {
+    const normalizedStartupOptions = normalizeStartupOptions(options.agentType, options.startupOptions);
     const existing = this.sessions.get(options.sessionId);
     if (existing) {
+      existing.agentType = options.agentType;
       existing.title = options.title;
       existing.bindingTabId = options.bindingTabId;
       existing.cwd = options.cwd;
-      existing.launchArgs = options.launchArgs || '';
+      existing.startupOptions = normalizedStartupOptions;
       existing.lastActiveAt = Date.now();
       this.broadcastSnapshot();
       return this.toSnapshot(existing);
@@ -144,7 +152,7 @@ export class SessionManager {
       cols: options.cols,
       rows: options.rows,
       cwd: options.cwd,
-      launchArgs: options.launchArgs || '',
+      startupOptions: normalizedStartupOptions,
     };
 
     this.sessions.set(session.sessionId, session);
@@ -178,7 +186,7 @@ export class SessionManager {
     this.broadcastSnapshot();
   }
 
-  restartSession(sessionId: string, cwd?: string, agentType?: AgentType, launchArgs?: string): void {
+  restartSession(sessionId: string, cwd?: string, agentType?: AgentType, startupOptions?: AgentStartupOptions): void {
     const session = this.sessions.get(sessionId);
     if (!session) return;
     if (agentType) {
@@ -187,8 +195,8 @@ export class SessionManager {
     if (cwd) {
       session.cwd = cwd;
     }
-    if (launchArgs !== undefined) {
-      session.launchArgs = launchArgs;
+    if (startupOptions !== undefined) {
+      session.startupOptions = normalizeStartupOptions(session.agentType, startupOptions);
     }
     session.lastActiveAt = Date.now();
     session.statusMessage = `正在重启 ${displayAgentName(session.agentType)}…`;
@@ -259,7 +267,7 @@ export class SessionManager {
     });
 
     try {
-      const launch = buildAgentLaunch({
+      const launchPlan = buildAgentLaunch({
         sessionId: session.sessionId,
         agentType: session.agentType,
         cwd: session.cwd,
@@ -269,11 +277,17 @@ export class SessionManager {
         mcpBridgeScript: this.mcpBridgeScript,
         storeSocketPath: this.storeSocketPath,
         storePort: this.storePort,
-        launchArgs: session.launchArgs,
+        launchArgs: session.startupOptions.launchArgs,
+        startupOptions: session.startupOptions,
+        boundTab: this.contextStore.getTab(session.bindingTabId) ?? undefined,
       });
-      bridge.spawn(launch);
+      bridge.spawn(launchPlan.spawn);
       session.processState = 'running';
       session.statusMessage = `${displayAgentName(session.agentType)} 已启动`;
+
+      if (session.agentType !== 'shell') {
+        this.emitSystemNotice(session, formatLaunchDiagnosticsNotice(session.agentType, launchPlan.diagnostics));
+      }
     } catch (error) {
       session.pty = null;
       session.processState = 'error';

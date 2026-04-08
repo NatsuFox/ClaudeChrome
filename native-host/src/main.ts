@@ -124,7 +124,16 @@ function handleContextUpdate(msg: { category: string; payload: unknown }): void 
   }
 }
 
-function resolveSessionCwd(sessionId: string): string {
+function resolveSessionCwd(sessionId: string, configuredWorkingDirectory?: string): string {
+  const configured = configuredWorkingDirectory?.trim() || '';
+  if (configured) {
+    const cwd = path.isAbsolute(configured)
+      ? configured
+      : path.resolve(EXPLICIT_CWD || process.cwd(), configured);
+    fs.mkdirSync(cwd, { recursive: true });
+    return cwd;
+  }
+
   if (EXPLICIT_CWD) {
     fs.mkdirSync(EXPLICIT_CWD, { recursive: true });
     return EXPLICIT_CWD;
@@ -137,7 +146,10 @@ function resolveSessionCwd(sessionId: string): string {
 
 function handleClientMessage(msg: any): void {
   switch (msg.type) {
-    case 'session_create':
+    case 'session_create': {
+      const startupOptions = msg.startupOptions && typeof msg.startupOptions === 'object'
+        ? msg.startupOptions
+        : undefined;
       sessionManager.createSession({
         sessionId: msg.sessionId,
         agentType: msg.agentType as AgentType,
@@ -145,10 +157,11 @@ function handleClientMessage(msg: any): void {
         bindingTabId: msg.binding?.tabId,
         cols: msg.cols,
         rows: msg.rows,
-        cwd: resolveSessionCwd(msg.sessionId),
-        launchArgs: typeof msg.launchArgs === 'string' ? msg.launchArgs : undefined,
+        cwd: resolveSessionCwd(msg.sessionId, startupOptions?.workingDirectory),
+        startupOptions,
       });
       break;
+    }
     case 'session_input': {
       const decoded = Buffer.from(msg.data, 'base64').toString();
       sessionManager.writeToSession(msg.sessionId, decoded);
@@ -157,14 +170,18 @@ function handleClientMessage(msg: any): void {
     case 'session_resize':
       sessionManager.resizeSession(msg.sessionId, msg.cols, msg.rows);
       break;
-    case 'session_restart':
+    case 'session_restart': {
+      const startupOptions = msg.startupOptions && typeof msg.startupOptions === 'object'
+        ? msg.startupOptions
+        : undefined;
       sessionManager.restartSession(
         msg.sessionId,
-        resolveSessionCwd(msg.sessionId),
+        resolveSessionCwd(msg.sessionId, startupOptions?.workingDirectory),
         msg.agentType as AgentType | undefined,
-        typeof msg.launchArgs === 'string' ? msg.launchArgs : undefined,
+        startupOptions,
       );
       break;
+    }
     case 'session_close':
       sessionManager.closeSession(msg.sessionId);
       break;

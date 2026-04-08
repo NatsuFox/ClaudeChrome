@@ -6,11 +6,12 @@ export interface NMMessage {
 
 export type AgentType = 'claude' | 'codex' | 'shell';
 export type LaunchConfigAgentType = 'claude' | 'codex';
+export type SystemPromptMode = 'default' | 'custom' | 'none';
 
 export interface AgentStartupOptions {
   launchArgs: string;
   workingDirectory: string;
-  systemPromptMode: 'default' | 'custom' | 'none';
+  systemPromptMode: SystemPromptMode;
   customSystemPrompt: string;
 }
 
@@ -77,6 +78,7 @@ export interface SessionCreateMessage {
   cols: number;
   rows: number;
   launchArgs?: string;
+  startupOptions?: AgentStartupOptions;
 }
 
 export interface SessionRestartMessage {
@@ -84,6 +86,7 @@ export interface SessionRestartMessage {
   sessionId: string;
   agentType?: AgentType;
   launchArgs?: string;
+  startupOptions?: AgentStartupOptions;
 }
 
 export interface SessionCloseMessage {

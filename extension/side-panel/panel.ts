@@ -2,6 +2,7 @@ import { ChunkAssembler } from '../shared/chunker';
 import type {
   ActivateTabResultMessage,
   AgentLaunchConfig,
+  AgentStartupOptions,
   AgentType,
   CollapseSidePanelResultMessage,
   GetCurrentWindowActiveTabResultMessage,
@@ -17,16 +18,22 @@ import type {
   StatusMessage,
 } from '../shared/types';
 import {
+  cloneLaunchConfig,
   createDefaultState,
+  createOverrideLaunchConfig,
   createPane,
+  createStartupOptions,
   createWorkspace,
+  DEFAULT_CODEX_LAUNCH_ARGS,
   ensureValidState,
   getPane,
   getPanesForWorkspace,
   getWorkspace,
+  hasExplicitStartupOptions,
   normalizeWorkspacePaneRatios,
   removePane,
   removeWorkspace,
+  startupOptionsEqual,
   type PaneLayout,
   type PanelTheme,
   type PersistedPanelState,
@@ -46,7 +53,6 @@ const MAX_RAIL_WIDTH = 320;
 const RAIL_AUTO_COLLAPSE_WIDTH = 56;
 const PANEL_AUTO_COLLAPSE_WIDTH = 72;
 const PANEL_AUTO_COLLAPSE_ARM_WIDTH = 144;
-const DEFAULT_CODEX_LAUNCH_ARGS = '-a never -s workspace-write';
 
 const statusIndicator = document.getElementById('status-indicator')!;
 const statusText = document.getElementById('status-text')!;
@@ -109,27 +115,28 @@ function launchConfigAgentType(agentType: AgentType): LaunchConfigAgentType | nu
   return null;
 }
 
-function getEffectiveLaunchArgs(pane: PaneLayout, agentType: AgentType = pane.agentType): string | undefined {
+function paneUsesStartupOverrides(pane: PaneLayout, launchAgent: LaunchConfigAgentType): boolean {
+  return hasExplicitStartupOptions(pane.launchOverrides[launchAgent]);
+}
+
+function getEffectiveStartupOptions(
+  pane: PaneLayout,
+  agentType: AgentType = pane.agentType,
+): AgentStartupOptions | null {
   const launchAgent = launchConfigAgentType(agentType);
   if (!launchAgent) {
-    return undefined;
+    return null;
   }
 
-  const override = pane.launchOverrides[launchAgent].launchArgs.trim();
-  if (override) {
-    return override;
+  if (paneUsesStartupOverrides(pane, launchAgent)) {
+    return { ...pane.launchOverrides[launchAgent] };
   }
 
-  const fallback = panelState.launchDefaults[launchAgent].launchArgs.trim();
-  if (fallback) {
-    return fallback;
-  }
-
-  if (launchAgent === 'codex') {
-    return DEFAULT_CODEX_LAUNCH_ARGS;
-  }
-
-  return undefined;
+  const defaults = panelState.launchDefaults[launchAgent];
+  return {
+    ...defaults,
+    launchArgs: defaults.launchArgs.trim() || (launchAgent === 'codex' ? DEFAULT_CODEX_LAUNCH_ARGS : ''),
+  };
 }
 
 function normalizeTheme(theme: unknown): PanelTheme {
@@ -582,42 +589,80 @@ workspaceColorInput.addEventListener('change', () => {
 
 function restartPaneSession(pane: PaneLayout, agentType: AgentType = pane.agentType): void {
   const view = getOrCreateTerminalView(pane.sessionId);
+  const startupOptions = getEffectiveStartupOptions(pane, agentType);
   view.writeln(`\x1b[33m[ClaudeChrome] 正在重启 ${agentLabel(agentType)}\x1b[0m`);
   sendToHost({
     type: 'session_restart',
     sessionId: pane.sessionId,
     agentType,
-    launchArgs: getEffectiveLaunchArgs(pane, agentType),
+    launchArgs: startupOptions?.launchArgs,
+    startupOptions: startupOptions ?? undefined,
   });
 }
 
-function editLaunchDefaults(): void {
-  configPanel.show(panelState.launchDefaults);
+async function editLaunchDefaults(): Promise<void> {
+  let previewTab: GetCurrentWindowActiveTabResultMessage['tab'] | null = null;
+  try {
+    previewTab = await requestCurrentActiveTab();
+  } catch {
+    previewTab = null;
+  }
+
+  configPanel.show(cloneLaunchConfig(panelState.launchDefaults), {
+    scope: 'defaults',
+    title: '默认启动设置',
+    description: '在这里配置 Claude 与 Codex 的全局默认启动参数、工作目录，以及浏览器环境提示注入策略。',
+    saveLabel: '保存默认设置',
+    resetLabel: '恢复产品默认',
+    previewTab,
+  });
 }
 
-function editPaneLaunchArgs(pane: PaneLayout): void {
+function buildPaneConfig(pane: PaneLayout, launchAgent: LaunchConfigAgentType): AgentLaunchConfig {
+  const config = createOverrideLaunchConfig();
+  const effective = getEffectiveStartupOptions(pane, launchAgent);
+  if (effective) {
+    config[launchAgent] = { ...effective };
+  }
+  return config;
+}
+
+async function editPaneStartupOptions(pane: PaneLayout): Promise<void> {
   const launchAgent = launchConfigAgentType(pane.agentType);
   if (!launchAgent) {
-    setStatus('error', '只有 Claude 和 Codex 面板支持启动选项。');
+    setStatus('error', '只有 Claude 和 Codex 面板支持启动设置。');
     return;
   }
 
-  const defaultArgs = panelState.launchDefaults[launchAgent].launchArgs.trim() || '未设置';
-  const nextValue = window.prompt(
-    `${agentLabel(pane.agentType)} 面板启动选项\n留空则使用默认设置。\n当前默认：${defaultArgs}`,
-    pane.launchOverrides[launchAgent].launchArgs,
-  );
-  if (nextValue === null) {
-    return;
+  let previewTab = sessionSnapshots.get(pane.sessionId)?.boundTab ?? null;
+  if (!previewTab) {
+    const fallbackPreviewTab = pane.bindingTabId != null
+      ? {
+        tabId: pane.bindingTabId,
+        windowId: null,
+        title: '',
+        url: '',
+        available: false,
+        lastSeenAt: Date.now(),
+      }
+      : null;
+    try {
+      previewTab = fallbackPreviewTab ?? await requestCurrentActiveTab();
+    } catch {
+      previewTab = fallbackPreviewTab;
+    }
   }
 
-  pane.launchOverrides[launchAgent].launchArgs = nextValue.trim();
-  void saveState();
-  render();
-
-  if (sessionSnapshots.has(pane.sessionId) && window.confirm(`要立即重启该${agentLabel(pane.agentType)}面板以应用新设置吗？`)) {
-    restartPaneSession(pane);
-  }
+  configPanel.show(buildPaneConfig(pane, launchAgent), {
+    scope: 'pane',
+    paneId: pane.paneId,
+    agentType: launchAgent,
+    title: `${agentLabel(pane.agentType)} 面板设置`,
+    description: '这里可以覆盖该面板自己的启动参数、工作目录和浏览器环境提示。点击重置可恢复为继承全局默认。',
+    saveLabel: '保存面板设置',
+    resetLabel: '恢复全局默认',
+    previewTab,
+  });
 }
 
 function renameActiveWorkspace(): void {
@@ -688,6 +733,7 @@ async function ensurePaneSession(pane: PaneLayout): Promise<void> {
     pane.bindingTabId = bindingTab.tabId;
     const view = getOrCreateTerminalView(pane.sessionId);
     const size = view.getSize();
+    const startupOptions = getEffectiveStartupOptions(pane);
     const createMessage: SessionCreateMessage = {
       type: 'session_create',
       sessionId: pane.sessionId,
@@ -699,7 +745,8 @@ async function ensurePaneSession(pane: PaneLayout): Promise<void> {
       },
       cols: Math.max(size.cols, 80),
       rows: Math.max(size.rows, 24),
-      launchArgs: getEffectiveLaunchArgs(pane),
+      launchArgs: startupOptions?.launchArgs,
+      startupOptions: startupOptions ?? undefined,
     };
     sendToHost(createMessage);
     await saveState();
@@ -1108,14 +1155,15 @@ function renderWorkspaceStage(): void {
     const launchAgent = launchConfigAgentType(pane.agentType);
     let btnArgs: HTMLButtonElement | null = null;
     if (launchAgent) {
+      const hasPaneOverrides = paneUsesStartupOverrides(pane, launchAgent);
       btnArgs = document.createElement('button');
-      btnArgs.textContent = pane.launchOverrides[launchAgent].launchArgs.trim() ? '启动项*' : '启动项';
-      btnArgs.title = pane.launchOverrides[launchAgent].launchArgs.trim()
+      btnArgs.textContent = hasPaneOverrides ? '设置*' : '设置';
+      btnArgs.title = hasPaneOverrides
         ? `此面板使用了单独的 ${agentLabel(pane.agentType)} 启动设置。`
-        : `此面板正在使用默认的 ${agentLabel(pane.agentType)} 启动设置。`;
+        : `此面板当前继承全局 ${agentLabel(pane.agentType)} 启动设置。`;
       btnArgs.addEventListener('click', (event) => {
         event.stopPropagation();
-        editPaneLaunchArgs(pane);
+        editPaneStartupOptions(pane);
       });
     }
 
@@ -1275,10 +1323,42 @@ btnLaunchDefaults.addEventListener('click', () => {
   editLaunchDefaults();
 });
 
-configPanel.onSave((config) => {
-  panelState.launchDefaults = config;
+configPanel.onSave((config, context) => {
+  if (context.scope === 'defaults') {
+    panelState.launchDefaults = cloneLaunchConfig(config);
+    const inheritingPanes = panelState.panes.filter((pane) => {
+      const launchAgent = launchConfigAgentType(pane.agentType);
+      return Boolean(launchAgent && !paneUsesStartupOverrides(pane, launchAgent) && sessionSnapshots.has(pane.sessionId));
+    });
+    void saveState();
+    render();
+
+    if (
+      inheritingPanes.length > 0
+      && window.confirm(`要立即重启 ${inheritingPanes.length} 个继承全局设置的面板以应用新默认值吗？`)
+    ) {
+      inheritingPanes.forEach((pane) => restartPaneSession(pane));
+    }
+    return;
+  }
+
+  const pane = context.paneId ? getPane(panelState, context.paneId) : undefined;
+  const launchAgent = context.agentType;
+  if (!pane || !launchAgent) {
+    return;
+  }
+
+  const nextOptions = config[launchAgent];
+  pane.launchOverrides[launchAgent] = startupOptionsEqual(nextOptions, panelState.launchDefaults[launchAgent])
+    ? createStartupOptions()
+    : { ...nextOptions };
+
   void saveState();
   render();
+
+  if (sessionSnapshots.has(pane.sessionId) && window.confirm(`要立即重启该${agentLabel(pane.agentType)}面板以应用新设置吗？`)) {
+    restartPaneSession(pane);
+  }
 });
 
 btnAddShellPane.addEventListener('click', () => {
