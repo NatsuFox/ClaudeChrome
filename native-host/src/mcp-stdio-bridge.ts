@@ -226,6 +226,16 @@ async function main() {
   );
 
   server.tool(
+    'browser__capture_policy',
+    'Get the current browser capture policy for the tab bound to this session, including whether response-body capture is enabled',
+    {},
+    async () => {
+      const result = await queryStore('get_capture_policy', {});
+      return { content: [{ type: 'text', text: JSON.stringify(result, null, 2) }] };
+    }
+  );
+
+  server.tool(
     'browser__capture_stats',
     'Get capture counts, timestamps, and related browser context statistics for this session',
     {},

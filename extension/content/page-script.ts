@@ -1,10 +1,23 @@
+import {
+  MAX_CAPTURED_BODY_BYTES,
+  isCapturableResponseContentType,
+  isKnownContentLengthWithinLimit,
+  readResponseBodyPreview,
+  shouldCaptureXhrBody,
+} from './capture-utils';
+
 // Page-script: runs in the page's JS context (not isolated world)
-// Monkey-patches fetch and XHR to capture request/response bodies
+// Monkey-patches fetch and XHR to capture bounded response-body previews.
 
 (function () {
+  const CAPTURE_RESPONSE_BODIES_DATASET_KEY = 'claudechromeCaptureResponseBodies';
+
   const POST = (type: string, data: any) => {
     window.postMessage({ source: 'claudechrome-page', type, ...data }, '*');
   };
+
+  const shouldCaptureResponseBodies = () =>
+    document.documentElement?.dataset[CAPTURE_RESPONSE_BODIES_DATASET_KEY] === '1';
 
   const resolveCapturedUrl = (value: string | URL) => {
     try {
@@ -45,22 +58,25 @@
 
     try {
       const resp = await origFetch.apply(this, args);
-      const clone = resp.clone();
-
-      // Skip large or non-text responses to prevent memory exhaustion
-      const contentType = clone.headers.get('content-type') || '';
-      const contentLength = clone.headers.get('content-length');
-      const isText = /^(text\/|application\/(json|javascript|xml))/i.test(contentType);
-      const MAX_BODY_SIZE = 65536; // 64KB
-
-      if (!isText || (contentLength && parseInt(contentLength, 10) > MAX_BODY_SIZE)) {
+      if (!shouldCaptureResponseBodies()) {
         return resp;
       }
 
-      // Read body async, don't block
-      clone.text().then((body) => {
-        POST('captured_body', { url, method, body: body.slice(0, MAX_BODY_SIZE) });
-      }).catch(() => {});
+      const contentType = resp.headers.get('content-type') || '';
+      const contentLength = resp.headers.get('content-length');
+      if (!isCapturableResponseContentType(contentType) || !isKnownContentLengthWithinLimit(contentLength)) {
+        return resp;
+      }
+
+      const clone = resp.clone();
+      void readResponseBodyPreview(clone, MAX_CAPTURED_BODY_BYTES)
+        .then((body) => {
+          if (!body) {
+            return;
+          }
+          POST('captured_body', { url, method, body });
+        })
+        .catch(() => {});
       return resp;
     } catch (e) {
       throw e;
@@ -80,18 +96,23 @@
   XMLHttpRequest.prototype.send = function (body?: any) {
     this.addEventListener('load', function () {
       try {
+        if (!shouldCaptureResponseBodies()) {
+          return;
+        }
+
         const contentType = this.getResponseHeader('content-type') || '';
         const contentLength = this.getResponseHeader('content-length');
-        const isText = /^(text\/|application\/(json|javascript|xml))/i.test(contentType);
-        const MAX_BODY_SIZE = 65536; // 64KB
-
-        if (!isText || (contentLength && parseInt(contentLength, 10) > MAX_BODY_SIZE)) {
+        if (!shouldCaptureXhrBody(contentType, contentLength, MAX_CAPTURED_BODY_BYTES)) {
           return;
         }
 
         const text = typeof this.responseText === 'string'
-          ? this.responseText.slice(0, MAX_BODY_SIZE)
+          ? this.responseText.slice(0, MAX_CAPTURED_BODY_BYTES)
           : '';
+        if (!text) {
+          return;
+        }
+
         POST('captured_body', {
           url: (this as any).__cc_url,
           method: (this as any).__cc_method,

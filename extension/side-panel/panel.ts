@@ -38,6 +38,7 @@ const DEFAULT_WS_HOST = '127.0.0.1';
 const DEFAULT_WS_PORT = '9999';
 const PANEL_STATE_STORAGE_KEY = 'panelStateV2';
 const WS_PORT_STORAGE_KEY = 'wsPort';
+const CAPTURE_SETTINGS_STORAGE_KEY = 'ccCaptureSettings';
 const MAX_PANES_PER_WORKSPACE = 6;
 const MIN_PANE_RATIO = 0.14;
 const MIN_RAIL_WIDTH = 96;
@@ -58,6 +59,7 @@ const portInput = document.getElementById('ws-port') as HTMLInputElement;
 const btnApplyPort = document.getElementById('btn-apply-port')!;
 const btnReconnect = document.getElementById('btn-reconnect')!;
 const btnLaunchDefaults = document.getElementById('btn-launch-defaults')!;
+const btnToggleBodyCapture = document.getElementById('btn-toggle-body-capture') as HTMLButtonElement;
 const btnAddShellPane = document.getElementById('btn-add-shell-pane')!;
 const btnAddClaudePane = document.getElementById('btn-add-claude-pane')!;
 const btnAddCodexPane = document.getElementById('btn-add-codex-pane')!;
@@ -73,8 +75,13 @@ let panelState = createDefaultState(DEFAULT_WS_PORT);
 let activePaneId: string | null = null;
 let ws: WebSocket | null = null;
 let lastViewportWidth = window.innerWidth;
+type CaptureSettings = {
+  captureResponseBodies: boolean;
+};
+
 let panelAutoCollapseArmed = window.innerWidth >= PANEL_AUTO_COLLAPSE_ARM_WIDTH;
 let panelCloseInFlight = false;
+let captureSettings: CaptureSettings = { captureResponseBodies: false };
 
 function emptyLaunchConfig(): AgentLaunchConfig {
   return {
@@ -174,6 +181,49 @@ function toggleTheme(): void {
   void setTheme(panelState.theme === 'light' ? 'dark' : 'light');
 }
 
+function normalizeCaptureSettings(value: unknown): CaptureSettings {
+  if (value && typeof value === 'object') {
+    const candidate = value as Partial<CaptureSettings>;
+    return {
+      captureResponseBodies: candidate.captureResponseBodies === true,
+    };
+  }
+  return { captureResponseBodies: false };
+}
+
+function updateCaptureToggleButton(): void {
+  const enabled = captureSettings.captureResponseBodies;
+  btnToggleBodyCapture.textContent = enabled ? '响应体:开' : '响应体:关';
+  btnToggleBodyCapture.title = enabled
+    ? '已开启受限响应体采集，再次点击可关闭。'
+    : '默认关闭响应体采集；开启后仅捕获受限文本响应体预览。';
+  btnToggleBodyCapture.setAttribute('aria-label', btnToggleBodyCapture.title);
+  btnToggleBodyCapture.setAttribute('aria-pressed', String(enabled));
+  btnToggleBodyCapture.classList.toggle('capture-enabled', enabled);
+}
+
+async function saveCaptureSettings(): Promise<void> {
+  await storageSet({
+    [CAPTURE_SETTINGS_STORAGE_KEY]: captureSettings,
+  });
+}
+
+async function setCaptureResponseBodies(enabled: boolean): Promise<void> {
+  if (captureSettings.captureResponseBodies === enabled) {
+    updateCaptureToggleButton();
+    return;
+  }
+
+  captureSettings = { captureResponseBodies: enabled };
+  updateCaptureToggleButton();
+  await saveCaptureSettings();
+  setStatus(isWsOpen() ? 'connected' : 'disconnected', enabled ? '已开启受限响应体采集' : '已关闭响应体采集');
+}
+
+function toggleCaptureResponseBodies(): void {
+  void setCaptureResponseBodies(!captureSettings.captureResponseBodies);
+}
+
 function setStatus(state: 'connected' | 'disconnected' | 'connecting' | 'error', message?: string): void {
   statusIndicator.className = state === 'error' ? 'disconnected' : state;
   statusText.textContent = message || connectionStateLabel(state);
@@ -262,6 +312,7 @@ async function loadState(): Promise<void> {
   const stored = await storageGet<Record<string, unknown | null>>({
     [PANEL_STATE_STORAGE_KEY]: null,
     [WS_PORT_STORAGE_KEY]: DEFAULT_WS_PORT,
+    [CAPTURE_SETTINGS_STORAGE_KEY]: { captureResponseBodies: false },
   });
 
   const legacyPort = String(stored[WS_PORT_STORAGE_KEY] ?? DEFAULT_WS_PORT);
@@ -284,6 +335,7 @@ async function loadState(): Promise<void> {
   panelState.wsPort = portInput.value;
   panelState.railWidth = clampRailWidth(panelState.railWidth);
   panelState.panelCollapsed = false;
+  captureSettings = normalizeCaptureSettings(stored[CAPTURE_SETTINGS_STORAGE_KEY]);
 
   const activeWorkspace = getWorkspace(panelState, panelState.activeWorkspaceId);
   activePaneId = activeWorkspace?.paneIds[0] || panelState.panes[0]?.paneId || null;
@@ -1197,6 +1249,7 @@ function renderWorkspaceStage(): void {
 function render(): void {
   const sessionIdToRefocus = focusedTerminalSessionId();
   applyTheme();
+  updateCaptureToggleButton();
   applyRailWidth();
   applyLayoutState();
   renderWorkspaceRail();
@@ -1302,6 +1355,10 @@ btnLaunchDefaults.addEventListener('click', () => {
   editLaunchDefaults();
 });
 
+btnToggleBodyCapture.addEventListener('click', () => {
+  toggleCaptureResponseBodies();
+});
+
 btnAddShellPane.addEventListener('click', () => {
   addPane('shell');
 });
@@ -1333,6 +1390,14 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
   if (message.type === 'browser_command_result') {
     sendToHost(message);
   }
+});
+
+chrome.storage.onChanged?.addListener((changes, areaName) => {
+  if (areaName !== 'local' || !changes[CAPTURE_SETTINGS_STORAGE_KEY]) {
+    return;
+  }
+  captureSettings = normalizeCaptureSettings(changes[CAPTURE_SETTINGS_STORAGE_KEY].newValue);
+  updateCaptureToggleButton();
 });
 
 window.addEventListener('resize', handleViewportResize);

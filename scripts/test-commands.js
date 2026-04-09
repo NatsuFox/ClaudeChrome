@@ -28,7 +28,7 @@ const MOCK_RESULTS = {
   navigate:         { url: 'https://example.com', status: 'complete' },
   reload:           { status: 'complete' },
   list_tabs:        { windowScope: 'last_focused', activeOnly: false, count: 2, tabs: [{ tabId: 42, windowId: 1, title: 'Example', url: 'https://example.com', active: true, pinned: false, audible: false, discarded: false, status: 'complete' }] },
-  get_page_content: { url: 'https://example.com', title: 'Example Domain', text: 'Example Domain\nThis domain is for use in illustrative examples.' },
+  get_page_content: { url: 'https://example.com', title: 'Example Domain', text: 'Example Domain\nThis domain is for use in illustrative examples.', html: '<html><body><h1>Example Domain</h1></body></html>' },
   find_elements:    { elements: [{ tag: 'h1', id: '', text: 'Example Domain', rect: { x: 0, y: 0, width: 800, height: 40 } }] },
   evaluate_js:      { result: 2 },
   click:            { clicked: true },
@@ -37,6 +37,7 @@ const MOCK_RESULTS = {
   wait_for:         { satisfied: true, elapsed: 50 },
   get_cookies:      { cookies: [{ name: 'session', value: 'abc123', domain: 'example.com' }] },
   get_storage:      { localStorage: { theme: 'dark', userId: '42' }, sessionStorage: { draft: 'hello' } },
+  get_capture_settings: { captureResponseBodies: false },
   set_element_text: { success: true, previousText: 'Old Text' },
   set_element_html: { success: true, previousHtml: '<span>Old HTML</span>' },
   set_element_style: { success: true, previousStyles: { color: 'blue', fontSize: '14px' } },
@@ -239,8 +240,10 @@ async function main() {
 
   // --- Step 5: Verify WS mock received every browser_command message
   console.log('\n[5] Verifying WS message integrity...');
-  const cmdMessages = wsMessages.filter((m) => m.type === 'browser_command');
-  assert(cmdMessages.length === commands.length, `WS client received every browser_command message (got ${cmdMessages.length}/${commands.length})`);
+  const cmdMessages = wsMessages
+    .filter((m) => m.type === 'browser_command')
+    .filter((m) => commands.some(({ name }) => name === m.command));
+  assert(cmdMessages.length === commands.length, `WS client received every step-4 browser_command message (got ${cmdMessages.length}/${commands.length})`);
 
   const commandNames = cmdMessages.map((m) => m.command);
   for (const { name } of commands) {
@@ -271,20 +274,116 @@ async function main() {
   assert(caps.implementedTools.includes('browser__get_cookies'), 'get_capabilities includes browser__get_cookies');
   assert(caps.implementedTools.includes('browser__list_tabs'), 'get_capabilities includes browser__list_tabs');
   assert(caps.implementedTools.includes('browser__session_context'), 'get_capabilities includes browser__session_context');
+  assert(caps.implementedTools.includes('browser__capture_policy'), 'get_capabilities includes browser__capture_policy');
   assert(caps.families?.action?.available === true, 'get_capabilities marks action family available');
   assert(caps.families?.tabs?.available === true, 'get_capabilities marks tabs family available');
   assert(caps.families?.cookies?.available === true, 'get_capabilities marks cookies family available');
   assert(caps.families?.storage?.available === true, 'get_capabilities marks storage family available');
   assert(caps.families?.introspection?.tools?.includes('browser__session_context'), 'get_capabilities lists browser__session_context in introspection tools');
+  assert(caps.families?.introspection?.tools?.includes('browser__capture_policy'), 'get_capabilities lists browser__capture_policy in introspection tools');
 
   const sessionContext = await ipcQuery({ sessionId: SESSION_ID, tool: 'get_session_context', params: {} });
   assert(sessionContext.ok === true, 'get_session_context query succeeds');
   assert(sessionContext.binding?.tabId === TAB_ID, `get_session_context reports bound tabId ${TAB_ID}`);
   assert(Array.isArray(sessionContext.suggestedNextTools), 'get_session_context returns suggestedNextTools');
   assert(sessionContext.suggestedNextTools.includes('browser__get_page_info'), 'get_session_context suggests browser__get_page_info');
+  assert(sessionContext.capture?.policy?.responseBodies?.mode === 'opt_in', 'get_session_context reports response-body capture mode');
+  assert(sessionContext.capture?.policy?.responseBodies?.available === true, 'get_session_context reports capture-policy availability');
+  assert(sessionContext.capture?.policy?.responseBodies?.enabled === false, 'get_session_context reports response-body capture disabled by default');
+
+  const policy = await ipcQuery({ sessionId: SESSION_ID, tool: 'get_capture_policy', params: {} });
+  assert(policy.ok === true, 'get_capture_policy query succeeds');
+  assert(policy.policy?.responseBodies?.available === true, 'get_capture_policy reports capture-policy availability');
+  assert(policy.policy?.responseBodies?.enabled === false, 'get_capture_policy reports response-body capture disabled by default');
 
   const stats = await ipcQuery({ sessionId: SESSION_ID, tool: 'get_capture_stats', params: {} });
   assert(stats.ok === true, 'get_capture_stats query succeeds');
+  assert(stats.policy?.responseBodies?.available === true, 'get_capture_stats reports capture-policy availability');
+  assert(stats.policy?.responseBodies?.enabled === false, 'get_capture_stats reports capture policy');
+
+  const status = await ipcQuery({ sessionId: SESSION_ID, tool: 'get_status', params: {} });
+  assert(status.ok === true, 'get_status query succeeds');
+  assert(status.capture?.policy?.responseBodies?.available === true, 'get_status reports capture-policy availability');
+  assert(status.capture?.policy?.responseBodies?.enabled === false, 'get_status reports response-body capture disabled by default');
+
+  const selfCheck = await ipcQuery({ sessionId: SESSION_ID, tool: 'self_check', params: {} });
+  assert(selfCheck.ok === true, 'self_check query succeeds');
+  assert(Array.isArray(selfCheck.checks), 'self_check returns checks');
+  assert(selfCheck.checks.some((check) => check.name === 'response_body_capture_policy'), 'self_check includes capture-policy check');
+
+  ws.send(JSON.stringify({
+    type: 'context_update',
+    category: 'network',
+    payload: [
+      {
+        id: 'batched-network-1',
+        tabId: TAB_ID,
+        url: 'https://batch.example.test/api/one',
+        method: 'GET',
+        requestHeaders: { accept: 'application/json' },
+        status: 200,
+        mimeType: 'application/json',
+        startTime: 1,
+        endTime: 2,
+      },
+      {
+        id: 'batched-network-2',
+        tabId: TAB_ID,
+        url: 'https://batch.example.test/api/two',
+        method: 'GET',
+        requestHeaders: {},
+        status: 200,
+        mimeType: 'application/json',
+        startTime: 3,
+        endTime: 4,
+      },
+    ],
+  }));
+  await new Promise((resolve) => setTimeout(resolve, 100));
+
+  const batchedRequests = await ipcQuery({
+    sessionId: SESSION_ID,
+    tool: 'get_requests',
+    params: { url_pattern: 'batch\\.example\\.test', include_bodies: true },
+  });
+  assert(Array.isArray(batchedRequests), 'get_requests returns batched request rows');
+  assert(batchedRequests.some((request) => request.id === 'batched-network-1'), 'batched network payload stores first request');
+  assert(batchedRequests.some((request) => request.id === 'batched-network-2'), 'batched network payload stores second request');
+
+  ws.send(JSON.stringify({
+    type: 'context_update',
+    category: 'network',
+    payload: {
+      id: 'batched-network-2',
+      tabId: TAB_ID,
+      url: 'https://batch.example.test/api/two',
+      method: 'GET',
+      requestHeaders: {},
+      status: 200,
+      mimeType: 'application/json',
+      startTime: 3,
+      endTime: 5,
+      responseBody: '{"ok":true}',
+    },
+  }));
+  await new Promise((resolve) => setTimeout(resolve, 100));
+
+  const batchedDetail = await ipcQuery({
+    sessionId: SESSION_ID,
+    tool: 'get_request_detail',
+    params: { request_id: 'batched-network-2' },
+  });
+  assert(batchedDetail?.responseBody === '{"ok":true}', 'batched network request detail keeps later response-body upsert');
+
+  const livePageText = await ipcQuery({ sessionId: SESSION_ID, tool: 'get_page_text', params: { max_chars: 64 } });
+  assert(livePageText.ok === true, 'get_page_text query succeeds');
+  assert(typeof livePageText.text === 'string', 'get_page_text returns text');
+  assert(livePageText.text.includes('Example Domain'), 'get_page_text returns live page text');
+
+  const livePageHtml = await ipcQuery({ sessionId: SESSION_ID, tool: 'get_page_html', params: { max_chars: 128 } });
+  assert(livePageHtml.ok === true, 'get_page_html query succeeds');
+  assert(typeof livePageHtml.html === 'string', 'get_page_html returns html');
+  assert(livePageHtml.html.includes('<h1>Example Domain</h1>'), 'get_page_html returns live page html');
 
   // --- Summary
   console.log('\n' + '='.repeat(56));

@@ -194,6 +194,14 @@ global.chrome = {
   cookies: {
     getAll: (details) => Promise.resolve([COOKIE]),
   },
+  storage: {
+    local: {
+      get: (defaults) => Promise.resolve({
+        ...defaults,
+        ccCaptureSettings: { captureResponseBodies: true },
+      }),
+    },
+  },
   runtime: {
     lastError: null,
   },
@@ -338,6 +346,12 @@ async function runTests() {
     const r = await assertOk(dispatchCommand('get_storage', 42, { storage_type: 'both' }), 'get_storage');
     assert(typeof r?.localStorage === 'object', 'get_storage returns localStorage object');
     assert(typeof r?.sessionStorage === 'object', 'get_storage returns sessionStorage object');
+  }
+
+  // get_capture_settings
+  {
+    const r = await assertOk(dispatchCommand('get_capture_settings', 42, {}), 'get_capture_settings');
+    assert(r?.captureResponseBodies === true, 'get_capture_settings returns stored body-capture flag');
   }
 
   // unknown command

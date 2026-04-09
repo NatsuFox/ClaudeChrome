@@ -142,7 +142,11 @@ function handleContextUpdate(msg: { category: string; payload: unknown }): void 
 
   // Extract tabId from payload
   if (msg.category === 'network') {
-    tabId = (msg.payload as StoredRequest).tabId;
+    if (Array.isArray(msg.payload)) {
+      tabId = (msg.payload[0] as StoredRequest | undefined)?.tabId;
+    } else {
+      tabId = (msg.payload as StoredRequest).tabId;
+    }
   } else if (msg.category === 'console') {
     tabId = (msg.payload as StoredConsoleEntry).tabId;
   } else if (msg.category === 'page_info') {
@@ -165,8 +169,12 @@ function handleContextUpdate(msg: { category: string; payload: unknown }): void 
 
   switch (msg.category) {
     case 'network': {
-      const request = msg.payload as StoredRequest;
-      contextStore.addRequest(request);
+      const requests = Array.isArray(msg.payload)
+        ? msg.payload as StoredRequest[]
+        : [msg.payload as StoredRequest];
+      for (const request of requests) {
+        contextStore.addRequest(request);
+      }
       break;
     }
     case 'console': {
@@ -305,10 +313,15 @@ wss.on('connection', (client, req) => {
   client.on('message', (raw) => {
     try {
       const message = JSON.parse(raw.toString());
-      appendConnectionLog('ws_message', {
+      const logPayload: Record<string, unknown> = {
         ...meta,
         type: typeof message?.type === 'string' ? message.type : 'unknown',
-      });
+      };
+      if (message?.type === 'context_update') {
+        logPayload.category = typeof message.category === 'string' ? message.category : 'unknown';
+        logPayload.payloadSize = JSON.stringify(message.payload ?? null).length;
+      }
+      appendConnectionLog('ws_message', logPayload);
       handleClientMessage(message);
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
@@ -386,9 +399,13 @@ function startIpcServer(_socketPath: string): void {
             .then((result) => reply({ ok: true, result }))
             .catch((err) => reply({ error: err instanceof Error ? err.message : String(err) }));
         } else {
-          const result = handleStoreQuery(sessionId, tool, params);
           appendConnectionLog('ipc_query', { ...meta, sessionId, tool });
-          reply(result);
+          Promise.resolve(handleStoreQuery(sessionId, tool, params))
+            .then((result) => reply(result))
+            .catch((error) => {
+              const message = error instanceof Error ? error.message : String(error);
+              reply({ error: message });
+            });
         }
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
@@ -426,6 +443,7 @@ const IMPLEMENTED_SESSION_TOOLS = [
   'browser__session_context',
   'browser__binding_status',
   'browser__capabilities',
+  'browser__capture_policy',
   'browser__capture_stats',
   'browser__explain_unavailable',
   'browser__self_check',
@@ -580,7 +598,7 @@ function getCapabilities(context: ReturnType<typeof getSessionContext>) {
       },
       introspection: {
         available: true,
-        tools: ['browser__status', 'browser__session_context', 'browser__binding_status', 'browser__capabilities', 'browser__capture_stats', 'browser__explain_unavailable', 'browser__self_check'],
+        tools: ['browser__status', 'browser__session_context', 'browser__binding_status', 'browser__capabilities', 'browser__capture_policy', 'browser__capture_stats', 'browser__explain_unavailable', 'browser__self_check'],
       },
       cookies: {
         available: true,
@@ -649,7 +667,55 @@ function explainUnavailable(context: ReturnType<typeof getSessionContext>, targe
   return makeError('not_implemented_yet', `${target} is not implemented in the current host.`, { target });
 }
 
-function handleStoreQuery(sessionId: string | undefined, tool: string, params: any): any {
+async function getLivePageContentForQuery(
+  sessionId: string,
+  tabId: number,
+  maxChars: number,
+  includeHtml: boolean
+) {
+  const result = await dispatchBrowserCommand(tabId, 'get_page_content', {
+    include_html: includeHtml,
+    max_chars: maxChars,
+  }, 10_000) as { url: string; title: string; text: string; html?: string };
+
+  return {
+    ok: true,
+    sessionId,
+    tabId,
+    url: result.url,
+    title: result.title,
+    lastSeenAt: Date.now(),
+    text: result.text,
+    html: result.html,
+  };
+}
+
+async function getCapturePolicyForTab(tabId: number) {
+  try {
+    const result = await dispatchBrowserCommand(tabId, 'get_capture_settings', {}, 5_000) as {
+      captureResponseBodies?: boolean;
+    };
+
+    return {
+      responseBodies: {
+        mode: 'opt_in',
+        available: true,
+        enabled: result.captureResponseBodies === true,
+      },
+    };
+  } catch (error) {
+    return {
+      responseBodies: {
+        mode: 'opt_in',
+        available: false,
+        enabled: null,
+        reason: error instanceof Error ? error.message : String(error),
+      },
+    };
+  }
+}
+
+async function handleStoreQuery(sessionId: string | undefined, tool: string, params: any): Promise<any> {
   const context = getSessionContext(sessionId);
 
   switch (tool) {
@@ -722,48 +788,43 @@ function handleStoreQuery(sessionId: string | undefined, tool: string, params: a
     }
     case 'get_page_text': {
       if ('error' in context) return context.error;
-      if (!context.pageInfo) {
-        return makeMissingPageInfoError(context.sessionId, context.tabId);
-      }
-      const text = context.pageInfo.visibleText ?? '';
       const maxChars = clampPagePayloadChars(params.max_chars);
-      const returnedText = text.slice(0, maxChars);
+      const live = await getLivePageContentForQuery(context.sessionId, context.tabId, maxChars, false);
+      const text = live.text ?? '';
       return {
         ok: true,
         sessionId: context.sessionId,
         tabId: context.tabId,
-        url: context.pageInfo.url,
-        title: context.pageInfo.title,
-        lastSeenAt: context.pageInfo.lastSeenAt,
+        url: live.url,
+        title: live.title,
+        lastSeenAt: live.lastSeenAt,
         chars: text.length,
-        returnedChars: returnedText.length,
-        truncated: text.length > maxChars,
-        text: returnedText,
+        returnedChars: text.length,
+        truncated: false,
+        text,
       };
     }
     case 'get_page_html': {
       if ('error' in context) return context.error;
-      if (!context.pageInfo) {
-        return makeMissingPageInfoError(context.sessionId, context.tabId);
-      }
-      const html = context.pageInfo.html ?? '';
       const maxChars = clampPagePayloadChars(params.max_chars);
-      const returnedHtml = html.slice(0, maxChars);
+      const live = await getLivePageContentForQuery(context.sessionId, context.tabId, maxChars, true);
+      const html = live.html ?? '';
       return {
         ok: true,
         sessionId: context.sessionId,
         tabId: context.tabId,
-        url: context.pageInfo.url,
-        title: context.pageInfo.title,
-        lastSeenAt: context.pageInfo.lastSeenAt,
+        url: live.url,
+        title: live.title,
+        lastSeenAt: live.lastSeenAt,
         chars: html.length,
-        returnedChars: returnedHtml.length,
-        truncated: html.length > maxChars,
-        html: returnedHtml,
+        returnedChars: html.length,
+        truncated: false,
+        html,
       };
     }
-    case 'get_status':
+    case 'get_status': {
       if ('error' in context) return context.error;
+      const capturePolicy = await getCapturePolicyForTab(context.tabId);
       return {
         ok: true,
         sessionId: context.sessionId,
@@ -786,6 +847,7 @@ function handleStoreQuery(sessionId: string | undefined, tool: string, params: a
         capture: {
           stats: context.stats,
           pageInfoPresent: context.pageInfo != null,
+          policy: capturePolicy,
         },
         collectors: {
           page_info: {
@@ -808,11 +870,22 @@ function handleStoreQuery(sessionId: string | undefined, tool: string, params: a
           },
         },
       };
-    case 'get_session_context':
+    }
+    case 'get_session_context': {
       if ('error' in context) return context.error;
-      return summarizeSessionContext(context);
-    case 'get_binding_status':
+      const capturePolicy = await getCapturePolicyForTab(context.tabId);
+      const sessionContext = summarizeSessionContext(context);
+      return {
+        ...sessionContext,
+        capture: {
+          ...sessionContext.capture,
+          policy: capturePolicy,
+        },
+      };
+    }
+    case 'get_binding_status': {
       if ('error' in context) return context.error;
+      const capturePolicy = await getCapturePolicyForTab(context.tabId);
       return {
         ok: true,
         sessionId: context.sessionId,
@@ -821,7 +894,9 @@ function handleStoreQuery(sessionId: string | undefined, tool: string, params: a
         sessionStatusMessage: context.snapshot.statusMessage ?? null,
         boundTab: context.tab,
         pageInfo: summarizePageInfo(context.pageInfo),
+        capturePolicy,
       };
+    }
     case 'get_capabilities':
       if ('error' in context) return context.error;
       return {
@@ -829,18 +904,32 @@ function handleStoreQuery(sessionId: string | undefined, tool: string, params: a
         sessionId: context.sessionId,
         ...getCapabilities(context),
       };
-    case 'get_capture_stats':
+    case 'get_capture_policy': {
       if ('error' in context) return context.error;
+      const capturePolicy = await getCapturePolicyForTab(context.tabId);
+      return {
+        ok: true,
+        sessionId: context.sessionId,
+        tabId: context.tabId,
+        policy: capturePolicy,
+      };
+    }
+    case 'get_capture_stats': {
+      if ('error' in context) return context.error;
+      const capturePolicy = await getCapturePolicyForTab(context.tabId);
       return {
         ok: true,
         sessionId: context.sessionId,
         tabId: context.tabId,
         stats: context.stats,
+        policy: capturePolicy,
       };
+    }
     case 'explain_unavailable':
       return explainUnavailable(context, String(params.target || params.tool_name || ''));
     case 'self_check': {
       if ('error' in context) return context.error;
+      const capturePolicy = await getCapturePolicyForTab(context.tabId);
       const checks = [
         {
           name: 'session_snapshot',
@@ -870,6 +959,16 @@ function handleStoreQuery(sessionId: string | undefined, tool: string, params: a
           status: context.stats.consoleCount > 0 ? 'ok' : 'warn',
           code: context.stats.consoleCount > 0 ? undefined : 'not_captured_yet',
           message: context.stats.consoleCount > 0 ? `Captured ${context.stats.consoleCount} console entries.` : 'No console entries have been captured for the bound tab yet.',
+        },
+        {
+          name: 'response_body_capture_policy',
+          status: capturePolicy.responseBodies.available ? 'ok' : 'warn',
+          code: capturePolicy.responseBodies.available ? undefined : 'capture_policy_unavailable',
+          message: capturePolicy.responseBodies.available
+            ? (capturePolicy.responseBodies.enabled
+                ? 'Response body capture is enabled in opt-in mode.'
+                : 'Response body capture is disabled in opt-in mode.')
+            : 'Response body capture policy could not be read from the browser session.',
         },
       ];
 

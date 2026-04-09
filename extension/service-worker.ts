@@ -5,6 +5,7 @@ import type {
   TabSummary,
 } from './shared/types';
 import { dispatchCommand } from './command-dispatcher';
+import { NetworkUpdateBuffer } from './shared/network-update-buffer';
 
 type TabContextState = {
   tab: TabSummary;
@@ -48,6 +49,9 @@ type CircuitBreakerState = {
 const circuitBreakers = new Map<number, CircuitBreakerState>();
 const CIRCUIT_BREAKER_THRESHOLD = 500; // messages per minute
 const CIRCUIT_BREAKER_WINDOW = 60000; // 1 minute
+const MAX_CAPTURED_REQUEST_BODY_BYTES = 16_384;
+const NETWORK_UPDATE_BATCH_WINDOW_MS = 500;
+const NETWORK_UPDATE_BATCH_MAX_BYTES = 32_768;
 
 function nextReqId(): string {
   return `req_${Date.now()}_${++reqCounter}`;
@@ -93,6 +97,12 @@ function checkCircuitBreaker(tabId: number, category: string): boolean {
   return state.tripped;
 }
 
+function truncateTextPreview(value: string, maxChars: number): string {
+  return value.length > maxChars
+    ? `${value.slice(0, maxChars)}\n[ClaudeChrome truncated ${value.length - maxChars} chars]`
+    : value;
+}
+
 function cloneTabSummary(tab: TabSummary): TabSummary {
   return { ...tab };
 }
@@ -115,6 +125,18 @@ function clonePageInfo(info: PageInfo): PageInfo {
     scripts: [...info.scripts],
     meta: { ...info.meta },
   };
+}
+
+const networkUpdateBuffer = new NetworkUpdateBuffer(
+  NETWORK_UPDATE_BATCH_WINDOW_MS,
+  NETWORK_UPDATE_BATCH_MAX_BYTES,
+  (tabId, payload) => {
+    forwardContextUpdate('network', payload, tabId);
+  }
+);
+
+function queueNetworkContextUpdate(entry: CapturedRequest, tabId: number): void {
+  networkUpdateBuffer.enqueue(tabId, cloneRequest(entry));
 }
 
 function createEmptyTabSummary(tabId: number): TabSummary {
@@ -167,9 +189,9 @@ function tabSummaryFromChromeTab(tab: chrome.tabs.Tab): TabSummary | null {
 }
 
 function forwardContextUpdate(category: 'network' | 'console' | 'page_info' | 'tab_state', payload: unknown, tabId?: number): void {
-  // Check circuit breaker if tabId provided
-  if (tabId != null && checkCircuitBreaker(tabId, category)) {
-    return; // Drop message if circuit breaker tripped
+  const shouldThrottleCategory = category === 'network' || category === 'console';
+  if (tabId != null && shouldThrottleCategory && checkCircuitBreaker(tabId, category)) {
+    return;
   }
 
   chrome.runtime.sendMessage(
@@ -385,17 +407,19 @@ chrome.webRequest.onBeforeRequest.addListener(
     if (details.requestBody) {
       if (details.requestBody.raw?.[0]?.bytes) {
         const decoder = new TextDecoder();
-        entry.requestBody = decoder.decode(details.requestBody.raw[0].bytes);
+        const bytes = details.requestBody.raw[0].bytes;
+        const preview = decoder.decode(bytes.slice(0, MAX_CAPTURED_REQUEST_BODY_BYTES));
+        entry.requestBody = bytes.byteLength > MAX_CAPTURED_REQUEST_BODY_BYTES
+          ? `${preview}\n[ClaudeChrome truncated ${bytes.byteLength - MAX_CAPTURED_REQUEST_BODY_BYTES} bytes]`
+          : preview;
       } else if (details.requestBody.formData) {
-        entry.requestBody = JSON.stringify(details.requestBody.formData);
+        entry.requestBody = truncateTextPreview(JSON.stringify(details.requestBody.formData), MAX_CAPTURED_REQUEST_BODY_BYTES);
       }
     }
 
     context.requestsByBrowserRequestId.set(details.requestId, entry);
     evictOldRequests(context);
     updateTabSummary(details.tabId, { available: true, lastSeenAt: Date.now() });
-    pushTabState(details.tabId);
-    forwardContextUpdate('network', cloneRequest(entry), details.tabId);
   },
   { urls: ['<all_urls>'] },
   ['requestBody']
@@ -415,7 +439,6 @@ chrome.webRequest.onSendHeaders.addListener(
       }
     }
 
-    forwardContextUpdate('network', cloneRequest(entry), details.tabId);
   },
   { urls: ['<all_urls>'] },
   ['requestHeaders']
@@ -441,7 +464,6 @@ chrome.webRequest.onHeadersReceived.addListener(
       entry.mimeType = contentType.value;
     }
 
-    forwardContextUpdate('network', cloneRequest(entry), details.tabId);
   },
   { urls: ['<all_urls>'] },
   ['responseHeaders']
@@ -456,7 +478,22 @@ chrome.webRequest.onCompleted.addListener(
 
     entry.endTime = details.timeStamp;
     entry.status = details.statusCode;
-    forwardContextUpdate('network', cloneRequest(entry), details.tabId);
+    queueNetworkContextUpdate(entry, details.tabId);
+  },
+  { urls: ['<all_urls>'] }
+);
+
+chrome.webRequest.onErrorOccurred.addListener(
+  (details) => {
+    if (details.tabId < 0) return;
+    const context = tabContexts.get(details.tabId);
+    const entry = context?.requestsByBrowserRequestId.get(details.requestId);
+    if (!entry) return;
+
+    entry.endTime = details.timeStamp;
+    entry.status = 0;
+    entry.statusText = details.error;
+    queueNetworkContextUpdate(entry, details.tabId);
   },
   { urls: ['<all_urls>'] }
 );
@@ -467,7 +504,9 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     const entry = findRequestForBody(sender.tab.id, msg.url, msg.method);
     if (!entry) return;
     entry.responseBody = msg.body;
-    forwardContextUpdate('network', cloneRequest(entry), sender.tab.id);
+    if (entry.endTime != null || entry.status != null) {
+      queueNetworkContextUpdate(entry, sender.tab.id);
+    }
     return;
   }
 
@@ -652,6 +691,8 @@ chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
 });
 
 chrome.tabs.onRemoved.addListener((tabId) => {
+  circuitBreakers.delete(tabId);
+  networkUpdateBuffer.flushTab(tabId);
   const context = tabContexts.get(tabId);
   if (!context) return;
   context.tab = {
@@ -663,6 +704,8 @@ chrome.tabs.onRemoved.addListener((tabId) => {
 });
 
 chrome.tabs.onReplaced.addListener((addedTabId, removedTabId) => {
+  circuitBreakers.delete(removedTabId);
+  networkUpdateBuffer.flushTab(removedTabId);
   const removed = tabContexts.get(removedTabId);
   if (removed) {
     removed.tab = {
