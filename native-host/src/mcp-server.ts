@@ -59,5 +59,12 @@ export function createMcpServer(_store: ContextStore): McpServer {
     async () => notAvailable('browser__get_page_info')
   );
 
+  server.tool(
+    'browser__capture_policy',
+    'Get the current browser capture policy',
+    {},
+    async () => notAvailable('browser__capture_policy')
+  );
+
   return server;
 }

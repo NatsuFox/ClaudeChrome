@@ -2,26 +2,29 @@
 // Implements all Tier 1 browser commands for the bidirectional command protocol.
 // Runs in the service worker context (isolated world, full Chrome API access).
 
+const CAPTURE_SETTINGS_STORAGE_KEY = 'ccCaptureSettings';
+
 export async function dispatchCommand(
   command: string,
   tabId: number,
   params: Record<string, unknown>
 ): Promise<unknown> {
   switch (command) {
-    case 'list_tabs':         return cmdListTabs(tabId, params);
-    case 'screenshot':        return cmdScreenshot(tabId, params);
-    case 'navigate':          return cmdNavigate(tabId, params);
-    case 'reload':            return cmdReload(tabId, params);
-    case 'get_page_content':  return cmdGetPageContent(tabId, params);
-    case 'find_elements':     return cmdFindElements(tabId, params);
-    case 'evaluate_js':       return cmdEvaluateJs(tabId, params);
-    case 'click':             return cmdClick(tabId, params);
-    case 'type':              return cmdType(tabId, params);
-    case 'scroll':            return cmdScroll(tabId, params);
-    case 'wait_for':          return cmdWaitFor(tabId, params);
-    case 'get_cookies':       return cmdGetCookies(tabId, params);
-    case 'get_storage':       return cmdGetStorage(tabId, params);
-    case 'get_selection':     return cmdGetSelection(tabId, params);
+    case 'list_tabs':             return cmdListTabs(tabId, params);
+    case 'screenshot':            return cmdScreenshot(tabId, params);
+    case 'navigate':              return cmdNavigate(tabId, params);
+    case 'reload':                return cmdReload(tabId, params);
+    case 'get_page_content':      return cmdGetPageContent(tabId, params);
+    case 'find_elements':         return cmdFindElements(tabId, params);
+    case 'evaluate_js':           return cmdEvaluateJs(tabId, params);
+    case 'click':                 return cmdClick(tabId, params);
+    case 'type':                  return cmdType(tabId, params);
+    case 'scroll':                return cmdScroll(tabId, params);
+    case 'wait_for':              return cmdWaitFor(tabId, params);
+    case 'get_cookies':           return cmdGetCookies(tabId, params);
+    case 'get_storage':           return cmdGetStorage(tabId, params);
+    case 'get_selection':         return cmdGetSelection(tabId, params);
+    case 'get_capture_settings':  return cmdGetCaptureSettings(tabId, params);
     default:
       throw new Error(`Unknown browser command: ${command}`);
   }
@@ -407,6 +410,15 @@ async function cmdGetStorage(
   return result.result as { localStorage?: Record<string, string>; sessionStorage?: Record<string, string> };
 }
 
-
-
-
+async function cmdGetCaptureSettings(
+  _tabId: number,
+  _params: Record<string, unknown>
+): Promise<{ captureResponseBodies: boolean }> {
+  const items = await chrome.storage.local.get({
+    [CAPTURE_SETTINGS_STORAGE_KEY]: { captureResponseBodies: false },
+  });
+  const raw = items[CAPTURE_SETTINGS_STORAGE_KEY] as { captureResponseBodies?: unknown } | undefined;
+  return {
+    captureResponseBodies: raw?.captureResponseBodies === true,
+  };
+}

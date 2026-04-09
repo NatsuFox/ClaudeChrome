@@ -280,6 +280,7 @@ body.panel-collapsed #shell {
 #btn-reconnect,
 #btn-apply-port,
 #btn-launch-defaults,
+#btn-toggle-body-capture,
 #btn-add-shell-pane,
 #btn-add-claude-pane,
 #btn-add-codex-pane,
@@ -332,6 +333,24 @@ body.panel-collapsed #shell {
     0 0 0 1px rgba(255,138,72,0.16),
     0 0 12px rgba(255,138,72,0.14),
     inset 0 1px 0 rgba(255,180,120,0.18);
+}
+
+#btn-toggle-body-capture.capture-enabled {
+  border-color: rgba(82,214,138,0.44);
+  color: #8df0b7;
+  background:
+    linear-gradient(180deg, rgba(82,214,138,0.16) 0%, rgba(82,214,138,0.06) 100%),
+    rgba(82,214,138,0.06);
+  box-shadow:
+    0 1px 3px rgba(0,0,0,0.24),
+    0 0 0 1px rgba(82,214,138,0.12),
+    inset 0 1px 0 rgba(180,255,210,0.12);
+}
+#btn-toggle-body-capture.capture-enabled:hover {
+  border-color: rgba(82,214,138,0.62);
+  background:
+    linear-gradient(180deg, rgba(82,214,138,0.22) 0%, rgba(82,214,138,0.10) 100%),
+    rgba(82,214,138,0.10);
 }
 
 #btn-toggle-panel { opacity: 0.60; font-size: 10.5px; }

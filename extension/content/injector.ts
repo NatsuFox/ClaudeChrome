@@ -1,6 +1,18 @@
-const MAX_VISIBLE_TEXT_CHARS = 200_000;
-const MAX_HTML_CHARS = 500_000;
-const PAGE_INFO_DEBOUNCE_MS = 250;
+const MAX_VISIBLE_TEXT_CHARS = 8_000;
+const MAX_HTML_CHARS = 8_000;
+const PAGE_INFO_MUTATION_DEBOUNCE_MS = 1_000;
+const PAGE_INFO_BACKGROUND_MIN_INTERVAL_MS = 5_000;
+const CAPTURE_SETTINGS_STORAGE_KEY = 'ccCaptureSettings';
+const CAPTURE_RESPONSE_BODIES_DATASET_KEY = 'claudechromeCaptureResponseBodies';
+
+type CaptureSettings = {
+  captureResponseBodies: boolean;
+};
+
+type QueuePageInfoOptions = {
+  includeHtml?: boolean;
+  priority?: 'background' | 'immediate';
+};
 
 function safeSendMessage(message: Record<string, unknown>): void {
   try {
@@ -11,41 +23,85 @@ function safeSendMessage(message: Record<string, unknown>): void {
 }
 
 let lastPageInfoKey = '';
+let lastPageInfoSentAt = 0;
 let pageInfoTimer: number | null = null;
+let queuedPageInfoIncludeHtml = false;
+let queuedPageInfoPriority: 'background' | 'immediate' = 'background';
 const root = document.documentElement;
 
+function applyCaptureSettings(settings: CaptureSettings): void {
+  if (!root) {
+    return;
+  }
+  root.dataset[CAPTURE_RESPONSE_BODIES_DATASET_KEY] = settings.captureResponseBodies ? '1' : '0';
+}
+
+function normalizeCaptureSettings(value: unknown): CaptureSettings {
+  if (value && typeof value === 'object') {
+    const candidate = value as Partial<CaptureSettings>;
+    return {
+      captureResponseBodies: candidate.captureResponseBodies === true,
+    };
+  }
+  return { captureResponseBodies: false };
+}
+
+function loadCaptureSettings(): void {
+  applyCaptureSettings({ captureResponseBodies: false });
+  try {
+    chrome.storage.local.get({
+      [CAPTURE_SETTINGS_STORAGE_KEY]: { captureResponseBodies: false },
+    }, (items) => {
+      applyCaptureSettings(normalizeCaptureSettings(items[CAPTURE_SETTINGS_STORAGE_KEY]));
+    });
+  } catch {
+    applyCaptureSettings({ captureResponseBodies: false });
+  }
+}
+
 if (root?.dataset.claudechromeInjectorInstalled === '1') {
-  queuePageInfoSend(0);
+  loadCaptureSettings();
+  queuePageInfoSend(0, { priority: 'background' });
 } else {
   if (root) {
     root.dataset.claudechromeInjectorInstalled = '1';
   }
+  loadCaptureSettings();
 
-  // Content script: injects page-script.js into the page context
+  // Content script: injects page-script.js into the page context.
   // This runs in the content script isolated world.
   const script = document.createElement('script');
   script.src = chrome.runtime.getURL('content/page-script.js');
   script.onload = () => script.remove();
   (document.head || document.documentElement).appendChild(script);
 
-  queuePageInfoSend(0);
-  window.addEventListener('load', () => queuePageInfoSend(0));
-  window.addEventListener('popstate', () => queuePageInfoSend(0));
-  window.addEventListener('hashchange', () => queuePageInfoSend(0));
+  queuePageInfoSend(0, { includeHtml: true, priority: 'immediate' });
+  window.addEventListener('load', () => queuePageInfoSend(0, { includeHtml: true, priority: 'immediate' }));
+  window.addEventListener('popstate', () => queuePageInfoSend(0, { includeHtml: true, priority: 'immediate' }));
+  window.addEventListener('hashchange', () => queuePageInfoSend(0, { includeHtml: true, priority: 'immediate' }));
 
   const titleObserverTarget = document.querySelector('title') || document.head || document.documentElement;
   if (titleObserverTarget) {
-    new MutationObserver(() => queuePageInfoSend(0)).observe(titleObserverTarget, {
+    new MutationObserver(() => queuePageInfoSend(0, { priority: 'background' })).observe(titleObserverTarget, {
       childList: true,
       subtree: true,
       characterData: true,
     });
   }
 
-  new MutationObserver(() => queuePageInfoSend(PAGE_INFO_DEBOUNCE_MS)).observe(document.documentElement, {
+  new MutationObserver(() => {
+    queuePageInfoSend(PAGE_INFO_MUTATION_DEBOUNCE_MS, { priority: 'background' });
+  }).observe(document.documentElement, {
     childList: true,
     subtree: true,
     characterData: true,
+  });
+
+  chrome.storage.onChanged?.addListener((changes, areaName) => {
+    if (areaName !== 'local' || !changes[CAPTURE_SETTINGS_STORAGE_KEY]) {
+      return;
+    }
+    applyCaptureSettings(normalizeCaptureSettings(changes[CAPTURE_SETTINGS_STORAGE_KEY].newValue));
   });
 
   // Bridge: listen for messages from page-script (via window.postMessage).
@@ -70,14 +126,31 @@ if (root?.dataset.claudechromeInjectorInstalled === '1') {
   });
 }
 
-function queuePageInfoSend(delayMs: number): void {
+function queuePageInfoSend(delayMs: number, options: QueuePageInfoOptions = {}): void {
+  const includeHtml = options.includeHtml === true;
+  const priority = options.priority === 'immediate' ? 'immediate' : 'background';
+
+  queuedPageInfoIncludeHtml = queuedPageInfoIncludeHtml || includeHtml;
+  if (priority === 'immediate') {
+    queuedPageInfoPriority = 'immediate';
+  }
+
   if (pageInfoTimer != null) {
     window.clearTimeout(pageInfoTimer);
   }
+
+  const now = Date.now();
+  const throttleDelay = queuedPageInfoPriority === 'background'
+    ? Math.max(0, lastPageInfoSentAt + PAGE_INFO_BACKGROUND_MIN_INTERVAL_MS - now)
+    : 0;
+
   pageInfoTimer = window.setTimeout(() => {
     pageInfoTimer = null;
-    sendPageInfo();
-  }, delayMs);
+    const nextIncludeHtml = queuedPageInfoIncludeHtml;
+    queuedPageInfoIncludeHtml = false;
+    queuedPageInfoPriority = 'background';
+    sendPageInfo({ includeHtml: nextIncludeHtml });
+  }, Math.max(delayMs, throttleDelay));
 }
 
 function collectScripts(): string[] {
@@ -123,18 +196,21 @@ function buildPageInfoKey(info: {
   ].join('\n');
 }
 
-function sendPageInfo() {
+function sendPageInfo(options: { includeHtml?: boolean } = {}): void {
+  const includeHtml = options.includeHtml === true;
   const info = {
     url: window.location.href,
     title: document.title,
     scripts: collectScripts(),
     meta: collectMeta(),
     visibleText: document.body?.innerText?.slice(0, MAX_VISIBLE_TEXT_CHARS) || '',
-    html: document.documentElement?.outerHTML?.slice(0, MAX_HTML_CHARS) || '',
+    html: includeHtml ? (document.documentElement?.outerHTML?.slice(0, MAX_HTML_CHARS) || '') : '',
   };
   const nextKey = buildPageInfoKey(info);
   if (nextKey === lastPageInfoKey) return;
+
   lastPageInfoKey = nextKey;
+  lastPageInfoSentAt = Date.now();
 
   safeSendMessage({
     type: 'page_info',
