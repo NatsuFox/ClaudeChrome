@@ -16,10 +16,14 @@ Friend link: [LINUX DO](https://linux.do)
 
 ## 🎉 Latest updates
 
+- **2026-04-15**
+  - Published the first official `v0.0.1` release with two separate prebuilt downloads: one for the browser extension and one for the local native host.
+  - Finalized the local deployment path so users can install, connect, and launch without rebuilding from source first.
+  - Completed the remaining shortcut, working-directory validation, local-settings recovery, and exit-cleanup hardening needed for a real release.
+
 - **2026-04-06**
   - Thanks to [@zuiyi233](https://github.com/zuiyi233) for using ClaudeChrome, sharing feedback, and contributing the PR. It resolved most Windows compatibility issues and added a bilingual Chinese/English UI.
   - Removed the old parameter settings button and added a configuration panel for centralized Agent CLI launch arguments, working directories, environment-info injection, and related options.
-  - Updated the README and will publish the `0.0.1` release soon so installation and usage are easier.
 
 - **2026-04-05**
   - The open-source project is now public and ready for people to try. The README already includes installation and usage guides, and clearer docs and demo videos will continue to follow.
@@ -33,14 +37,14 @@ Friend link: [LINUX DO](https://linux.do)
 
 - **Release 0.0.1**
   - [x] Build the landing page and demo videos, improve the open-source repo, and present the core features and use cases
-  - [ ] Fix Windows compatibility issues and make sure the main flows are usable
-  - [ ] Publish the release
+  - [x] Fix Windows compatibility issues and make sure the main flows are usable
+  - [x] Publish the release
 
 ## Demo gallery
 
 GitHub README rendering does not reliably show inline `<video>` or `<iframe>` players here, so this gallery uses clickable GIF previews that open the bundled MP4 recordings.
 
-**A `0.0.1` release will be published soon so people do not need to clone the repo and download all demo recordings and landing-page assets together.**
+**The `v0.0.1` release is now available, so people can download the prebuilt extension and native-host bundles directly instead of cloning and rebuilding first.**
 
 <table>
   <tr>
@@ -122,6 +126,43 @@ Notes:
 - macOS and Linux already provide `bash` in normal setups.
 - On Windows, install Git Bash or WSL and make sure `bash`, `claude`, and `codex` are all available globally on `PATH`.
 - If you only want to verify the local bridge first, start with a Shell pane. That avoids depending on whether `claude` or `codex` is already installed.
+
+#### Fastest path: use the two prebuilt GitHub release bundles
+
+The `v0.0.1` release ships two separate downloads:
+
+- `ClaudeChrome-extension-v0.0.1.zip`: after extraction, this is the unpacked extension directory you can load directly from `chrome://extensions`.
+- `ClaudeChrome-native-host-v0.0.1.zip`: after extraction, this contains the already compiled native-host code, launch scripts, and the minimal `package.json` / `package-lock.json` needed to run it.
+
+Recommended deployment order:
+
+1. Download and extract both archives into your own local directories.
+2. Inside the native-host bundle, install runtime dependencies once, without rebuilding:
+
+```bash
+npm install --omit=dev
+```
+
+3. Start the native host:
+
+macOS / Linux / Git Bash:
+
+```bash
+CLAUDECHROME_WS_PORT=9999 npm run start
+```
+
+PowerShell:
+
+```powershell
+$env:CLAUDECHROME_WS_PORT=9999
+npm run start
+```
+
+4. Open `chrome://extensions`, enable Developer mode, and use `Load unpacked` on the extracted extension bundle.
+5. Open the ClaudeChrome side panel, keep the port at `9999`, click `Apply`, and wait for the connection status to turn healthy.
+6. Create a `Shell` pane first to verify the bridge, then start `Claude` or `Codex` panes on machines where those CLIs are installed.
+
+If you prefer to build from source instead of using the release bundles, continue with the source-build flow below.
 
 #### Step 1: Install dependencies and build the local artifacts
 

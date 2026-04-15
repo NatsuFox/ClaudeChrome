@@ -16,10 +16,14 @@ Switch to English version: [README.en.md](README.en.md)
 
 ## 🎉 最新进展
 
+- **2026-04-15**
+  - 发布首个正式版本 `v0.0.1`，并提供两个独立的预编译下载包：一个用于浏览器扩展本体，一个用于本地 native host。
+  - 整理并稳定了本地部署路径，使用户无需从源码重新构建，就可以快速完成安装、连接和首次启动。
+  - 补齐了终端快捷键、工作目录校验、本地配置恢复，以及退出时的完整清理逻辑。
+
 - **2026-04-06**
   - 感谢 [@zuiyi233](https://github.com/zuiyi233) 的使用、反馈和 PR，这解决了 Windows 上的大部分兼容性问题，并加入了中英双语界面。
   - 移除了参数设置按钮，添加了一个配置面板，用于统一配置 Agent CLI 的启动参数、工作目录和环境信息注入等选项。
-  - 更新了中文版的 README，很快会发布 0.0.1 版本的 release，以便安装和使用。
 
 - **2026-04-05**
   - 开源项目发布，欢迎大家试用！目前 README 里已经有了安装和使用指南，后续会持续更新更清晰的文档和演示视频。
@@ -33,14 +37,14 @@ Switch to English version: [README.en.md](README.en.md)
 
 - **Release 0.0.1**
   - [x] 制作落地页和演示视频，完善开源 repo，展示核心功能和使用场景
-  - [ ] 在 Windows 上修复兼容性问题，确保功能可用
-  - [ ] 版本发布
+  - [x] 在 Windows 上修复兼容性问题，确保功能可用
+  - [x] 版本发布
 
 ## 演示画廊
 
 GitHub 的 README 渲染并不能稳定展示内联 `<video>` 或 `<iframe>` 播放器，因此这里使用可点击的 GIF 预览图，点击后可跳转到仓库内附带的 MP4 录屏。
 
-**很快会发布 0.0.1 版本的 release，避免 clone repo 导致需要一并下载所有 demo 录屏和落地页的情况。**
+**现在已经提供 `v0.0.1` release，可直接下载预编译扩展包和 native host 包，无需先 clone 仓库再重新构建。**
 
 <table>
   <tr>
@@ -122,6 +126,43 @@ ClaudeChrome 当前由两个本地组件协同工作：
 - macOS 和 Linux 的常规环境通常已经自带 `bash`。
 - 在 Windows 上，请安装 Git Bash 或 WSL，并确保 `bash`，`claude` 和 `codex` 已经写入 `PATH` 全局变量。
 - 如果你只是想先验证本地桥接是否正常，建议先启动一个 Shell pane，这样就不依赖于 `claude` 或 `codex` 的安装情况。
+
+#### 最快路径：直接使用 GitHub release 里的两个预编译包
+
+`v0.0.1` release 会提供两个独立下载项：
+
+- `ClaudeChrome-extension-v0.0.1.zip`：解压后直接得到可在 `chrome://extensions` 里通过 `Load unpacked` 加载的扩展目录。
+- `ClaudeChrome-native-host-v0.0.1.zip`：解压后直接得到已经编译好的 native host 代码、运行脚本，以及最小启动所需的 `package.json` / `package-lock.json`。
+
+推荐部署顺序：
+
+1. 下载并解压这两个压缩包到你自己的本地目录。
+2. 对 native host 包执行一次依赖安装，但不需要再重新编译：
+
+```bash
+npm install --omit=dev
+```
+
+3. 启动 native host：
+
+macOS / Linux / Git Bash:
+
+```bash
+CLAUDECHROME_WS_PORT=9999 npm run start
+```
+
+PowerShell:
+
+```powershell
+$env:CLAUDECHROME_WS_PORT=9999
+npm run start
+```
+
+4. 在 Chrome 的 `chrome://extensions` 中打开 Developer mode，选择扩展包解压后的目录执行 `Load unpacked`。
+5. 打开 ClaudeChrome 侧边栏，确认端口为 `9999`，点击 `Apply`，等待状态变为已连接。
+6. 先创建一个 `Shell` pane 验证桥接，再根据本机环境启动 `Claude` 或 `Codex` pane。
+
+如果你希望从源码构建，而不是使用 release 里的预编译包，再继续看下面的源码构建流程。
 
 #### 第 1 步：安装依赖并构建本地产物
 
