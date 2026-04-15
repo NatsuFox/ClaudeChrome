@@ -1,5 +1,6 @@
 import * as fs from 'node:fs';
 import * as path from 'node:path';
+import { IMPLEMENTED_SESSION_TOOLS } from './browser-tools.js';
 import type { PtySpawnOptions } from './pty-bridge.js';
 
 export type AgentType = 'claude' | 'codex' | 'shell';
@@ -48,6 +49,15 @@ export interface AgentLaunchPlan {
 }
 
 export const DEFAULT_CODEX_LAUNCH_ARGS = '-a never -s workspace-write';
+const CLAUDECHROME_BROWSER_MCP_SERVER = 'claudechrome-browser';
+const CODEX_MCP_TOOL_APPROVAL_MODE = 'approve';
+
+function buildCodexMcpApprovalOverrides(serverName: string): string[] {
+  return IMPLEMENTED_SESSION_TOOLS.flatMap((toolName) => [
+    '-c',
+    `mcp_servers.${serverName}.tools.${toolName}.approval_mode="${CODEX_MCP_TOOL_APPROVAL_MODE}"`,
+  ]);
+}
 
 function escapeTomlBasicString(value: string): string {
   return value.replace(/\\/g, '\\\\').replace(/"/g, '\\"');
@@ -245,9 +255,11 @@ function buildEffectiveStartupPrompt(options: AgentLaunchOptions, startupOptions
 
 export function formatLaunchDiagnosticsNotice(agentType: AgentType, diagnostics: AgentLaunchDiagnostics): string {
   const label = agentType === 'codex' ? 'Codex' : agentType === 'shell' ? '终端' : 'Claude';
+  const configuredWorkingDirectory = diagnostics.configuredWorkingDirectory || '默认工作区';
   const lines = [
     `${label} 启动配置已应用`,
-    `工作目录: ${diagnostics.resolvedWorkingDirectory}`,
+    `配置目录: ${configuredWorkingDirectory}`,
+    `实际目录: ${diagnostics.resolvedWorkingDirectory}`,
     `启动参数: ${diagnostics.launchArgs || '无'}`,
   ];
 
@@ -259,7 +271,7 @@ export function formatLaunchDiagnosticsNotice(agentType: AgentType, diagnostics:
   lines.push(
     `浏览器环境提示: ${diagnostics.transport === 'append-system-prompt' ? '通过 --append-system-prompt 注入' : '作为启动时的首条上下文指令注入'}`,
     '注入内容:',
-    diagnostics.effectivePrompt,
+    ...diagnostics.effectivePrompt.split('\n').map((line) => `  ${line}`),
   );
   return lines.join('\n');
 }
@@ -319,11 +331,12 @@ function buildCodexLaunch(options: AgentLaunchOptions, startupOptions: AgentStar
 
   const args = [
     '-c',
-    'mcp_servers.claudechrome-browser.command="node"',
+    `mcp_servers.${CLAUDECHROME_BROWSER_MCP_SERVER}.command=\"node\"`,
     '-c',
-    `mcp_servers.claudechrome-browser.args=["${bridgeScript}"]`,
+    `mcp_servers.${CLAUDECHROME_BROWSER_MCP_SERVER}.args=["${bridgeScript}"]`,
     '-c',
-    `mcp_servers.claudechrome-browser.env={CLAUDECHROME_STORE_PORT="${options.storePort}",CLAUDECHROME_SESSION_ID="${sessionId}"}`,
+    `mcp_servers.${CLAUDECHROME_BROWSER_MCP_SERVER}.env={CLAUDECHROME_STORE_PORT="${options.storePort}",CLAUDECHROME_SESSION_ID="${sessionId}"}`,
+    ...buildCodexMcpApprovalOverrides(CLAUDECHROME_BROWSER_MCP_SERVER),
     ...splitCommandLine(startupOptions.launchArgs),
   ];
 

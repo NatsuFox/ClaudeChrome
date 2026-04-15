@@ -171,6 +171,16 @@
   background: var(--bg-primary);
 }
 
+.config-field input[type="text"][aria-invalid="true"] {
+  border-color: #d94b68;
+  background: var(--bg-primary);
+}
+
+.config-field input[type="text"][aria-invalid="true"]:focus {
+  border-color: #d94b68;
+  box-shadow: 0 0 0 1px rgba(217, 75, 104, 0.18);
+}
+
 .config-field textarea {
   resize: vertical;
   min-height: 96px;
@@ -183,6 +193,11 @@
   font-size: 12px;
   color: var(--text-tertiary);
   line-height: 1.5;
+  white-space: pre-line;
+}
+
+.config-hint-error {
+  color: #d94b68;
 }
 
 .config-preview-note {

@@ -1,15 +1,27 @@
-import type { AgentLaunchConfig, AgentStartupOptions, LaunchConfigAgentType } from '../shared/types';
+import type {
+  AgentLaunchConfig,
+  AgentStartupOptions,
+  AgentType,
+  LaunchConfigAgentType,
+  WorkingDirectoryValidationCode,
+} from '../shared/types';
 import {
   clearLaunchConfigAgent,
   cloneLaunchConfig,
   createDefaultLaunchConfig,
   type PanelLanguage,
 } from './state';
+import { formatPanelMessage, getPanelLocale, type PanelLocaleText } from './lexicon';
+import { isValidConfiguredWorkingDirectory } from './working-directory';
 
 export interface ConfigPanelContext {
   scope: 'defaults' | 'pane';
   agentType?: LaunchConfigAgentType;
   paneId?: string;
+  workspaceId?: string;
+  workspaceTitle?: string;
+  workspaceDefaultAgentType?: AgentType;
+  shellWorkingDirectory?: string;
   previewTab?: {
     tabId: number;
     title?: string;
@@ -17,127 +29,14 @@ export interface ConfigPanelContext {
   } | null;
 }
 
-type ConfigPanelTranslations = {
-  closeTitle: string;
-  defaultsTitle: string;
-  defaultsDescription: string;
-  defaultsSaveLabel: string;
-  defaultsResetLabel: string;
-  paneTitle: string;
-  paneDescription: string;
-  paneSaveLabel: string;
-  paneResetLabel: string;
-  tabDefaults: string;
-  tabPromptDebug: string;
-  claudeDefaultsHeading: string;
-  codexDefaultsHeading: string;
-  launchArgsLabel: string;
-  workingDirLabel: string;
-  promptModeLabel: string;
-  promptModeDefault: string;
-  promptModeCustom: string;
-  promptModeNone: string;
-  customPromptLabel: string;
-  claudeLaunchArgsPlaceholder: string;
-  codexLaunchArgsPlaceholder: string;
-  workingDirPlaceholder: string;
-  workingDirHint: string;
-  claudePromptHint: string;
-  codexPromptHint: string;
-  customPromptPlaceholder: string;
-  claudePreviewHeading: string;
-  codexPreviewHeading: string;
-  claudePromptDisabledTransport: string;
-  codexPromptDisabledTransport: string;
-  promptInjectionDisabled: string;
-  claudePromptTransport: string;
-  codexPromptTransport: string;
-};
-
-const translations: Record<PanelLanguage, ConfigPanelTranslations> = {
-  zh: {
-    closeTitle: '关闭',
-    defaultsTitle: '默认启动设置',
-    defaultsDescription: '在这里配置 Claude 与 Codex 的全局默认启动参数、工作目录，以及浏览器环境提示注入策略。',
-    defaultsSaveLabel: '保存默认设置',
-    defaultsResetLabel: '恢复产品默认',
-    paneTitle: '{agent} 面板设置',
-    paneDescription: '这里可以覆盖该面板自己的启动参数、工作目录和浏览器环境提示。点击重置可恢复为继承全局默认。',
-    paneSaveLabel: '保存面板设置',
-    paneResetLabel: '恢复全局默认',
-    tabDefaults: '启动设置',
-    tabPromptDebug: '提示注入调试',
-    claudeDefaultsHeading: 'Claude 默认配置',
-    codexDefaultsHeading: 'Codex 默认配置',
-    launchArgsLabel: '启动参数',
-    workingDirLabel: '工作目录',
-    promptModeLabel: '浏览器环境提示模式',
-    promptModeDefault: '默认浏览器上下文',
-    promptModeCustom: '默认上下文 + 自定义追加',
-    promptModeNone: '禁用注入',
-    customPromptLabel: '自定义追加提示',
-    claudeLaunchArgsPlaceholder: '例如: -m opus',
-    codexLaunchArgsPlaceholder: '例如: -a never -s workspace-write',
-    workingDirPlaceholder: '留空则使用当前会话工作区',
-    workingDirHint: '支持绝对路径，或相对于当前 ClaudeChrome 启动目录的相对路径',
-    claudePromptHint: '默认会注入 ClaudeChrome 的浏览器绑定信息；自定义模式会在其后追加你的提示',
-    codexPromptHint: 'Codex 没有独立的 system prompt 参数，ClaudeChrome 会把该上下文作为启动时的首条上下文指令传入',
-    customPromptPlaceholder: '输入需要追加到默认浏览器上下文后的额外提示...',
-    claudePreviewHeading: 'Claude 注入预览',
-    codexPreviewHeading: 'Codex 注入预览',
-    claudePromptDisabledTransport: 'Claude 不会追加任何 ClaudeChrome 浏览器环境系统提示。',
-    codexPromptDisabledTransport: 'Codex 不会注入任何 ClaudeChrome 启动上下文。',
-    promptInjectionDisabled: '已禁用浏览器环境提示注入。',
-    claudePromptTransport: 'Claude 会通过 --append-system-prompt 注入以下浏览器环境提示。',
-    codexPromptTransport: 'Codex CLI 没有独立的 system prompt 参数，ClaudeChrome 会把以下内容作为启动时的首条上下文指令传入。',
-  },
-  en: {
-    closeTitle: 'Close',
-    defaultsTitle: 'Default startup settings',
-    defaultsDescription: 'Configure the global default launch args, working directories, and browser-context prompt behavior for Claude and Codex panes here.',
-    defaultsSaveLabel: 'Save default settings',
-    defaultsResetLabel: 'Restore product defaults',
-    paneTitle: '{agent} pane settings',
-    paneDescription: 'Override launch args, working directory, and browser-context prompt behavior for this pane. Reset to inherit the global defaults again.',
-    paneSaveLabel: 'Save pane settings',
-    paneResetLabel: 'Restore global defaults',
-    tabDefaults: 'Startup settings',
-    tabPromptDebug: 'Prompt injection debug',
-    claudeDefaultsHeading: 'Claude default settings',
-    codexDefaultsHeading: 'Codex default settings',
-    launchArgsLabel: 'Launch args',
-    workingDirLabel: 'Working directory',
-    promptModeLabel: 'Browser context prompt mode',
-    promptModeDefault: 'Default browser context',
-    promptModeCustom: 'Default context + custom addition',
-    promptModeNone: 'Disable injection',
-    customPromptLabel: 'Custom appended prompt',
-    claudeLaunchArgsPlaceholder: 'For example: -m opus',
-    codexLaunchArgsPlaceholder: 'For example: -a never -s workspace-write',
-    workingDirPlaceholder: 'Leave empty to use the current session workspace',
-    workingDirHint: 'Supports absolute paths, or paths relative to the ClaudeChrome launch directory',
-    claudePromptHint: 'ClaudeChrome injects browser-binding context by default; custom mode appends your prompt after it',
-    codexPromptHint: 'Codex has no separate system prompt flag, so ClaudeChrome sends this context as the first startup instruction',
-    customPromptPlaceholder: 'Enter extra instructions to append after the default browser context...',
-    claudePreviewHeading: 'Claude injection preview',
-    codexPreviewHeading: 'Codex injection preview',
-    claudePromptDisabledTransport: 'Claude will not append any ClaudeChrome browser-context system prompt.',
-    codexPromptDisabledTransport: 'Codex will not inject any ClaudeChrome startup context.',
-    promptInjectionDisabled: 'Browser-context prompt injection is disabled.',
-    claudePromptTransport: 'Claude will inject the following browser-context prompt via --append-system-prompt.',
-    codexPromptTransport: 'Codex CLI has no separate system prompt flag, so ClaudeChrome sends the following content as the first startup instruction.',
-  },
-};
-
-function formatMessage(template: string, values: Record<string, string | number>): string {
-  return Object.entries(values).reduce(
-    (result, [key, value]) => result.replaceAll(`{${key}}`, String(value)),
-    template,
-  );
+export interface WorkingDirectoryValidationResult {
+  code: WorkingDirectoryValidationCode;
+  normalizedPath?: string;
+  message?: string;
 }
 
-function agentLabel(agentType: LaunchConfigAgentType): string {
-  return agentType === 'codex' ? 'Codex' : 'Claude';
+function agentLabel(agentType: LaunchConfigAgentType, locale: PanelLocaleText): string {
+  return agentType === 'codex' ? locale.agentLabelCodex : locale.agentLabelClaude;
 }
 
 export class ConfigPanel {
@@ -150,11 +49,14 @@ export class ConfigPanel {
   private tabs: NodeListOf<HTMLElement>;
   private tabContents: NodeListOf<HTMLElement>;
 
+  private workspaceSection: HTMLElement;
+  private shellSection: HTMLElement;
   private claudeSection: HTMLElement;
   private codexSection: HTMLElement;
   private claudeDebugSection: HTMLElement;
   private codexDebugSection: HTMLElement;
 
+  private shellWorkingDir: HTMLInputElement;
   private claudeLaunchArgs: HTMLInputElement;
   private claudeWorkingDir: HTMLInputElement;
   private claudePromptMode: HTMLSelectElement;
@@ -170,11 +72,21 @@ export class ConfigPanel {
   private codexCustomPromptField: HTMLElement;
   private codexPromptTransport: HTMLElement;
   private codexPromptPreview: HTMLElement;
+  private workspaceDefaultAgent: HTMLSelectElement;
 
   private language: PanelLanguage = 'zh';
   private currentContext: ConfigPanelContext = { scope: 'defaults' };
   private resetConfig: AgentLaunchConfig = createDefaultLaunchConfig();
-  private onSaveCallback: ((config: AgentLaunchConfig, context: ConfigPanelContext) => void) | null = null;
+  private resetWorkspaceDefaultAgentType: AgentType = 'claude';
+  private resetShellWorkingDirectory = '';
+  private onSaveCallback: ((
+    config: AgentLaunchConfig,
+    context: ConfigPanelContext,
+    workspaceDefaultAgentType: AgentType | null,
+    shellWorkingDirectory: string | null,
+  ) => void) | null = null;
+  private workingDirectoryValidator: ((pathValue: string) => Promise<WorkingDirectoryValidationResult>) | null = null;
+  private workingDirectoryValidationRunId = 0;
 
   constructor() {
     this.overlay = document.getElementById('config-panel-overlay')!;
@@ -186,11 +98,14 @@ export class ConfigPanel {
     this.tabs = document.querySelectorAll('.config-tab');
     this.tabContents = document.querySelectorAll('.config-tab-content');
 
+    this.workspaceSection = document.getElementById('workspace-config-section')!;
+    this.shellSection = document.getElementById('shell-config-section')!;
     this.claudeSection = document.getElementById('claude-config-section')!;
     this.codexSection = document.getElementById('codex-config-section')!;
     this.claudeDebugSection = document.getElementById('claude-debug-section')!;
     this.codexDebugSection = document.getElementById('codex-debug-section')!;
 
+    this.shellWorkingDir = document.getElementById('shell-working-dir') as HTMLInputElement;
     this.claudeLaunchArgs = document.getElementById('claude-launch-args') as HTMLInputElement;
     this.claudeWorkingDir = document.getElementById('claude-working-dir') as HTMLInputElement;
     this.claudePromptMode = document.getElementById('claude-prompt-mode') as HTMLSelectElement;
@@ -206,6 +121,7 @@ export class ConfigPanel {
     this.codexCustomPromptField = document.getElementById('codex-custom-prompt-field')!;
     this.codexPromptTransport = document.getElementById('codex-prompt-transport')!;
     this.codexPromptPreview = document.getElementById('codex-prompt-preview')!;
+    this.workspaceDefaultAgent = document.getElementById('workspace-default-agent') as HTMLSelectElement;
 
     this.bindEvents();
     this.applyLocale();
@@ -218,15 +134,23 @@ export class ConfigPanel {
     this.applyContext();
     this.updatePromptPreview('claude');
     this.updatePromptPreview('codex');
+    void this.updateWorkingDirectoryValidation();
   }
 
-  private locale(): ConfigPanelTranslations {
-    return translations[this.language];
+  public setWorkingDirectoryValidator(
+    validator: ((pathValue: string) => Promise<WorkingDirectoryValidationResult>) | null,
+  ): void {
+    this.workingDirectoryValidator = validator;
+    void this.updateWorkingDirectoryValidation();
+  }
+
+  private locale(): PanelLocaleText {
+    return getPanelLocale(this.language);
   }
 
   private bindEvents(): void {
     this.closeBtn.addEventListener('click', () => this.hide());
-    this.saveBtn.addEventListener('click', () => this.save());
+    this.saveBtn.addEventListener('click', () => { void this.save(); });
     this.resetBtn.addEventListener('click', () => this.reset());
 
     this.overlay.addEventListener('click', (event) => {
@@ -262,6 +186,11 @@ export class ConfigPanel {
 
     this.claudeCustomPrompt.addEventListener('input', () => this.updatePromptPreview('claude'));
     this.codexCustomPrompt.addEventListener('input', () => this.updatePromptPreview('codex'));
+
+    [this.shellWorkingDir, this.claudeWorkingDir, this.codexWorkingDir].forEach((input) => {
+      input.addEventListener('input', () => { void this.updateWorkingDirectoryValidation(); });
+      input.addEventListener('blur', () => { void this.updateWorkingDirectoryValidation(); });
+    });
   }
 
   public show(config: AgentLaunchConfig, context: ConfigPanelContext): void {
@@ -269,6 +198,8 @@ export class ConfigPanel {
     this.resetConfig = context.scope === 'defaults'
       ? createDefaultLaunchConfig()
       : clearLaunchConfigAgent(cloneLaunchConfig(config), context.agentType!);
+    this.resetWorkspaceDefaultAgentType = context.workspaceDefaultAgentType ?? 'claude';
+    this.resetShellWorkingDirectory = '';
 
     this.applyLocale();
     this.applyContext();
@@ -276,6 +207,7 @@ export class ConfigPanel {
     this.switchTab('defaults');
     this.overlay.style.display = 'flex';
     this.overlay.setAttribute('aria-hidden', 'false');
+    void this.updateWorkingDirectoryValidation();
     this.saveBtn.focus();
   }
 
@@ -284,75 +216,84 @@ export class ConfigPanel {
     this.overlay.setAttribute('aria-hidden', 'true');
   }
 
-  public onSave(callback: (config: AgentLaunchConfig, context: ConfigPanelContext) => void): void {
+  public onSave(callback: (
+    config: AgentLaunchConfig,
+    context: ConfigPanelContext,
+    workspaceDefaultAgentType: AgentType | null,
+    shellWorkingDirectory: string | null,
+  ) => void): void {
     this.onSaveCallback = callback;
   }
 
   private applyLocale(): void {
     const t = this.locale();
 
-    this.closeBtn.setAttribute('title', t.closeTitle);
-    this.closeBtn.setAttribute('aria-label', t.closeTitle);
+    this.closeBtn.setAttribute('title', t.configCloseTitle);
+    this.closeBtn.setAttribute('aria-label', t.configCloseTitle);
 
-    this.setText('.config-tab[data-tab="defaults"]', t.tabDefaults);
-    this.setText('.config-tab[data-tab="prompt-debug"]', t.tabPromptDebug);
+    this.setText('.config-tab[data-tab="defaults"]', t.configTabDefaults);
+    this.setText('.config-tab[data-tab="prompt-debug"]', t.configTabPromptDebug);
 
-    this.setText('#claude-config-section h3', t.claudeDefaultsHeading);
-    this.setText('#codex-config-section h3', t.codexDefaultsHeading);
-    this.setText('#claude-debug-section h3', t.claudePreviewHeading);
-    this.setText('#codex-debug-section h3', t.codexPreviewHeading);
+    this.setText('#workspace-config-heading', t.configWorkspaceSectionHeading);
+    this.setText('#shell-config-heading', t.configShellDefaultsHeading);
+    this.setText('#claude-config-section h3', t.configClaudeDefaultsHeading);
+    this.setText('#codex-config-section h3', t.configCodexDefaultsHeading);
+    this.setText('#claude-debug-section h3', t.configClaudePreviewHeading);
+    this.setText('#codex-debug-section h3', t.configCodexPreviewHeading);
 
-    this.setText('label[for="claude-launch-args"]', t.launchArgsLabel);
-    this.setText('label[for="codex-launch-args"]', t.launchArgsLabel);
-    this.setText('label[for="claude-working-dir"]', t.workingDirLabel);
-    this.setText('label[for="codex-working-dir"]', t.workingDirLabel);
-    this.setText('label[for="claude-prompt-mode"]', t.promptModeLabel);
-    this.setText('label[for="codex-prompt-mode"]', t.promptModeLabel);
-    this.setText('label[for="claude-custom-prompt"]', t.customPromptLabel);
-    this.setText('label[for="codex-custom-prompt"]', t.customPromptLabel);
+    this.setText('label[for="workspace-default-agent"]', t.configWorkspaceDefaultAgentLabel);
+    this.setText('label[for="shell-working-dir"]', t.configWorkingDirLabel);
+    this.setText('label[for="claude-launch-args"]', t.configLaunchArgsLabel);
+    this.setText('label[for="codex-launch-args"]', t.configLaunchArgsLabel);
+    this.setText('label[for="claude-working-dir"]', t.configWorkingDirLabel);
+    this.setText('label[for="codex-working-dir"]', t.configWorkingDirLabel);
+    this.setText('label[for="claude-prompt-mode"]', t.configPromptModeLabel);
+    this.setText('label[for="codex-prompt-mode"]', t.configPromptModeLabel);
+    this.setText('label[for="claude-custom-prompt"]', t.configCustomPromptLabel);
+    this.setText('label[for="codex-custom-prompt"]', t.configCustomPromptLabel);
 
-    this.claudeLaunchArgs.placeholder = t.claudeLaunchArgsPlaceholder;
-    this.codexLaunchArgs.placeholder = t.codexLaunchArgsPlaceholder;
-    this.claudeWorkingDir.placeholder = t.workingDirPlaceholder;
-    this.codexWorkingDir.placeholder = t.workingDirPlaceholder;
-    this.claudeCustomPrompt.placeholder = t.customPromptPlaceholder;
-    this.codexCustomPrompt.placeholder = t.customPromptPlaceholder;
+    this.claudeLaunchArgs.placeholder = t.configClaudeLaunchArgsPlaceholder;
+    this.codexLaunchArgs.placeholder = t.configCodexLaunchArgsPlaceholder;
+    this.shellWorkingDir.placeholder = t.configWorkingDirPlaceholder;
+    this.claudeWorkingDir.placeholder = t.configWorkingDirPlaceholder;
+    this.codexWorkingDir.placeholder = t.configWorkingDirPlaceholder;
+    this.claudeCustomPrompt.placeholder = t.configCustomPromptPlaceholder;
+    this.codexCustomPrompt.placeholder = t.configCustomPromptPlaceholder;
 
-    this.setHint(
-      this.claudeLaunchArgs,
-      this.language === 'zh' ? 'Claude 面板的默认 CLI 启动参数' : 'Default CLI launch args for Claude panes',
-    );
-    this.setHint(
-      this.codexLaunchArgs,
-      this.language === 'zh' ? 'Codex 面板的默认 CLI 启动参数' : 'Default CLI launch args for Codex panes',
-    );
-    this.setHint(this.claudeWorkingDir, t.workingDirHint);
-    this.setHint(this.codexWorkingDir, t.workingDirHint);
-    this.setHint(this.claudePromptMode, t.claudePromptHint);
-    this.setHint(this.codexPromptMode, t.codexPromptHint);
+    this.setHint(this.workspaceDefaultAgent, t.configWorkspaceDefaultAgentHint);
+    this.setHint(this.shellWorkingDir, t.configShellWorkingDirHint);
+    this.setHint(this.claudeLaunchArgs, t.configClaudeLaunchArgsHint);
+    this.setHint(this.codexLaunchArgs, t.configCodexLaunchArgsHint);
+    this.setHint(this.claudeWorkingDir, t.configWorkingDirHint);
+    this.setHint(this.codexWorkingDir, t.configWorkingDirHint);
+    this.setHint(this.claudePromptMode, t.configClaudePromptHint);
+    this.setHint(this.codexPromptMode, t.configCodexPromptHint);
 
-    this.setSelectOptions(this.claudePromptMode, [t.promptModeDefault, t.promptModeCustom, t.promptModeNone]);
-    this.setSelectOptions(this.codexPromptMode, [t.promptModeDefault, t.promptModeCustom, t.promptModeNone]);
+    this.setSelectOptions(this.workspaceDefaultAgent, [t.agentLabelClaude, t.agentLabelCodex, t.agentLabelShell]);
+    this.setSelectOptions(this.claudePromptMode, [t.configPromptModeDefault, t.configPromptModeCustom, t.configPromptModeNone]);
+    this.setSelectOptions(this.codexPromptMode, [t.configPromptModeDefault, t.configPromptModeCustom, t.configPromptModeNone]);
   }
 
   private applyContext(): void {
     const t = this.locale();
     if (this.currentContext.scope === 'defaults') {
-      this.titleEl.textContent = t.defaultsTitle;
-      this.descriptionEl.textContent = t.defaultsDescription;
-      this.saveBtn.textContent = t.defaultsSaveLabel;
-      this.resetBtn.textContent = t.defaultsResetLabel;
+      this.titleEl.textContent = t.configDefaultsTitle;
+      this.descriptionEl.textContent = t.configDefaultsDescription;
+      this.saveBtn.textContent = t.configDefaultsSaveLabel;
+      this.resetBtn.textContent = t.configDefaultsResetLabel;
     } else {
-      const agent = agentLabel(this.currentContext.agentType ?? 'claude');
-      this.titleEl.textContent = formatMessage(t.paneTitle, { agent });
-      this.descriptionEl.textContent = t.paneDescription;
-      this.saveBtn.textContent = t.paneSaveLabel;
-      this.resetBtn.textContent = t.paneResetLabel;
+      const agent = agentLabel(this.currentContext.agentType ?? 'claude', t);
+      this.titleEl.textContent = formatPanelMessage(t.configPaneTitle, { agent });
+      this.descriptionEl.textContent = t.configPaneDescription;
+      this.saveBtn.textContent = t.configPaneSaveLabel;
+      this.resetBtn.textContent = t.configPaneResetLabel;
     }
 
     this.descriptionEl.style.display = this.descriptionEl.textContent ? 'block' : 'none';
 
     const singleAgent = this.currentContext.scope === 'pane' ? this.currentContext.agentType ?? null : null;
+    this.setSectionVisibility(this.workspaceSection, this.currentContext.scope === 'defaults' && Boolean(this.currentContext.workspaceId));
+    this.setSectionVisibility(this.shellSection, this.currentContext.scope === 'defaults');
     this.setSectionVisibility(this.claudeSection, !singleAgent || singleAgent === 'claude');
     this.setSectionVisibility(this.codexSection, !singleAgent || singleAgent === 'codex');
     this.setSectionVisibility(this.claudeDebugSection, !singleAgent || singleAgent === 'claude');
@@ -374,7 +315,115 @@ export class ConfigPanel {
     const hint = control.parentElement?.querySelector<HTMLElement>('.config-hint');
     if (hint) {
       hint.textContent = text;
+      hint.classList.remove('config-hint-error');
     }
+  }
+
+  private validationMessageForCode(code: WorkingDirectoryValidationCode, t: PanelLocaleText): string {
+    switch (code) {
+      case 'invalid_syntax':
+        return t.configWorkingDirErrorRelative;
+      case 'not_found':
+        return t.configWorkingDirErrorMissing;
+      case 'not_directory':
+        return t.configWorkingDirErrorNotDirectory;
+      case 'permission_denied':
+      case 'unknown_error':
+      case 'unavailable':
+        return t.configWorkingDirErrorUnavailable;
+      default:
+        return '';
+    }
+  }
+
+  private validationMessageForResult(result: WorkingDirectoryValidationResult, t: PanelLocaleText): string {
+    const baseMessage = this.validationMessageForCode(result.code, t);
+    const hostMessage = result.message?.trim() || '';
+    if (hostMessage && baseMessage && hostMessage !== baseMessage) {
+      return `${baseMessage}\n${hostMessage}`;
+    }
+    return hostMessage || baseMessage;
+  }
+
+  private applyWorkingDirectoryValidationState(
+    input: HTMLInputElement,
+    invalidMessage: string,
+    hintText: string,
+  ): void {
+    const hint = input.parentElement?.querySelector<HTMLElement>('.config-hint');
+    input.setCustomValidity(invalidMessage);
+    input.setAttribute('aria-invalid', String(Boolean(invalidMessage)));
+    if (hint) {
+      hint.textContent = hintText;
+      hint.classList.toggle('config-hint-error', Boolean(invalidMessage));
+    }
+  }
+
+  private workingDirectoryInputs(): HTMLInputElement[] {
+    const inputs = [this.claudeWorkingDir, this.codexWorkingDir];
+    if (this.currentContext.scope === 'defaults') {
+      inputs.unshift(this.shellWorkingDir);
+    }
+    return inputs;
+  }
+
+  private async updateWorkingDirectoryValidation(): Promise<boolean> {
+    const validationRunId = ++this.workingDirectoryValidationRunId;
+    const t = this.locale();
+    let valid = true;
+
+    for (const input of this.workingDirectoryInputs()) {
+      const pathValue = input.value.trim();
+      const emptyHint = input === this.shellWorkingDir ? t.configShellWorkingDirHint : t.configWorkingDirHint;
+      if (!pathValue) {
+        this.applyWorkingDirectoryValidationState(input, '', emptyHint);
+        continue;
+      }
+
+      if (!isValidConfiguredWorkingDirectory(pathValue)) {
+        this.applyWorkingDirectoryValidationState(input, t.configWorkingDirErrorRelative, t.configWorkingDirErrorRelative);
+        valid = false;
+        continue;
+      }
+
+      if (!this.workingDirectoryValidator) {
+        this.applyWorkingDirectoryValidationState(input, t.configWorkingDirErrorUnavailable, t.configWorkingDirErrorUnavailable);
+        valid = false;
+        continue;
+      }
+
+      this.applyWorkingDirectoryValidationState(input, '', t.configWorkingDirChecking);
+      this.saveBtn.disabled = true;
+
+      let result: WorkingDirectoryValidationResult;
+      try {
+        result = await this.workingDirectoryValidator(pathValue);
+      } catch {
+        result = { code: 'unavailable' };
+      }
+
+      if (validationRunId !== this.workingDirectoryValidationRunId) {
+        return false;
+      }
+
+      const invalidMessage = this.validationMessageForResult(result, t);
+      this.applyWorkingDirectoryValidationState(input, invalidMessage, invalidMessage || emptyHint);
+      valid = valid && !invalidMessage;
+    }
+
+    if (validationRunId === this.workingDirectoryValidationRunId) {
+      this.saveBtn.disabled = !valid;
+    }
+    return valid;
+  }
+
+  private focusFirstInvalidWorkingDirectory(): void {
+    const invalidInput = this.workingDirectoryInputs().find((input) => Boolean(input.validationMessage));
+    if (!invalidInput) {
+      return;
+    }
+    invalidInput.focus();
+    invalidInput.reportValidity();
   }
 
   private setSelectOptions(select: HTMLSelectElement, labels: [string, string, string] | string[]): void {
@@ -403,6 +452,9 @@ export class ConfigPanel {
   }
 
   private loadConfig(config: AgentLaunchConfig): void {
+    this.workspaceDefaultAgent.value = this.currentContext.workspaceDefaultAgentType ?? 'claude';
+    this.shellWorkingDir.value = this.currentContext.shellWorkingDirectory ?? '';
+
     this.claudeLaunchArgs.value = config.claude.launchArgs;
     this.claudeWorkingDir.value = config.claude.workingDirectory;
     this.claudePromptMode.value = config.claude.systemPromptMode;
@@ -417,6 +469,7 @@ export class ConfigPanel {
 
     this.updatePromptPreview('claude');
     this.updatePromptPreview('codex');
+    void this.updateWorkingDirectoryValidation();
   }
 
   private getConfig(): AgentLaunchConfig {
@@ -445,15 +498,15 @@ export class ConfigPanel {
 
     if (startup.systemPromptMode === 'none') {
       transportEl.textContent = agent === 'claude'
-        ? t.claudePromptDisabledTransport
-        : t.codexPromptDisabledTransport;
-      previewEl.textContent = t.promptInjectionDisabled;
+        ? t.configClaudePromptDisabledTransport
+        : t.configCodexPromptDisabledTransport;
+      previewEl.textContent = t.configPromptInjectionDisabled;
       return;
     }
 
     transportEl.textContent = agent === 'claude'
-      ? t.claudePromptTransport
-      : t.codexPromptTransport;
+      ? t.configClaudePromptTransport
+      : t.configCodexPromptTransport;
     previewEl.textContent = promptText;
   }
 
@@ -477,15 +530,29 @@ export class ConfigPanel {
     return lines.join('\n');
   }
 
-  private save(): void {
+  private async save(): Promise<void> {
+    if (!await this.updateWorkingDirectoryValidation()) {
+      this.focusFirstInvalidWorkingDirectory();
+      return;
+    }
+
     const config = this.getConfig();
     if (this.onSaveCallback) {
-      this.onSaveCallback(config, this.currentContext);
+      const workspaceDefaultAgentType = this.currentContext.scope === 'defaults' && this.currentContext.workspaceId
+        ? this.workspaceDefaultAgent.value as AgentType
+        : null;
+      const shellWorkingDirectory = this.currentContext.scope === 'defaults'
+        ? this.shellWorkingDir.value.trim()
+        : null;
+      this.onSaveCallback(config, this.currentContext, workspaceDefaultAgentType, shellWorkingDirectory);
     }
     this.hide();
   }
 
   private reset(): void {
     this.loadConfig(this.resetConfig);
+    this.workspaceDefaultAgent.value = this.resetWorkspaceDefaultAgentType;
+    this.shellWorkingDir.value = this.resetShellWorkingDirectory;
+    void this.updateWorkingDirectoryValidation();
   }
 }

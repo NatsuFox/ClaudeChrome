@@ -71,6 +71,30 @@
         </div>
 
         <div class="config-tab-content" id="tab-defaults">
+          <div class="config-section" id="workspace-config-section">
+            <h3 id="workspace-config-heading">当前工作区默认值</h3>
+
+            <div class="config-field">
+              <label for="workspace-default-agent">默认启动 Agent</label>
+              <select id="workspace-default-agent">
+                <option value="claude">Claude</option>
+                <option value="codex">Codex</option>
+                <option value="shell">终端</option>
+              </select>
+              <span class="config-hint">为当前工作区设置默认启动 Agent；新建工作区时会继承当前工作区的该设置，并按此类型创建首个面板。</span>
+            </div>
+          </div>
+
+          <div class="config-section" id="shell-config-section">
+            <h3 id="shell-config-heading">终端默认配置</h3>
+
+            <div class="config-field">
+              <label for="shell-working-dir">工作目录</label>
+              <input type="text" id="shell-working-dir" placeholder="留空则使用当前会话工作区">
+              <span class="config-hint">这里只接受绝对路径；如需使用主目录，请以 ~ 开头</span>
+            </div>
+          </div>
+
           <div class="config-section" id="claude-config-section">
             <h3>Claude 默认配置</h3>
 
@@ -83,7 +107,7 @@
             <div class="config-field">
               <label for="claude-working-dir">工作目录</label>
               <input type="text" id="claude-working-dir" placeholder="留空则使用当前会话工作区">
-              <span class="config-hint">支持绝对路径，或相对于当前 ClaudeChrome 启动目录的相对路径</span>
+              <span class="config-hint">这里只接受绝对路径；如需使用主目录，请以 ~ 开头</span>
             </div>
 
             <div class="config-field">
@@ -114,7 +138,7 @@
             <div class="config-field">
               <label for="codex-working-dir">工作目录</label>
               <input type="text" id="codex-working-dir" placeholder="留空则使用当前会话工作区">
-              <span class="config-hint">支持绝对路径，或相对于当前 ClaudeChrome 启动目录的相对路径</span>
+              <span class="config-hint">这里只接受绝对路径；如需使用主目录，请以 ~ 开头</span>
             </div>
 
             <div class="config-field">

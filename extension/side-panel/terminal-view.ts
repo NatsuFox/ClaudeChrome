@@ -3,8 +3,11 @@ import { WebglAddon } from '@xterm/addon-webgl';
 import { Terminal, type ITheme } from '@xterm/xterm';
 
 import { decodeBase64ToBytes } from '../shared/base64';
-import { isMacPlatform, resolveTerminalShortcut } from './terminal-shortcuts';
+import type { AgentType } from '../shared/types';
+import { isMacPlatform, resolveTerminalShortcut, type TerminalShortcutProfile } from './terminal-shortcuts';
 import type { PanelTheme } from './state';
+
+const TERMINAL_SCROLLBACK_LINES = 200_000;
 
 const DARK_THEME: ITheme = {
   background: '#07111f',
@@ -69,6 +72,7 @@ export class TerminalView {
   private readonly terminal: Terminal;
   private readonly fitAddon: FitAddon;
   private readonly isMacLikePlatform = isMacPlatform(getPlatformString());
+  private shortcutProfile: TerminalShortcutProfile = 'default';
   private webglAddon: WebglAddon | null = null;
   private mounted = false;
 
@@ -81,6 +85,7 @@ export class TerminalView {
       fontSize: 13,
       theme: { ...themeForMode(theme) },
       cursorBlink: true,
+      scrollback: TERMINAL_SCROLLBACK_LINES,
       allowProposedApi: true,
     });
 
@@ -108,6 +113,10 @@ export class TerminalView {
   setTheme(theme: PanelTheme): void {
     this.root.dataset.theme = theme;
     this.terminal.options.theme = { ...themeForMode(theme) };
+  }
+
+  setAgentType(agentType: AgentType): void {
+    this.shortcutProfile = agentType === 'codex' ? 'codex' : 'default';
   }
 
   fit(): void {
@@ -175,7 +184,7 @@ export class TerminalView {
       return true;
     }
 
-    const action = resolveTerminalShortcut(event, this.isMacLikePlatform);
+    const action = resolveTerminalShortcut(event, this.isMacLikePlatform, this.shortcutProfile);
     if (!action) {
       return true;
     }

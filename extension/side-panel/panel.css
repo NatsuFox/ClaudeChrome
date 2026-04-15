@@ -741,10 +741,6 @@ body.rail-collapsed #workspace-rail { opacity: 0; pointer-events: none; }
   border-radius: var(--radius-sm);
 }
 
-.focus-only {
-  opacity: 0.70;
-}
-
 /* ── Pane body ──────────────────────────────────────────────── */
 
 .pane-body {

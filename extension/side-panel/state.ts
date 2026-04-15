@@ -1,4 +1,5 @@
 import type { AgentLaunchConfig, AgentStartupOptions, AgentType, LaunchConfigAgentType } from '../shared/types';
+import { DEFAULT_PANEL_LANGUAGE, formatPanelMessage, getDefaultPanelLocale } from './lexicon';
 
 export type PanelTheme = 'dark' | 'light';
 export type PanelLanguage = 'zh' | 'en';
@@ -8,6 +9,7 @@ export interface WorkspaceTab {
   title: string;
   hint: string;
   accentColor: string;
+  defaultAgentType: AgentType;
   paneIds: string[];
 }
 
@@ -27,6 +29,8 @@ export interface PersistedPanelState {
   workspaces: WorkspaceTab[];
   panes: PaneLayout[];
   launchDefaults: AgentLaunchConfig;
+  shellWorkingDirectory: string;
+  updatedAt: number;
   theme: PanelTheme;
   language: PanelLanguage;
   wsPort: string;
@@ -38,6 +42,8 @@ export interface PersistedPanelState {
 const ACCENT_COLORS = ['#7aa2f7', '#9ece6a', '#e0af68', '#f7768e', '#7dcfff', '#bb9af7'];
 const DEFAULT_RAIL_WIDTH = 152;
 export const DEFAULT_CODEX_LAUNCH_ARGS = '-a never -s workspace-write';
+
+const defaultPanelText = getDefaultPanelLocale();
 
 export function createStartupOptions(initialLaunchArgs = ''): AgentStartupOptions {
   return {
@@ -105,27 +111,34 @@ function colorForIndex(index: number): string {
 }
 
 function workspaceTitle(index: number): string {
-  return `工作区 ${index + 1}`;
+  return formatPanelMessage(defaultPanelText.workspaceTitle, { index: index + 1 });
 }
 
 function paneTitle(agentType: AgentType, index: number): string {
   const label = agentType === 'codex'
-    ? 'Codex'
+    ? defaultPanelText.agentLabelCodex
     : agentType === 'shell'
-      ? '终端'
-      : 'Claude';
+      ? defaultPanelText.agentLabelShell
+      : defaultPanelText.agentLabelClaude;
   return `${label} ${index + 1}`;
+}
+
+function normalizeWorkspaceDefaultAgentType(value: unknown): AgentType {
+  if (value === 'codex' || value === 'shell') {
+    return value;
+  }
+  return 'claude';
 }
 
 function localizeLegacyWorkspaceTitle(title: string): string {
   const normalMatch = /^Workspace (\d+)$/.exec(title);
   if (normalMatch) {
-    return `工作区 ${normalMatch[1]}`;
+    return formatPanelMessage(defaultPanelText.workspaceTitle, { index: normalMatch[1] });
   }
 
   const recoveredMatch = /^Recovered (\d+)$/.exec(title);
   if (recoveredMatch) {
-    return `恢复工作区 ${recoveredMatch[1]}`;
+    return formatPanelMessage(defaultPanelText.restoredWorkspaceTitle, { index: recoveredMatch[1] });
   }
 
   return title;
@@ -133,10 +146,10 @@ function localizeLegacyWorkspaceTitle(title: string): string {
 
 function localizeLegacyWorkspaceHint(hint: string): string {
   if (hint === 'Focused browser tab binding') {
-    return '关联当前标签页';
+    return defaultPanelText.workspaceHintFocusedTab;
   }
   if (hint === 'Recovered from host') {
-    return '从主机恢复';
+    return defaultPanelText.workspaceHintRecovered;
   }
   return hint;
 }
@@ -147,16 +160,21 @@ function localizeLegacyPaneTitle(title: string): string {
     return title;
   }
 
-  const label = match[1] === 'Shell' ? '终端' : match[1];
+  const label = match[1] === 'Shell'
+    ? defaultPanelText.agentLabelShell
+    : match[1] === 'Codex'
+      ? defaultPanelText.agentLabelCodex
+      : defaultPanelText.agentLabelClaude;
   return `${label} ${match[2]}`;
 }
 
-export function createWorkspace(index: number): WorkspaceTab {
+export function createWorkspace(index: number, defaultAgentType: AgentType = 'claude'): WorkspaceTab {
   return {
     workspaceId: crypto.randomUUID(),
     title: workspaceTitle(index),
-    hint: '关联当前标签页',
+    hint: defaultPanelText.workspaceHintFocusedTab,
     accentColor: colorForIndex(index),
+    defaultAgentType,
     paneIds: [],
   };
 }
@@ -176,15 +194,17 @@ export function createPane(workspaceId: string, agentType: AgentType, index: num
 
 export function createDefaultState(wsPort: string): PersistedPanelState {
   const workspace = createWorkspace(0);
-  const pane = createPane(workspace.workspaceId, 'claude', 0);
+  const pane = createPane(workspace.workspaceId, workspace.defaultAgentType, 0);
   workspace.paneIds.push(pane.paneId);
   return {
     activeWorkspaceId: workspace.workspaceId,
     workspaces: [workspace],
     panes: [pane],
     launchDefaults: createDefaultLaunchConfig(),
+    shellWorkingDirectory: '',
+    updatedAt: 0,
     theme: 'dark',
-    language: 'zh',
+    language: DEFAULT_PANEL_LANGUAGE as PanelLanguage,
     wsPort,
     railWidth: DEFAULT_RAIL_WIDTH,
     railCollapsed: false,
@@ -256,6 +276,7 @@ export function ensureValidState(state: PersistedPanelState, fallbackPort: strin
       ...workspace,
       title: localizeLegacyWorkspaceTitle(workspace.title),
       hint: localizeLegacyWorkspaceHint(workspace.hint),
+      defaultAgentType: normalizeWorkspaceDefaultAgentType((workspace as any).defaultAgentType),
       paneIds: [...workspace.paneIds],
     })),
     panes: state.panes.map((pane) => ({
@@ -264,8 +285,16 @@ export function ensureValidState(state: PersistedPanelState, fallbackPort: strin
       launchOverrides: migrateLaunchConfig(pane.launchOverrides, 'overrides'),
     })),
     launchDefaults: migrateLaunchConfig(state.launchDefaults, 'defaults'),
+    shellWorkingDirectory: typeof (state as any).shellWorkingDirectory === 'string'
+      ? (state as any).shellWorkingDirectory
+      : '',
+    updatedAt: typeof (state as any).updatedAt === 'number'
+      ? (state as any).updatedAt
+      : 0,
     theme: state.theme === 'light' ? 'light' : 'dark',
-    language: (state as any).language === 'en' ? 'en' : 'zh',
+    language: (state as any).language === 'en'
+      ? 'en'
+      : DEFAULT_PANEL_LANGUAGE as PanelLanguage,
     wsPort: state.wsPort || fallbackPort,
     railWidth: typeof state.railWidth === 'number' ? state.railWidth : DEFAULT_RAIL_WIDTH,
     railCollapsed: typeof state.railCollapsed === 'boolean' ? state.railCollapsed : false,

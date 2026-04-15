@@ -60,6 +60,8 @@ export interface SessionOutputMessage {
   type: 'session_output';
   sessionId: string;
   data: string; // base64-encoded
+  replay?: boolean;
+  reset?: boolean;
 }
 
 // PTY input from extension → native host
@@ -92,6 +94,10 @@ export interface SessionRestartMessage {
 export interface SessionCloseMessage {
   type: 'session_close';
   sessionId: string;
+}
+
+export interface SessionCloseAllMessage {
+  type: 'session_close_all';
 }
 
 export interface SessionBindTabMessage {
@@ -149,6 +155,49 @@ export interface StatusMessage {
   type: 'status';
   status: 'connected' | 'disconnected' | 'connecting' | 'error';
   message?: string;
+}
+
+export type WorkingDirectoryValidationCode =
+  | 'valid'
+  | 'empty'
+  | 'invalid_syntax'
+  | 'not_found'
+  | 'not_directory'
+  | 'permission_denied'
+  | 'unknown_error'
+  | 'unavailable';
+
+export interface WorkingDirectoryValidateMessage {
+  type: 'working_directory_validate';
+  id: string;
+  pathValue: string;
+}
+
+export interface WorkingDirectoryValidateResultMessage {
+  type: 'working_directory_validate_result';
+  id: string;
+  code: WorkingDirectoryValidationCode;
+  normalizedPath?: string;
+  message?: string;
+}
+
+export interface PanelStateFileSaveMessage {
+  type: 'panel_state_file_save';
+  state: unknown;
+}
+
+export interface PanelStateFileLoadRequestMessage {
+  type: 'panel_state_file_load_request';
+  id: string;
+}
+
+export interface PanelStateFileLoadResultMessage {
+  type: 'panel_state_file_load_result';
+  id: string;
+  found: boolean;
+  state?: unknown;
+  path?: string;
+  error?: string;
 }
 
 // Chunked message for >1MB payloads
@@ -290,7 +339,11 @@ export type ExtensionMessage =
   | PageInfoMessage
   | PanelClosedMessage
   | PanelOpenedMessage
+  | PanelStateFileLoadRequestMessage
+  | PanelStateFileLoadResultMessage
+  | PanelStateFileSaveMessage
   | SessionBindTabMessage
+  | SessionCloseAllMessage
   | SessionCloseMessage
   | SessionClosedMessage
   | SessionCreateMessage
@@ -300,4 +353,6 @@ export type ExtensionMessage =
   | SessionResizeMessage
   | SessionRestartMessage
   | SessionSnapshotMessage
-  | StatusMessage;
+  | StatusMessage
+  | WorkingDirectoryValidateMessage
+  | WorkingDirectoryValidateResultMessage;

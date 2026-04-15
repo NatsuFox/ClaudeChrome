@@ -3,6 +3,9 @@ import { WebSocketServer, WebSocket } from 'ws';
 import { ContextStore, type StoredConsoleEntry, type StoredPageInfo, type StoredRequest, type StoredTabSummary } from './context-store.js';
 import { SessionManager } from './session-manager.js';
 import type { AgentType } from './agent-runtime.js';
+import { IMPLEMENTED_SESSION_TOOLS } from './browser-tools.js';
+import { readPanelStateFile, writePanelStateFile } from './panel-state-file.js';
+import { resolveConfiguredWorkingDirectory, validateConfiguredWorkingDirectory } from './working-directory.js';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import * as os from 'node:os';
@@ -18,6 +21,7 @@ const STORE_SOCKET_PATH = process.env.CLAUDECHROME_STORE_SOCKET || path.join(RUN
 const MCP_BRIDGE_SCRIPT = path.resolve(__dirname, 'mcp-stdio-bridge.js');
 const SESSION_WORKSPACE_ROOT = path.join(RUNTIME_DIR, 'sessions');
 const EXPLICIT_CWD = process.env.CLAUDECHROME_CWD?.trim() || null;
+const LAST_CLIENT_SESSION_CLEANUP_MS = 1_500;
 
 const clients = new Set<WebSocket>();
 const contextStore = new ContextStore();
@@ -72,6 +76,48 @@ type PendingCommand = {
   timer: ReturnType<typeof setTimeout>;
 };
 const pendingCommands = new Map<string, PendingCommand>();
+let lastClientSessionCleanupTimer: ReturnType<typeof setTimeout> | null = null;
+let cleanupStarted = false;
+
+function failPendingCommands(reason: string): void {
+  for (const pending of pendingCommands.values()) {
+    clearTimeout(pending.timer);
+    pending.reject(new Error(reason));
+  }
+  pendingCommands.clear();
+}
+
+function clearLastClientSessionCleanupTimer(): void {
+  if (!lastClientSessionCleanupTimer) {
+    return;
+  }
+  clearTimeout(lastClientSessionCleanupTimer);
+  lastClientSessionCleanupTimer = null;
+}
+
+function scheduleLastClientSessionCleanup(): void {
+  clearLastClientSessionCleanupTimer();
+  if (clients.size > 0) {
+    return;
+  }
+
+  lastClientSessionCleanupTimer = setTimeout(() => {
+    lastClientSessionCleanupTimer = null;
+    if (clients.size > 0) {
+      return;
+    }
+
+    const sessionCount = sessionManager.listSnapshots().length;
+    const pendingBrowserCommands = pendingCommands.size;
+    if (sessionCount === 0 && pendingBrowserCommands === 0) {
+      return;
+    }
+
+    appendConnectionLog('ws_last_client_cleanup', { sessionCount, pendingBrowserCommands });
+    failPendingCommands('The ClaudeChrome panel disconnected before the browser command completed.');
+    sessionManager.closeAllSessions();
+  }, LAST_CLIENT_SESSION_CLEANUP_MS);
+}
 
 function dispatchBrowserCommand(
   tabId: number,
@@ -90,9 +136,13 @@ function dispatchBrowserCommand(
   });
 }
 
-function sendStatus(client: WebSocket, status: 'connected' | 'disconnected' | 'error' | 'connecting', message: string): void {
+function sendClientMessage(client: WebSocket, message: object): void {
   if (client.readyState !== WebSocket.OPEN) return;
-  client.send(JSON.stringify({ type: 'status', status, message }));
+  client.send(JSON.stringify(message));
+}
+
+function sendStatus(client: WebSocket, status: 'connected' | 'disconnected' | 'error' | 'connecting', message: string): void {
+  sendClientMessage(client, { type: 'status', status, message });
 }
 
 // Message rate tracking for diagnostics
@@ -200,26 +250,17 @@ function handleContextUpdate(msg: { category: string; payload: unknown }): void 
 }
 
 function resolveSessionCwd(sessionId: string, configuredWorkingDirectory?: string): string {
-  const configured = configuredWorkingDirectory?.trim() || '';
-  if (configured) {
-    const cwd = path.isAbsolute(configured)
-      ? configured
-      : path.resolve(EXPLICIT_CWD || process.cwd(), configured);
-    fs.mkdirSync(cwd, { recursive: true });
-    return cwd;
+  const sessionWorkspace = path.join(SESSION_WORKSPACE_ROOT, sessionId, 'workspace');
+  const hasConfiguredWorkingDirectory = Boolean(configuredWorkingDirectory?.trim());
+  const hasExplicitCwd = Boolean(EXPLICIT_CWD?.trim());
+  const cwd = resolveConfiguredWorkingDirectory(configuredWorkingDirectory, EXPLICIT_CWD, sessionWorkspace);
+  if (!hasConfiguredWorkingDirectory && !hasExplicitCwd) {
+    fs.mkdirSync(sessionWorkspace, { recursive: true });
   }
-
-  if (EXPLICIT_CWD) {
-    fs.mkdirSync(EXPLICIT_CWD, { recursive: true });
-    return EXPLICIT_CWD;
-  }
-
-  const cwd = path.join(SESSION_WORKSPACE_ROOT, sessionId, 'workspace');
-  fs.mkdirSync(cwd, { recursive: true });
   return cwd;
 }
 
-function handleClientMessage(msg: any): void {
+function handleClientMessage(msg: any, client?: WebSocket): void {
   switch (msg.type) {
     case 'session_create': {
       const startupOptions = msg.startupOptions && typeof msg.startupOptions === 'object'
@@ -260,12 +301,56 @@ function handleClientMessage(msg: any): void {
     case 'session_close':
       sessionManager.closeSession(msg.sessionId);
       break;
+    case 'session_close_all':
+      appendConnectionLog('session_close_all', { sessionCount: sessionManager.listSnapshots().length });
+      sessionManager.closeAllSessions();
+      break;
     case 'session_bind_tab':
       sessionManager.bindSessionToTab(msg.sessionId, msg.tabId);
       break;
     case 'session_list_request':
       sessionManager.broadcastSnapshot();
       break;
+    case 'panel_state_file_save': {
+      try {
+        const filePath = writePanelStateFile(msg.state ?? null);
+        appendConnectionLog('panel_state_file_saved', { path: filePath });
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        appendConnectionLog('panel_state_file_save_error', { message });
+      }
+      break;
+    }
+    case 'panel_state_file_load_request': {
+      if (!client) {
+        break;
+      }
+      const result = readPanelStateFile();
+      sendClientMessage(client, {
+        type: 'panel_state_file_load_result',
+        id: typeof msg.id === 'string' ? msg.id : crypto.randomUUID(),
+        found: result.found,
+        state: result.state,
+        path: result.path,
+        error: result.error,
+      });
+      break;
+    }
+    case 'working_directory_validate': {
+      if (!client) {
+        break;
+      }
+      const pathValue = typeof msg.pathValue === 'string' ? msg.pathValue : '';
+      const validation = validateConfiguredWorkingDirectory(pathValue);
+      sendClientMessage(client, {
+        type: 'working_directory_validate_result',
+        id: typeof msg.id === 'string' ? msg.id : crypto.randomUUID(),
+        code: validation.code,
+        normalizedPath: validation.normalizedPath || undefined,
+        message: validation.message || undefined,
+      });
+      break;
+    }
     case 'context_update':
       handleContextUpdate(msg);
       break;
@@ -320,12 +405,16 @@ wss.on('headers', (_headers, req) => {
 });
 
 wss.on('connection', (client, req) => {
-  clients.add(client);
+  clearLastClientSessionCleanupTimer();
   const meta = socketMeta(req.socket);
   appendConnectionLog('ws_connected', meta);
 
+  sessionManager.flushAllOutputs();
   sendStatus(client, 'connected', 'Connected to ClaudeChrome host');
-  client.send(JSON.stringify({ type: 'session_snapshot', sessions: sessionManager.listSnapshots() }));
+  sendClientMessage(client, { type: 'session_snapshot', sessions: sessionManager.listSnapshots() });
+  sessionManager.replayAllOutputToClient((message) => sendClientMessage(client, message));
+  clients.add(client);
+  sessionManager.flushAllOutputs();
 
   client.on('message', (raw) => {
     try {
@@ -339,13 +428,14 @@ wss.on('connection', (client, req) => {
         logPayload.payloadSize = JSON.stringify(message.payload ?? null).length;
       }
       appendConnectionLog('ws_message', logPayload);
-      handleClientMessage(message);
+      handleClientMessage(message, client);
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       appendConnectionLog('ws_bad_message', {
         ...meta,
         message,
       });
+      sendStatus(client, 'error', message);
     }
   });
 
@@ -363,6 +453,7 @@ wss.on('connection', (client, req) => {
       code,
       reason: reason.toString(),
     });
+    scheduleLastClientSessionCleanup();
   });
 });
 
@@ -446,38 +537,6 @@ function startIpcServer(_socketPath: string): void {
     sessionManager.setStorePort(resolvedPort);
   });
 }
-
-const IMPLEMENTED_SESSION_TOOLS = [
-  'browser__get_requests',
-  'browser__get_request_detail',
-  'browser__search_responses',
-  'browser__get_console_logs',
-  'browser__get_page_info',
-  'browser__get_page_text',
-  'browser__get_page_html',
-  'browser__list_tabs',
-  'browser__status',
-  'browser__session_context',
-  'browser__binding_status',
-  'browser__capabilities',
-  'browser__capture_policy',
-  'browser__capture_stats',
-  'browser__explain_unavailable',
-  'browser__self_check',
-  'browser__screenshot',
-  'browser__navigate',
-  'browser__reload',
-  'browser__get_page_content',
-  'browser__find_elements',
-  'browser__evaluate_js',
-  'browser__click',
-  'browser__type',
-  'browser__scroll',
-  'browser__wait_for',
-  'browser__get_cookies',
-  'browser__get_storage',
-  'browser__get_selection',
-] as const;
 
 function makeError(code: string, message: string, details: Record<string, unknown> = {}) {
   return {
@@ -1022,8 +1081,19 @@ try {
 }
 
 function cleanup(): void {
+  if (cleanupStarted) {
+    process.exit(1);
+  }
+  cleanupStarted = true;
+  clearLastClientSessionCleanupTimer();
+  failPendingCommands('ClaudeChrome host is shutting down.');
   sessionManager.shutdown();
+  for (const client of clients) {
+    try { client.close(); } catch { /* ignore */ }
+  }
+  clients.clear();
   ipcServer?.close();
+  wss.close();
   try { fs.unlinkSync(WS_PORT_FILE); } catch { /* ignore */ }
   process.exit(0);
 }

@@ -8,14 +8,18 @@ import type {
   GetCurrentWindowActiveTabResultMessage,
   LaunchConfigAgentType,
   SessionBindTabMessage,
+  SessionCloseAllMessage,
   SessionCreateMessage,
   SessionInputMessage,
   SessionOutputMessage,
   SessionResizeMessage,
   SessionRestartMessage,
+  PanelStateFileLoadResultMessage,
   SessionSnapshot,
   SessionSnapshotMessage,
   StatusMessage,
+  WorkingDirectoryValidateResultMessage,
+  WorkingDirectoryValidationCode,
 } from '../shared/types';
 import {
   cloneLaunchConfig,
@@ -42,6 +46,7 @@ import {
 import { encodeUtf8ToBase64 } from '../shared/base64';
 import { TerminalView } from './terminal-view';
 import { ConfigPanel } from './config-panel';
+import { formatPanelMessage, getPanelLocale, type PanelLocaleText } from './lexicon';
 
 const DEFAULT_WS_HOST = '127.0.0.1';
 const DEFAULT_WS_PORT = '9999';
@@ -55,6 +60,7 @@ const MAX_RAIL_WIDTH = 320;
 const RAIL_AUTO_COLLAPSE_WIDTH = 56;
 const PANEL_AUTO_COLLAPSE_WIDTH = 72;
 const PANEL_AUTO_COLLAPSE_ARM_WIDTH = 144;
+const PANEL_STATE_FILE_LOAD_TIMEOUT_MS = 3000;
 
 const statusIndicator = document.getElementById('status-indicator')!;
 const statusText = document.getElementById('status-text')!;
@@ -74,14 +80,33 @@ const btnAddCodexPane = document.getElementById('btn-add-codex-pane')!;
 const btnLanguageToggle = document.getElementById('btn-language-toggle') as HTMLButtonElement;
 const btnThemeToggle = document.getElementById('btn-theme-toggle') as HTMLButtonElement;
 const btnTogglePanel = document.getElementById('btn-toggle-panel') as HTMLButtonElement;
+const toolbarBrandLogo = document.querySelector<HTMLImageElement>('.toolbar-brand-logo');
+const toolbarBrandName = document.querySelector<HTMLElement>('.toolbar-brand-name');
 
 const chunkAssembler = new ChunkAssembler();
 const terminalViews = new Map<string, TerminalView>();
 const sessionSnapshots = new Map<string, SessionSnapshot>();
 const pendingSessionCreates = new Set<string>();
+const pendingWorkingDirectoryValidations = new Map<string, PendingWorkingDirectoryValidation>();
+const pendingPanelStateFileLoads = new Map<string, PendingPanelStateFileLoad>();
 const configPanel = new ConfigPanel();
 
 type LocalizableStatusSource = 'custom' | 'connection';
+type WorkingDirectoryValidationResult = {
+  code: WorkingDirectoryValidationCode;
+  normalizedPath?: string;
+  message?: string;
+};
+
+type PendingWorkingDirectoryValidation = {
+  resolve: (result: WorkingDirectoryValidationResult) => void;
+  timer: ReturnType<typeof setTimeout>;
+};
+
+type PendingPanelStateFileLoad = {
+  resolve: (result: { found: boolean; state?: unknown; path?: string; error?: string }) => void;
+  timer: ReturnType<typeof setTimeout>;
+};
 
 let panelState = createDefaultState(DEFAULT_WS_PORT);
 let activePaneId: string | null = null;
@@ -93,24 +118,35 @@ type CaptureSettings = {
 
 let panelAutoCollapseArmed = window.innerWidth >= PANEL_AUTO_COLLAPSE_ARM_WIDTH;
 let panelCloseInFlight = false;
+let panelUnloadCleanupSent = false;
 let connectionStatusState: 'connected' | 'disconnected' | 'connecting' | 'error' = 'disconnected';
 let connectionStatusUrl: string | null = null;
 let captureSettings: CaptureSettings = { captureResponseBodies: false };
+let loadedPersistedPanelState = false;
+let hadStoredPanelState = false;
+
+function currentTranslations(): PanelLocaleText {
+  return getPanelLocale(panelState.language);
+}
+
+function formatMessage(template: string, values: Record<string, string | number>): string {
+  return formatPanelMessage(template, values);
+}
 
 function agentLabel(agentType: AgentType): string {
-  const t = translations[panelState.language];
+  const t = currentTranslations();
   switch (agentType) {
     case 'codex':
-      return 'Codex';
+      return t.agentLabelCodex;
     case 'shell':
-      return t.shellLabel;
+      return t.agentLabelShell;
     default:
-      return 'Claude';
+      return t.agentLabelClaude;
   }
 }
 
 function connectionStateLabel(state: 'connected' | 'disconnected' | 'connecting' | 'error'): string {
-  const t = translations[panelState.language];
+  const t = currentTranslations();
   switch (state) {
     case 'connected':
       return t.statusConnected;
@@ -138,6 +174,13 @@ function getEffectiveStartupOptions(
   pane: PaneLayout,
   agentType: AgentType = pane.agentType,
 ): AgentStartupOptions | null {
+  if (agentType === 'shell') {
+    return {
+      ...createStartupOptions(),
+      workingDirectory: panelState.shellWorkingDirectory.trim(),
+    };
+  }
+
   const launchAgent = launchConfigAgentType(agentType);
   if (!launchAgent) {
     return null;
@@ -162,229 +205,6 @@ function normalizeLanguage(language: unknown): PanelLanguage {
   return language === 'en' ? 'en' : 'zh';
 }
 
-const translations = {
-  zh: {
-    statusDisconnected: '未连接',
-    statusConnecting: '连接中',
-    statusConnected: '已连接',
-    statusError: '连接错误',
-    noFocusedPane: '未选中面板',
-    portLabel: '端口',
-    applyButton: '应用',
-    reconnectButton: '↻',
-    launchDefaultsButton: '默认启动项',
-    addShellButton: '+ 终端',
-    addClaudeButton: '+ Claude',
-    addCodexButton: '+ Codex',
-    closePanelButton: '关闭侧边栏',
-    workspaceToggle: '工作区',
-    launchDefaultsTitle: '设置 Claude 和 Codex 面板的默认启动选项',
-    addShellTitle: '在当前工作区中添加一个终端面板',
-    addClaudeTitle: '在当前工作区中添加一个 Claude 面板',
-    addCodexTitle: '在当前工作区中添加一个 Codex 面板',
-    applyPortTitle: '保存端口并重新连接',
-    reconnectTitle: '重新连接',
-    closePanelTitle: '关闭当前窗口的侧边栏',
-    workspaceToggleTitle: '展开工作区列表',
-    workspaceListTitle: '工作区列表',
-    addWorkspaceButton: '+ 工作区',
-    addWorkspaceTitle: '新建工作区',
-    renameButton: '重命名',
-    renameWorkspaceTitle: '重命名当前工作区',
-    colorButton: '颜色',
-    colorWorkspaceTitle: '更改当前工作区主题色',
-    collapseButton: '收起',
-    collapseWorkspaceTitle: '收起工作区列表',
-    paneCountSuffix: ' 个面板',
-    noWorkspaceAvailable: '没有可用工作区',
-    shellOption: '终端',
-    switchToTab: '切换',
-    switchToTabTitle: '切换到已绑定标签页',
-    bindCurrentTab: '绑定当前页',
-    bindCurrentTabTitle: '将此面板绑定到当前活动标签页',
-    launchArgsButton: '启动项',
-    launchArgsButtonCustom: '启动项*',
-    launchArgsCustomTitle: '此面板使用了单独的 {agent} 启动设置。',
-    launchArgsDefaultTitle: '此面板正在使用默认的 {agent} 启动设置。',
-    settingsButton: '设置',
-    settingsButtonCustom: '设置*',
-    settingsCustomTitle: '此面板使用了单独的 {agent} 启动设置。',
-    settingsDefaultTitle: '此面板当前继承全局 {agent} 启动设置。',
-    launchDefaultsConfigTitle: '默认启动设置',
-    launchDefaultsConfigDescription: '在这里配置 Claude 与 Codex 的全局默认启动参数、工作目录，以及浏览器环境提示注入策略。',
-    launchDefaultsSaveLabel: '保存默认设置',
-    launchDefaultsResetLabel: '恢复产品默认',
-    paneConfigTitle: '{agent} 面板设置',
-    paneConfigDescription: '这里可以覆盖该面板自己的启动参数、工作目录和浏览器环境提示。点击重置可恢复为继承全局默认。',
-    paneConfigSaveLabel: '保存面板设置',
-    paneConfigResetLabel: '恢复全局默认',
-    restartButton: '重启',
-    closeButton: '关闭',
-    confirmSwitchAgent: '要切换为 {agent} 并立即重启吗？',
-    noActiveTab: '当前没有活动标签页。',
-    tabPrefix: '标签页 ',
-    confirmRebind: '要将此面板从"{current}"改绑到"{next}"吗？',
-    boundToTab: '已绑定到 ',
-    notBoundYet: '尚未绑定标签页',
-    statusStarting: '正在启动...',
-    statusWaitingStart: '等待启动',
-    statusWaitingConnection: '等待连接',
-    shellLabel: '终端',
-    workspaceCollapsed: '工作区',
-    workspaceExpanded: '收起',
-    workspaceCollapsedTitle: '展开工作区列表',
-    workspaceExpandedTitle: '收起工作区列表',
-    restoredWorkspacePrefix: '恢复工作区 ',
-    restartingAgent: '正在重启 {agent}',
-    currentThemeTitle: '当前主题：{theme}',
-    currentLanguageTitle: '当前语言：{language}',
-    themeLightLabel: '浅色',
-    themeDarkLabel: '深色',
-    languageLabelZh: '中文',
-    languageLabelEn: 'English',
-    workspaceTitle: '工作区 {index}',
-    restoredWorkspaceTitle: '恢复工作区 {index}',
-    workspaceHintFocusedTab: '关联当前标签页',
-    workspaceHintRecovered: '从主机恢复',
-    unsetLaunchArgs: '未设置',
-    promptClaudeLaunchArgs: '请输入 Claude 面板的默认启动选项。',
-    promptCodexLaunchArgs: '请输入 Codex 面板的默认启动选项。',
-    errorOnlyClaudeCodex: '只有 Claude 和 Codex 面板支持启动选项。',
-    errorOnlyStartupSettings: '只有 Claude 和 Codex 面板支持启动设置。',
-    promptPaneLaunchArgs: '{agent} 面板启动选项\n留空则使用默认设置。\n当前默认：{default}',
-    confirmRestartPane: '要立即重启该{agent}面板以应用新设置吗？',
-    confirmRestartInheritedPanes: '要立即重启 {count} 个继承全局设置的面板以应用新默认值吗？',
-    promptWorkspaceName: '工作区名称',
-    errorEmptyWorkspaceName: '工作区名称不能为空。',
-    errorNoActiveTabToBind: '当前没有可绑定的活动标签页。',
-    errorClosePanelFailed: '关闭侧边栏失败。',
-    errorMaxPanesReached: '单个工作区最多只能有 {max} 个面板。',
-    errorInvalidPort: '请输入 1 到 65535 之间的端口号。',
-    errorInvalidPortInteger: '请输入 1 到 65535 之间的整数端口号。',
-    statusConnectingTo: '正在连接到 {url}...',
-    statusConnectedTo: '已连接到 {url}',
-    errorCannotConnectTo: '无法连接到 {url}',
-    statusExited: '已结束',
-    statusTabUnavailable: '当前绑定的标签页不可用',
-  },
-  en: {
-    statusDisconnected: 'Disconnected',
-    statusConnecting: 'Connecting',
-    statusConnected: 'Connected',
-    statusError: 'Connection Error',
-    noFocusedPane: 'No Pane Selected',
-    portLabel: 'Port',
-    applyButton: 'Apply',
-    reconnectButton: '↻',
-    launchDefaultsButton: 'Launch Defaults',
-    addShellButton: '+ Shell',
-    addClaudeButton: '+ Claude',
-    addCodexButton: '+ Codex',
-    closePanelButton: 'Close Panel',
-    workspaceToggle: 'Workspaces',
-    launchDefaultsTitle: 'Set default launch options for Claude and Codex panes',
-    addShellTitle: 'Add a terminal pane to the current workspace',
-    addClaudeTitle: 'Add a Claude pane to the current workspace',
-    addCodexTitle: 'Add a Codex pane to the current workspace',
-    applyPortTitle: 'Save port and reconnect',
-    reconnectTitle: 'Reconnect',
-    closePanelTitle: 'Close the sidebar for the current window',
-    workspaceToggleTitle: 'Expand workspace list',
-    workspaceListTitle: 'Workspace List',
-    addWorkspaceButton: '+ Workspace',
-    addWorkspaceTitle: 'Create new workspace',
-    renameButton: 'Rename',
-    renameWorkspaceTitle: 'Rename current workspace',
-    colorButton: 'Color',
-    colorWorkspaceTitle: 'Change workspace theme color',
-    collapseButton: 'Collapse',
-    collapseWorkspaceTitle: 'Collapse workspace list',
-    paneCountSuffix: ' panes',
-    noWorkspaceAvailable: 'No workspace available',
-    shellOption: 'Shell',
-    switchToTab: 'Switch',
-    switchToTabTitle: 'Switch to bound tab',
-    bindCurrentTab: 'Bind Tab',
-    bindCurrentTabTitle: 'Bind this pane to current active tab',
-    launchArgsButton: 'Launch Args',
-    launchArgsButtonCustom: 'Launch Args*',
-    launchArgsCustomTitle: 'This pane uses custom {agent} launch settings.',
-    launchArgsDefaultTitle: 'This pane uses default {agent} launch settings.',
-    settingsButton: 'Settings',
-    settingsButtonCustom: 'Settings*',
-    settingsCustomTitle: 'This pane uses custom {agent} startup settings.',
-    settingsDefaultTitle: 'This pane inherits global {agent} startup settings.',
-    launchDefaultsConfigTitle: 'Default startup settings',
-    launchDefaultsConfigDescription: 'Configure the global default launch args, working directories, and browser-context prompt behavior for Claude and Codex panes here.',
-    launchDefaultsSaveLabel: 'Save default settings',
-    launchDefaultsResetLabel: 'Restore product defaults',
-    paneConfigTitle: '{agent} pane settings',
-    paneConfigDescription: 'Override launch args, working directory, and browser-context prompt behavior for this pane. Reset to inherit the global defaults again.',
-    paneConfigSaveLabel: 'Save pane settings',
-    paneConfigResetLabel: 'Restore global defaults',
-    restartButton: 'Restart',
-    closeButton: 'Close',
-    confirmSwitchAgent: 'Switch to {agent} and restart immediately?',
-    noActiveTab: 'No active tab.',
-    tabPrefix: 'Tab ',
-    confirmRebind: 'Rebind this pane from "{current}" to "{next}"?',
-    boundToTab: 'Bound to ',
-    notBoundYet: 'Not bound to any tab',
-    statusStarting: 'Starting...',
-    statusWaitingStart: 'Waiting to start',
-    statusWaitingConnection: 'Waiting for connection',
-    shellLabel: 'Shell',
-    workspaceCollapsed: 'Workspaces',
-    workspaceExpanded: 'Collapse',
-    workspaceCollapsedTitle: 'Expand workspace list',
-    workspaceExpandedTitle: 'Collapse workspace list',
-    restoredWorkspacePrefix: 'Restored Workspace ',
-    restartingAgent: 'Restarting {agent}',
-    currentThemeTitle: 'Current theme: {theme}',
-    currentLanguageTitle: 'Current language: {language}',
-    themeLightLabel: 'Light',
-    themeDarkLabel: 'Dark',
-    languageLabelZh: '中文',
-    languageLabelEn: 'English',
-    workspaceTitle: 'Workspace {index}',
-    restoredWorkspaceTitle: 'Restored Workspace {index}',
-    workspaceHintFocusedTab: 'Focused browser tab binding',
-    workspaceHintRecovered: 'Recovered from host',
-    unsetLaunchArgs: 'Not set',
-    promptClaudeLaunchArgs: 'Enter default launch options for Claude panes.',
-    promptCodexLaunchArgs: 'Enter default launch options for Codex panes.',
-    errorOnlyClaudeCodex: 'Only Claude and Codex panes support launch options.',
-    errorOnlyStartupSettings: 'Only Claude and Codex panes support startup settings.',
-    promptPaneLaunchArgs: '{agent} pane launch options\nLeave empty to use defaults.\nCurrent default: {default}',
-    confirmRestartPane: 'Restart this {agent} pane now to apply new settings?',
-    confirmRestartInheritedPanes: 'Restart {count} panes inheriting the global defaults now to apply the new defaults?',
-    promptWorkspaceName: 'Workspace name',
-    errorEmptyWorkspaceName: 'Workspace name cannot be empty.',
-    errorNoActiveTabToBind: 'No active tab available to bind.',
-    errorClosePanelFailed: 'Failed to close side panel.',
-    errorMaxPanesReached: 'A workspace can have at most {max} panes.',
-    errorInvalidPort: 'Enter a port between 1 and 65535.',
-    errorInvalidPortInteger: 'Enter an integer port between 1 and 65535.',
-    statusConnectingTo: 'Connecting to {url}...',
-    statusConnectedTo: 'Connected to {url}',
-    errorCannotConnectTo: 'Could not connect to {url}',
-    statusExited: 'Exited',
-    statusTabUnavailable: 'Bound tab unavailable',
-  },
-};
-
-type TranslationSet = typeof translations.zh;
-
-function currentTranslations(): TranslationSet {
-  return translations[panelState.language];
-}
-
-function formatMessage(template: string, values: Record<string, string | number>): string {
-  return Object.entries(values).reduce(
-    (result, [key, value]) => result.replaceAll(`{${key}}`, String(value)),
-    template,
-  );
-}
 
 function themeLabel(theme: PanelTheme): string {
   const t = currentTranslations();
@@ -460,24 +280,33 @@ function localizeStatusMessage(
 
 function updateUILanguage(): void {
   const t = currentTranslations();
+  document.title = t.metaTitle;
+  document.documentElement.lang = panelState.language;
+  if (toolbarBrandLogo) {
+    toolbarBrandLogo.alt = t.brandLogoAlt;
+  }
+  if (toolbarBrandName) {
+    toolbarBrandName.textContent = t.brandName;
+  }
+
   const statusSource = (statusText.dataset.statusSource as LocalizableStatusSource | undefined) || 'custom';
   if (statusSource === 'connection') {
     statusText.textContent = localizeStatusMessage(connectionStatusState, statusSource);
   }
 
-  // Update focused binding text
   if (focusedBinding.textContent === '未选中面板' || focusedBinding.textContent === 'No Pane Selected') {
     focusedBinding.textContent = t.noFocusedPane;
   }
 
-  // Update port label
   const portLabel = document.getElementById('ws-port-label');
   if (portLabel) portLabel.textContent = t.portLabel;
 
-  // Update buttons
   btnApplyPort.textContent = t.applyButton;
   btnApplyPort.title = t.applyPortTitle;
+  btnApplyPort.setAttribute('aria-label', t.applyPortTitle);
+  btnReconnect.textContent = t.reconnectButton;
   btnReconnect.title = t.reconnectTitle;
+  btnReconnect.setAttribute('aria-label', t.reconnectTitle);
   btnLaunchDefaults.textContent = t.launchDefaultsButton;
   btnLaunchDefaults.title = t.launchDefaultsTitle;
   btnAddShellPane.textContent = t.addShellButton;
@@ -568,11 +397,12 @@ function normalizeCaptureSettings(value: unknown): CaptureSettings {
 }
 
 function updateCaptureToggleButton(): void {
+  const t = currentTranslations();
   const enabled = captureSettings.captureResponseBodies;
-  btnToggleBodyCapture.textContent = enabled ? '响应体:开' : '响应体:关';
+  btnToggleBodyCapture.textContent = enabled ? t.captureToggleOn : t.captureToggleOff;
   btnToggleBodyCapture.title = enabled
-    ? '已开启受限响应体采集，再次点击可关闭。'
-    : '默认关闭响应体采集；开启后仅捕获受限文本响应体预览。';
+    ? t.captureEnabledTitle
+    : t.captureDisabledTitle;
   btnToggleBodyCapture.setAttribute('aria-label', btnToggleBodyCapture.title);
   btnToggleBodyCapture.setAttribute('aria-pressed', String(enabled));
   btnToggleBodyCapture.classList.toggle('capture-enabled', enabled);
@@ -593,7 +423,8 @@ async function setCaptureResponseBodies(enabled: boolean): Promise<void> {
   captureSettings = { captureResponseBodies: enabled };
   updateCaptureToggleButton();
   await saveCaptureSettings();
-  setStatus(isWsOpen() ? 'connected' : 'disconnected', enabled ? '已开启受限响应体采集' : '已关闭响应体采集');
+  const t = currentTranslations();
+  setStatus(isWsOpen() ? 'connected' : 'disconnected', enabled ? t.captureEnabledStatus : t.captureDisabledStatus);
 }
 
 function toggleCaptureResponseBodies(): void {
@@ -696,6 +527,35 @@ function notifyPanelClosed(): void {
   chrome.runtime.sendMessage({ type: 'panel_closed' }, () => void chrome.runtime.lastError);
 }
 
+function closeAllHostSessionsOnUnload(): void {
+  if (panelUnloadCleanupSent || !isWsOpen()) {
+    return;
+  }
+  panelUnloadCleanupSent = true;
+  const message: SessionCloseAllMessage = { type: 'session_close_all' };
+  sendToHost(message);
+}
+
+function handlePanelUnload(): void {
+  closeAllHostSessionsOnUnload();
+  notifyPanelClosed();
+}
+
+function updateActivePaneSelection(): void {
+  const activeWorkspace = getWorkspace(panelState, panelState.activeWorkspaceId);
+  activePaneId = activeWorkspace?.paneIds[0] || panelState.panes[0]?.paneId || null;
+}
+
+function applyPersistedPanelState(nextState: PersistedPanelState): void {
+  panelState = ensureValidState(nextState, portInput.value);
+  panelState.theme = normalizeTheme(panelState.theme);
+  panelState.language = normalizeLanguage(panelState.language);
+  panelState.wsPort = portInput.value;
+  panelState.railWidth = clampRailWidth(panelState.railWidth);
+  panelState.panelCollapsed = false;
+  updateActivePaneSelection();
+}
+
 async function loadState(): Promise<void> {
   const stored = await storageGet<Record<string, unknown | null>>({
     [PANEL_STATE_STORAGE_KEY]: null,
@@ -708,28 +568,31 @@ async function loadState(): Promise<void> {
   portInput.value = normalizePort(legacyPort) ?? DEFAULT_WS_PORT;
 
   const rawState = stored[PANEL_STATE_STORAGE_KEY] as PersistedPanelState | null;
-  panelState = rawState ? ensureValidState(rawState, portInput.value) : createDefaultState(portInput.value);
+  hadStoredPanelState = Boolean(rawState);
+  loadedPersistedPanelState = false;
+  applyPersistedPanelState(rawState ? rawState : createDefaultState(portInput.value));
   panelState.theme = normalizeTheme(rawState?.theme ?? legacyTheme ?? panelState.theme);
   panelState.language = normalizeLanguage(rawState?.language ?? panelState.language);
-  panelState.wsPort = portInput.value;
-  panelState.railWidth = clampRailWidth(panelState.railWidth);
-  panelState.panelCollapsed = false;
   captureSettings = normalizeCaptureSettings(stored[CAPTURE_SETTINGS_STORAGE_KEY]);
-
-  const activeWorkspace = getWorkspace(panelState, panelState.activeWorkspaceId);
-  activePaneId = activeWorkspace?.paneIds[0] || panelState.panes[0]?.paneId || null;
 }
 
-async function saveState(): Promise<void> {
+async function saveState(options: { syncToHost?: boolean; updateTimestamp?: boolean } = {}): Promise<void> {
+  const { syncToHost = isWsOpen(), updateTimestamp = true } = options;
   panelState.wsPort = portInput.value;
   panelState.railWidth = clampRailWidth(panelState.railWidth);
+  if (updateTimestamp) {
+    panelState.updatedAt = Date.now();
+  }
   await storageSet({
     [PANEL_STATE_STORAGE_KEY]: panelState,
     [WS_PORT_STORAGE_KEY]: panelState.wsPort,
   });
+  if (syncToHost && isWsOpen()) {
+    sendToHost({ type: 'panel_state_file_save', state: panelState });
+  }
 }
 
-function getOrCreateTerminalView(sessionId: string): TerminalView {
+function getOrCreateTerminalView(sessionId: string, agentType?: AgentType): TerminalView {
   let view = terminalViews.get(sessionId);
   if (!view) {
     view = new TerminalView(panelState.theme);
@@ -744,6 +607,9 @@ function getOrCreateTerminalView(sessionId: string): TerminalView {
     terminalViews.set(sessionId, view);
   } else {
     view.setTheme(panelState.theme);
+  }
+  if (agentType) {
+    view.setAgentType(agentType);
   }
   return view;
 }
@@ -760,18 +626,112 @@ function sendToHost(message: object): void {
   ws!.send(JSON.stringify(message));
 }
 
+function clearPendingWorkingDirectoryValidations(): void {
+  pendingWorkingDirectoryValidations.forEach((pending) => {
+    clearTimeout(pending.timer);
+    pending.resolve({
+      code: 'unavailable',
+      message: 'Cannot validate the path because the ClaudeChrome host is not connected.',
+    });
+  });
+  pendingWorkingDirectoryValidations.clear();
+}
+
+function clearPendingPanelStateFileLoads(): void {
+  pendingPanelStateFileLoads.forEach((pending) => {
+    clearTimeout(pending.timer);
+    pending.resolve({ found: false, error: 'unavailable' });
+  });
+  pendingPanelStateFileLoads.clear();
+}
+
+function requestPanelStateFileLoad(): Promise<{ found: boolean; state?: unknown; path?: string; error?: string }> {
+  if (!isWsOpen()) {
+    return Promise.resolve({ found: false, error: 'unavailable' });
+  }
+
+  return new Promise((resolve) => {
+    const id = crypto.randomUUID();
+    const timer = setTimeout(() => {
+      pendingPanelStateFileLoads.delete(id);
+      resolve({ found: false, error: 'timeout' });
+    }, PANEL_STATE_FILE_LOAD_TIMEOUT_MS);
+    pendingPanelStateFileLoads.set(id, { resolve, timer });
+    sendToHost({ type: 'panel_state_file_load_request', id });
+  });
+}
+
+async function restorePanelStateFromLocalFile(): Promise<void> {
+  if (loadedPersistedPanelState || !isWsOpen()) {
+    sendToHost({ type: 'session_list_request' });
+    ensurePaneSessions();
+    return;
+  }
+
+  loadedPersistedPanelState = true;
+  const result = await requestPanelStateFileLoad();
+  if (result.found && result.state) {
+    try {
+      const restoredState = ensureValidState(result.state as PersistedPanelState, portInput.value);
+      const currentUpdatedAt = typeof panelState.updatedAt === 'number' ? panelState.updatedAt : 0;
+      const restoredUpdatedAt = typeof restoredState.updatedAt === 'number' ? restoredState.updatedAt : 0;
+      if (!hadStoredPanelState || restoredUpdatedAt > currentUpdatedAt) {
+        applyPersistedPanelState(restoredState);
+        hadStoredPanelState = true;
+        await saveState({ syncToHost: false, updateTimestamp: false });
+        render();
+      }
+    } catch (error) {
+      console.warn('[ClaudeChrome] Failed to restore panel state from local file', error);
+    }
+  }
+
+  sendToHost({ type: 'session_list_request' });
+  ensurePaneSessions();
+}
+
+function validateWorkingDirectoryWithHost(pathValue: string): Promise<WorkingDirectoryValidationResult> {
+  const trimmed = pathValue.trim();
+  if (!trimmed) {
+    return Promise.resolve({ code: 'empty' });
+  }
+  if (!isWsOpen()) {
+    return Promise.resolve({
+      code: 'unavailable',
+      message: 'Cannot validate the path because the ClaudeChrome host is not connected.',
+    });
+  }
+
+  return new Promise((resolve) => {
+    const id = crypto.randomUUID();
+    const timer = setTimeout(() => {
+      pendingWorkingDirectoryValidations.delete(id);
+      resolve({
+        code: 'unavailable',
+        message: 'Path validation timed out while waiting for the ClaudeChrome host.',
+      });
+    }, 3000);
+    pendingWorkingDirectoryValidations.set(id, { resolve, timer });
+    sendToHost({ type: 'working_directory_validate', id, pathValue });
+  });
+}
+
+configPanel.setWorkingDirectoryValidator(validateWorkingDirectoryWithHost);
+
 function resetConnection(): void {
   const current = ws;
   ws = null;
   if (current) current.close();
   chunkAssembler.clear();
+  clearPendingWorkingDirectoryValidations();
+  clearPendingPanelStateFileLoads();
 }
 
 function connect(): void {
   const t = currentTranslations();
   const wsUrl = getConfiguredWsUrl();
   if (!wsUrl) {
-    setStatus('error', t.errorInvalidPort);
+    setStatus('error', t.errorInvalidPortInteger);
     return;
   }
 
@@ -783,8 +743,7 @@ function connect(): void {
     socket.onopen = () => {
       if (ws !== socket) return;
       setConnectionStatus('connected', wsUrl);
-      sendToHost({ type: 'session_list_request' });
-      ensurePaneSessions();
+      void restorePanelStateFromLocalFile();
     };
 
     socket.onmessage = (event) => {
@@ -808,12 +767,16 @@ function connect(): void {
     socket.onclose = () => {
       if (ws !== socket) return;
       ws = null;
+      clearPendingWorkingDirectoryValidations();
+      clearPendingPanelStateFileLoads();
       setConnectionStatus('disconnected');
       render();
     };
 
     socket.onerror = () => {
       if (ws !== socket) return;
+      clearPendingWorkingDirectoryValidations();
+      clearPendingPanelStateFileLoads();
       setConnectionStatus('error', wsUrl);
     };
   } catch (error) {
@@ -825,7 +788,10 @@ function connect(): void {
 function handleHostMessage(message: SessionOutputMessage | SessionSnapshotMessage | StatusMessage | any): void {
   switch (message.type) {
     case 'session_output': {
-      const view = getOrCreateTerminalView(message.sessionId);
+      const view = getOrCreateTerminalView(message.sessionId, sessionSnapshots.get(message.sessionId)?.agentType);
+      if (message.reset) {
+        view.clear();
+      }
       view.writeBase64(message.data);
       break;
     }
@@ -846,6 +812,35 @@ function handleHostMessage(message: SessionOutputMessage | SessionSnapshotMessag
       }
       break;
     }
+    case 'working_directory_validate_result': {
+      const next = message as WorkingDirectoryValidateResultMessage;
+      const pending = pendingWorkingDirectoryValidations.get(next.id);
+      if (pending) {
+        clearTimeout(pending.timer);
+        pendingWorkingDirectoryValidations.delete(next.id);
+        pending.resolve({
+          code: next.code,
+          normalizedPath: next.normalizedPath,
+          message: next.message,
+        });
+      }
+      break;
+    }
+    case 'panel_state_file_load_result': {
+      const next = message as PanelStateFileLoadResultMessage;
+      const pending = pendingPanelStateFileLoads.get(next.id);
+      if (pending) {
+        clearTimeout(pending.timer);
+        pendingPanelStateFileLoads.delete(next.id);
+        pending.resolve({
+          found: next.found,
+          state: next.state,
+          path: next.path,
+          error: next.error,
+        });
+      }
+      break;
+    }
     case 'browser_command':
       chrome.runtime.sendMessage(message, () => void chrome.runtime.lastError);
       break;
@@ -862,6 +857,7 @@ function applySessionSnapshot(snapshots: SessionSnapshot[]): void {
     if (pane) {
       pane.agentType = snapshot.agentType;
       pane.bindingTabId = snapshot.binding.tabId;
+      getOrCreateTerminalView(pane.sessionId, snapshot.agentType);
       if (!pane.title) {
         pane.title = snapshot.title;
       }
@@ -877,9 +873,9 @@ function applySessionSnapshot(snapshots: SessionSnapshot[]): void {
   const knownSessionIds = new Set(panelState.panes.map((pane) => pane.sessionId));
   const unknownSnapshots = snapshots.filter((snapshot) => snapshot.status !== 'exited' && !knownSessionIds.has(snapshot.sessionId));
   if (unknownSnapshots.length > 0) {
-    const t = translations[panelState.language];
-    const workspace = createWorkspace(panelState.workspaces.length);
-    workspace.title = `${t.restoredWorkspacePrefix}${panelState.workspaces.length + 1}`;
+    const t = currentTranslations();
+    const workspace = createWorkspace(panelState.workspaces.length, unknownSnapshots[0]?.agentType ?? 'claude');
+    workspace.title = formatMessage(t.restoredWorkspaceTitle, { index: panelState.workspaces.length + 1 });
     workspace.hint = t.workspaceHintRecovered;
 
     unknownSnapshots.forEach((snapshot, index) => {
@@ -905,7 +901,7 @@ function applySessionSnapshot(snapshots: SessionSnapshot[]): void {
 }
 
 function buildBindingLabel(pane: PaneLayout): string {
-  const t = translations[panelState.language];
+  const t = currentTranslations();
   const snapshot = sessionSnapshots.get(pane.sessionId);
   if (snapshot?.boundTab) {
     const tab = snapshot.boundTab;
@@ -919,7 +915,7 @@ function buildBindingLabel(pane: PaneLayout): string {
 }
 
 function buildStatusLabel(pane: PaneLayout): { text: string; className: string } {
-  const t = translations[panelState.language];
+  const t = currentTranslations();
   if (pendingSessionCreates.has(pane.sessionId)) {
     return { text: t.statusStarting, className: 'starting' };
   }
@@ -946,7 +942,7 @@ function buildStatusLabel(pane: PaneLayout): { text: string; className: string }
 }
 
 function updateFocusedBindingChip(): void {
-  const t = translations[panelState.language];
+  const t = currentTranslations();
   const pane = activePaneId ? getPane(panelState, activePaneId) : undefined;
   if (!pane) {
     focusedBinding.textContent = t.noFocusedPane;
@@ -1010,7 +1006,7 @@ function ensureActiveWorkspace() {
     return workspace;
   }
 
-  workspace = createWorkspace(panelState.workspaces.length);
+  workspace = createWorkspace(panelState.workspaces.length, 'claude');
   panelState.workspaces.push(workspace);
   panelState.activeWorkspaceId = workspace.workspaceId;
   return workspace;
@@ -1048,8 +1044,8 @@ workspaceColorInput.addEventListener('change', () => {
 });
 
 function restartPaneSession(pane: PaneLayout, agentType: AgentType = pane.agentType): void {
-  const t = translations[panelState.language];
-  const view = getOrCreateTerminalView(pane.sessionId);
+  const t = currentTranslations();
+  const view = getOrCreateTerminalView(pane.sessionId, agentType);
   const startupOptions = getEffectiveStartupOptions(pane, agentType);
   view.writeln(`\x1b[33m[ClaudeChrome] ${t.restartingAgent.replace('{agent}', agentLabel(agentType))}\x1b[0m`);
   sendToHost({
@@ -1069,9 +1065,14 @@ async function editLaunchDefaults(): Promise<void> {
     previewTab = null;
   }
 
+  const activeWorkspace = getWorkspace(panelState, panelState.activeWorkspaceId) ?? null;
   configPanel.show(cloneLaunchConfig(panelState.launchDefaults), {
     scope: 'defaults',
     previewTab,
+    workspaceId: activeWorkspace?.workspaceId,
+    workspaceTitle: activeWorkspace?.title,
+    workspaceDefaultAgentType: activeWorkspace?.defaultAgentType,
+    shellWorkingDirectory: panelState.shellWorkingDirectory,
   });
 }
 
@@ -1120,7 +1121,7 @@ async function editPaneStartupOptions(pane: PaneLayout): Promise<void> {
 }
 
 function renameActiveWorkspace(): void {
-  const t = translations[panelState.language];
+  const t = currentTranslations();
   const workspace = getWorkspace(panelState, panelState.activeWorkspaceId);
   if (!workspace) {
     return;
@@ -1182,12 +1183,12 @@ async function ensurePaneSession(pane: PaneLayout): Promise<void> {
       : await requestCurrentActiveTab();
 
     if (!bindingTab?.tabId) {
-      const t = translations[panelState.language];
+      const t = currentTranslations();
       throw new Error(t.errorNoActiveTabToBind);
     }
 
     pane.bindingTabId = bindingTab.tabId;
-    const view = getOrCreateTerminalView(pane.sessionId);
+    const view = getOrCreateTerminalView(pane.sessionId, pane.agentType);
     const size = view.getSize();
     const startupOptions = getEffectiveStartupOptions(pane);
     const createMessage: SessionCreateMessage = {
@@ -1255,7 +1256,7 @@ async function closeBrowserSidePanel(): Promise<void> {
 
   panelCloseInFlight = true;
   try {
-    const t = translations[panelState.language];
+    const t = currentTranslations();
     const response = await runtimeMessage<CollapseSidePanelResultMessage>({ type: 'collapse_side_panel' });
     if (!response.ok) {
       throw new Error(response.error || t.errorClosePanelFailed);
@@ -1402,7 +1403,7 @@ function handleViewportResize(): void {
 }
 
 function renderWorkspaceRail(): void {
-  const t = translations[panelState.language];
+  const t = currentTranslations();
   workspaceRail.replaceChildren();
 
   const activeWorkspace = getWorkspace(panelState, panelState.activeWorkspaceId);
@@ -1484,7 +1485,7 @@ function renderWorkspaceRail(): void {
 }
 
 function renderWorkspaceStage(): void {
-  const t = translations[panelState.language];
+  const t = currentTranslations();
   workspaceStage.replaceChildren();
   const workspace = getWorkspace(panelState, panelState.activeWorkspaceId);
   if (!workspace) {
@@ -1527,9 +1528,9 @@ function renderWorkspaceStage(): void {
     const select = document.createElement('select');
     select.className = 'pane-agent-select';
     select.innerHTML = `
-      <option value="shell">${t.shellOption}</option>
-      <option value="claude">Claude</option>
-      <option value="codex">Codex</option>
+      <option value="shell">${agentLabel('shell')}</option>
+      <option value="claude">${agentLabel('claude')}</option>
+      <option value="codex">${agentLabel('codex')}</option>
     `;
     select.value = pane.agentType;
     select.addEventListener('change', () => {
@@ -1540,7 +1541,7 @@ function renderWorkspaceStage(): void {
         return;
       }
       pane.agentType = nextAgent;
-      getOrCreateTerminalView(pane.sessionId).clear();
+      getOrCreateTerminalView(pane.sessionId, nextAgent).clear();
       restartPaneSession(pane, nextAgent);
       void saveState();
       render();
@@ -1581,7 +1582,6 @@ function renderWorkspaceStage(): void {
     });
 
     const btnBind = document.createElement('button');
-    btnBind.className = 'focus-only';
     btnBind.textContent = t.bindCurrentTab;
     btnBind.title = t.bindCurrentTabTitle;
     btnBind.addEventListener('click', async (event) => {
@@ -1603,7 +1603,7 @@ function renderWorkspaceStage(): void {
           tabId: target.tabId,
         };
         sendToHost(bindMessage);
-        getOrCreateTerminalView(pane.sessionId).writeln(`\x1b[36m[ClaudeChrome] ${t.boundToTab}${nextLabel}\x1b[0m`);
+        getOrCreateTerminalView(pane.sessionId, pane.agentType).writeln(`\x1b[36m[ClaudeChrome] ${t.boundToTab}${nextLabel}\x1b[0m`);
         await saveState();
         render();
       } catch (error) {
@@ -1656,7 +1656,7 @@ function renderWorkspaceStage(): void {
     const body = document.createElement('div');
     body.className = 'pane-body';
 
-    const view = getOrCreateTerminalView(pane.sessionId);
+    const view = getOrCreateTerminalView(pane.sessionId, pane.agentType);
     view.mount(body);
 
     paneEl.appendChild(header);
@@ -1726,7 +1726,7 @@ function closePane(paneId: string): void {
 }
 
 function addPane(agentType: AgentType): void {
-  const t = translations[panelState.language];
+  const t = currentTranslations();
   const workspace = ensureActiveWorkspace();
   if (workspace.paneIds.length >= MAX_PANES_PER_WORKSPACE) {
     setStatus('error', t.errorMaxPanesReached.replace('{max}', String(MAX_PANES_PER_WORKSPACE)));
@@ -1744,8 +1744,9 @@ function addPane(agentType: AgentType): void {
 }
 
 function addWorkspace(): void {
-  const workspace = createWorkspace(panelState.workspaces.length);
-  const pane = createPane(workspace.workspaceId, 'claude', 0);
+  const sourceWorkspace = getWorkspace(panelState, panelState.activeWorkspaceId);
+  const workspace = createWorkspace(panelState.workspaces.length, sourceWorkspace?.defaultAgentType ?? 'claude');
+  const pane = createPane(workspace.workspaceId, workspace.defaultAgentType, 0);
   workspace.paneIds.push(pane.paneId);
   panelState.workspaces.push(workspace);
   panelState.panes.push(pane);
@@ -1787,23 +1788,22 @@ btnLaunchDefaults.addEventListener('click', () => {
   editLaunchDefaults();
 });
 
-configPanel.onSave((config, context) => {
+configPanel.onSave((config, context, workspaceDefaultAgentType, shellWorkingDirectory) => {
   const t = currentTranslations();
   if (context.scope === 'defaults') {
     panelState.launchDefaults = cloneLaunchConfig(config);
-    const inheritingPanes = panelState.panes.filter((pane) => {
-      const launchAgent = launchConfigAgentType(pane.agentType);
-      return Boolean(launchAgent && !paneUsesStartupOverrides(pane, launchAgent) && sessionSnapshots.has(pane.sessionId));
-    });
+    panelState.shellWorkingDirectory = shellWorkingDirectory ?? '';
+
+    if (context.workspaceId && workspaceDefaultAgentType) {
+      const workspace = getWorkspace(panelState, context.workspaceId);
+      if (workspace) {
+        workspace.defaultAgentType = workspaceDefaultAgentType;
+      }
+    }
+
     void saveState();
     render();
-
-    if (
-      inheritingPanes.length > 0
-      && window.confirm(formatMessage(t.confirmRestartInheritedPanes, { count: inheritingPanes.length }))
-    ) {
-      inheritingPanes.forEach((pane) => restartPaneSession(pane));
-    }
+    setStatus(isWsOpen() ? 'connected' : 'disconnected', t.configDefaultsSavedStatus);
     return;
   }
 
@@ -1820,10 +1820,7 @@ configPanel.onSave((config, context) => {
 
   void saveState();
   render();
-
-  if (sessionSnapshots.has(pane.sessionId) && window.confirm(formatMessage(t.confirmRestartPane, { agent: agentLabel(pane.agentType) }))) {
-    restartPaneSession(pane);
-  }
+  setStatus(isWsOpen() ? 'connected' : 'disconnected', t.configPaneSavedStatus);
 });
 
 btnToggleBodyCapture.addEventListener('click', () => {
@@ -1876,7 +1873,8 @@ chrome.storage.onChanged?.addListener((changes, areaName) => {
 });
 
 window.addEventListener('resize', handleViewportResize);
-window.addEventListener('pagehide', notifyPanelClosed);
+window.addEventListener('beforeunload', handlePanelUnload);
+window.addEventListener('pagehide', handlePanelUnload);
 
 attachRailResizeHandler();
 
