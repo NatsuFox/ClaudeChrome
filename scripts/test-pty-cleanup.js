@@ -129,6 +129,37 @@ async function main() {
   assert(!processExists(leaderPid), `PTY leader process ${leaderPid} exits after kill()`);
   assert(!processExists(childPid), `Background child process ${childPid} exits after kill()`);
 
+  console.log('\n[3] Verifying natural PTY exit tears down residual descendants...');
+  const naturalBridge = new PtyBridge();
+  let naturalOutput = '';
+  let naturalExitCode = null;
+
+  naturalBridge.on('data', (data) => {
+    naturalOutput += data;
+  });
+  naturalBridge.on('exit', (code) => {
+    naturalExitCode = code;
+  });
+
+  naturalBridge.spawn({
+    command: 'bash',
+    args: ['-lc', 'nohup sleep 1000 >/dev/null 2>&1 & echo CHILD:$!; exit 0'],
+    cwd: ROOT,
+    env: { ...process.env },
+    cols: 80,
+    rows: 24,
+  });
+
+  const naturalChildPid = await waitFor(() => {
+    const match = naturalOutput.match(/CHILD:(\d+)/);
+    return match ? Number(match[1]) : null;
+  }, 'natural-exit child pid announcement');
+
+  await waitFor(() => naturalExitCode !== null, 'natural PTY leader exit');
+  await waitFor(() => !processExists(naturalChildPid), 'detached child cleanup after natural exit', 7000);
+
+  assert(!processExists(naturalChildPid), `Detached child process ${naturalChildPid} exits after natural PTY exit`);
+
   console.log('\n' + '='.repeat(40));
   console.log(`Results: \x1b[32m${passed} passed\x1b[0m, \x1b[31m${failed} failed\x1b[0m`);
   console.log('='.repeat(40) + '\n');
