@@ -7,15 +7,17 @@ const net = require('node:net');
 const os = require('node:os');
 const path = require('node:path');
 const { spawn } = require('node:child_process');
-const { WebSocket } = require(path.resolve(__dirname, '../native-host/node_modules/ws'));
-const { Client } = require(path.resolve(__dirname, '../native-host/node_modules/@modelcontextprotocol/sdk/dist/cjs/client/index.js'));
-const { StdioClientTransport } = require(path.resolve(__dirname, '../native-host/node_modules/@modelcontextprotocol/sdk/dist/cjs/client/stdio.js'));
+const { ROOT, requireHostDependency, resolveArtifactPaths } = require('./ci-utils.js');
+const { WebSocket } = requireHostDependency('ws');
+const { Client } = requireHostDependency('@modelcontextprotocol/sdk/dist/cjs/client/index.js');
+const { StdioClientTransport } = requireHostDependency('@modelcontextprotocol/sdk/dist/cjs/client/stdio.js');
 
-const ROOT = path.resolve(__dirname, '..');
-const DIST_DIR = path.resolve(ROOT, 'dist');
-const HOST_DIR = path.resolve(ROOT, 'native-host');
-const HOST_ENTRY = path.resolve(HOST_DIR, 'dist/main.js');
-const MCP_BRIDGE_ENTRY = path.resolve(HOST_DIR, 'dist/mcp-stdio-bridge.js');
+const {
+  extensionDir: DIST_DIR,
+  hostDir: HOST_DIR,
+  hostEntry: HOST_ENTRY,
+  mcpBridgeEntry: MCP_BRIDGE_ENTRY,
+} = resolveArtifactPaths();
 const PROFILE_PREFS_RELATIVE = path.join('profile', 'Default', 'Preferences');
 const TEST_PAGE_HTML = `<!doctype html>
 <html lang="en">
@@ -289,7 +291,7 @@ function getExtensionIdFromProfile(preferencesPath) {
   const prefs = JSON.parse(fs.readFileSync(preferencesPath, 'utf8'));
   const settings = prefs.extensions?.settings || {};
   for (const [extensionId, config] of Object.entries(settings)) {
-    if (config && config.path === DIST_DIR) {
+    if (config && config.path && path.resolve(config.path) === DIST_DIR) {
       return extensionId;
     }
   }
@@ -500,10 +502,13 @@ async function cleanup(sessionWs, panelClient, mcpTransport) {
 
 async function main() {
   if (!fs.existsSync(HOST_ENTRY)) {
-    throw makeError('native-host/dist/main.js is missing. Run npm run build:host first.');
+    throw makeError(`Host entry is missing at ${HOST_ENTRY}. Run npm run build:host first or set CLAUDECHROME_HOST_ENTRY / CLAUDECHROME_HOST_DIR.`);
+  }
+  if (!fs.existsSync(MCP_BRIDGE_ENTRY)) {
+    throw makeError(`MCP bridge entry is missing at ${MCP_BRIDGE_ENTRY}. Run npm run build:host first or set CLAUDECHROME_MCP_BRIDGE_ENTRY.`);
   }
   if (!fs.existsSync(DIST_DIR)) {
-    throw makeError('dist/ is missing. Run npm run build first.');
+    throw makeError(`Extension directory is missing at ${DIST_DIR}. Run npm run build first or set CLAUDECHROME_EXTENSION_DIR.`);
   }
 
   const report = [];

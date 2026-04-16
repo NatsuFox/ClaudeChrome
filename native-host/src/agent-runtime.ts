@@ -88,7 +88,14 @@ function resolveBashCommand(): string {
   }
 
   if (process.platform !== 'win32') {
-    return 'bash';
+    const unixBash = existingPath([
+      '/bin/bash',
+      '/usr/bin/bash',
+      '/usr/local/bin/bash',
+      '/opt/homebrew/bin/bash',
+      '/opt/local/bin/bash',
+    ]);
+    return unixBash || 'bash';
   }
 
   const programFiles = process.env.ProgramFiles;

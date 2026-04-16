@@ -96,10 +96,6 @@ export interface SessionCloseMessage {
   sessionId: string;
 }
 
-export interface SessionCloseAllMessage {
-  type: 'session_close_all';
-}
-
 export interface SessionBindTabMessage {
   type: 'session_bind_tab';
   sessionId: string;
@@ -343,7 +339,6 @@ export type ExtensionMessage =
   | PanelStateFileLoadResultMessage
   | PanelStateFileSaveMessage
   | SessionBindTabMessage
-  | SessionCloseAllMessage
   | SessionCloseMessage
   | SessionClosedMessage
   | SessionCreateMessage

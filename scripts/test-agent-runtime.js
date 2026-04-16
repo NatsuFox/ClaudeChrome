@@ -109,7 +109,7 @@ test('Claude launch appends browser-aware startup prompt', () => {
     },
   })));
 
-  assert.strictEqual(plan.spawn.command, 'bash');
+  assert.strictEqual(plan.spawn.command, '/bin/bash');
   assert.strictEqual(plan.spawn.args[0], '--login');
   assert(plan.spawn.args[2].includes('--mcp-config'));
   assert(plan.spawn.args[2].includes('--append-system-prompt'));
@@ -154,6 +154,20 @@ test('Codex launch carries browser context as initial startup instructions', () 
   assert.strictEqual(plan.diagnostics.transport, 'initial-prompt');
   assert.strictEqual(plan.diagnostics.configuredWorkingDirectory, '~/project');
   assert.strictEqual(plan.diagnostics.resolvedWorkingDirectory, 'C:\\Workspace\\project');
+});
+
+test('Non-Windows launches use an absolute bash path when available', () => {
+  const plan = withPlatform('darwin', () => withEnv({
+    CLAUDECHROME_BASH_PATH: undefined,
+    PATH: '',
+  }, () => buildAgentLaunch(baseOptions({
+    agentType: 'shell',
+    cwd: '/tmp/workspace',
+  }))));
+
+  assert.strictEqual(plan.spawn.command, '/bin/bash');
+  assert.deepStrictEqual(plan.spawn.args, ['--login']);
+  assert.strictEqual(plan.spawn.cwd, '/tmp/workspace');
 });
 
 test('Disabling prompt injection leaves launch transport disabled', () => {

@@ -21,7 +21,6 @@ const STORE_SOCKET_PATH = process.env.CLAUDECHROME_STORE_SOCKET || path.join(RUN
 const MCP_BRIDGE_SCRIPT = path.resolve(__dirname, 'mcp-stdio-bridge.js');
 const SESSION_WORKSPACE_ROOT = path.join(RUNTIME_DIR, 'sessions');
 const EXPLICIT_CWD = process.env.CLAUDECHROME_CWD?.trim() || null;
-const LAST_CLIENT_SESSION_CLEANUP_MS = 1_500;
 
 const clients = new Set<WebSocket>();
 const contextStore = new ContextStore();
@@ -71,55 +70,103 @@ function broadcast(message: object): void {
 }
 
 type PendingCommand = {
+  sessionId: string;
+  tabId: number;
+  command: string;
+  params: Record<string, unknown>;
   resolve: (r: unknown) => void;
   reject: (e: Error) => void;
-  timer: ReturnType<typeof setTimeout>;
+  timer: ReturnType<typeof setTimeout> | null;
+  remainingMs: number;
+  deadlineAt: number | null;
+  delivered: boolean;
+  timeoutMessage: string;
 };
 const pendingCommands = new Map<string, PendingCommand>();
-let lastClientSessionCleanupTimer: ReturnType<typeof setTimeout> | null = null;
 let cleanupStarted = false;
+
+function clearPendingCommandTimer(pending: PendingCommand): void {
+  if (pending.timer) {
+    clearTimeout(pending.timer);
+    pending.timer = null;
+  }
+  pending.deadlineAt = null;
+}
+
+function armPendingCommandTimeout(id: string, pending: PendingCommand): void {
+  clearPendingCommandTimer(pending);
+  pending.deadlineAt = Date.now() + pending.remainingMs;
+  pending.timer = setTimeout(() => {
+    pendingCommands.delete(id);
+    pending.timer = null;
+    pending.deadlineAt = null;
+    pending.reject(new Error(pending.timeoutMessage));
+  }, pending.remainingMs);
+}
+
+function pausePendingCommandTimeout(pending: PendingCommand): void {
+  if (pending.deadlineAt != null) {
+    pending.remainingMs = Math.max(1, pending.deadlineAt - Date.now());
+  }
+  clearPendingCommandTimer(pending);
+}
+
+function sendPendingBrowserCommand(client: WebSocket, id: string, pending: PendingCommand): void {
+  sendClientMessage(client, {
+    type: 'browser_command',
+    id,
+    tabId: pending.tabId,
+    command: pending.command,
+    params: pending.params,
+  });
+  pending.delivered = true;
+  if (!pending.timer) {
+    armPendingCommandTimeout(id, pending);
+  }
+}
+
+function sendUndeliveredBrowserCommands(client: WebSocket): void {
+  for (const [id, pending] of pendingCommands.entries()) {
+    if (!pending.delivered) {
+      sendPendingBrowserCommand(client, id, pending);
+    }
+  }
+}
+
+function markPendingCommandsUndelivered(): number {
+  let pausedCount = 0;
+  for (const pending of pendingCommands.values()) {
+    if (!pending.delivered) {
+      continue;
+    }
+    pausePendingCommandTimeout(pending);
+    pending.delivered = false;
+    pausedCount += 1;
+  }
+  return pausedCount;
+}
 
 function failPendingCommands(reason: string): void {
   for (const pending of pendingCommands.values()) {
-    clearTimeout(pending.timer);
+    clearPendingCommandTimer(pending);
     pending.reject(new Error(reason));
   }
   pendingCommands.clear();
 }
 
-function clearLastClientSessionCleanupTimer(): void {
-  if (!lastClientSessionCleanupTimer) {
-    return;
-  }
-  clearTimeout(lastClientSessionCleanupTimer);
-  lastClientSessionCleanupTimer = null;
-}
-
-function scheduleLastClientSessionCleanup(): void {
-  clearLastClientSessionCleanupTimer();
-  if (clients.size > 0) {
-    return;
-  }
-
-  lastClientSessionCleanupTimer = setTimeout(() => {
-    lastClientSessionCleanupTimer = null;
-    if (clients.size > 0) {
-      return;
+function failPendingCommandsForSession(sessionId: string, reason: string): void {
+  for (const [id, pending] of pendingCommands.entries()) {
+    if (pending.sessionId !== sessionId) {
+      continue;
     }
-
-    const sessionCount = sessionManager.listSnapshots().length;
-    const pendingBrowserCommands = pendingCommands.size;
-    if (sessionCount === 0 && pendingBrowserCommands === 0) {
-      return;
-    }
-
-    appendConnectionLog('ws_last_client_cleanup', { sessionCount, pendingBrowserCommands });
-    failPendingCommands('The ClaudeChrome panel disconnected before the browser command completed.');
-    sessionManager.closeAllSessions();
-  }, LAST_CLIENT_SESSION_CLEANUP_MS);
+    clearPendingCommandTimer(pending);
+    pending.reject(new Error(reason));
+    pendingCommands.delete(id);
+  }
 }
 
 function dispatchBrowserCommand(
+  sessionId: string,
   tabId: number,
   command: string,
   params: Record<string, unknown>,
@@ -127,12 +174,29 @@ function dispatchBrowserCommand(
 ): Promise<unknown> {
   return new Promise((resolve, reject) => {
     const id = crypto.randomUUID();
-    const timer = setTimeout(() => {
-      pendingCommands.delete(id);
-      reject(new Error(`browser_command timeout (${timeoutMs}ms): ${command}`));
-    }, timeoutMs);
-    pendingCommands.set(id, { resolve, reject, timer });
-    broadcast({ type: 'browser_command', id, tabId, command, params });
+    const pending: PendingCommand = {
+      sessionId,
+      tabId,
+      command,
+      params,
+      resolve,
+      reject,
+      timer: null,
+      remainingMs: timeoutMs,
+      deadlineAt: null,
+      delivered: false,
+      timeoutMessage: `browser_command timeout (${timeoutMs}ms): ${command}`,
+    };
+    pendingCommands.set(id, pending);
+
+    if (clients.size > 0) {
+      broadcast({ type: 'browser_command', id, tabId, command, params });
+      pending.delivered = true;
+      armPendingCommandTimeout(id, pending);
+      return;
+    }
+
+    appendConnectionLog('browser_command_queued_no_client', { id, sessionId, tabId, command, timeoutMs });
   });
 }
 
@@ -299,11 +363,8 @@ function handleClientMessage(msg: any, client?: WebSocket): void {
       break;
     }
     case 'session_close':
+      failPendingCommandsForSession(msg.sessionId, 'The ClaudeChrome session was closed before the browser command completed.');
       sessionManager.closeSession(msg.sessionId);
-      break;
-    case 'session_close_all':
-      appendConnectionLog('session_close_all', { sessionCount: sessionManager.listSnapshots().length });
-      sessionManager.closeAllSessions();
       break;
     case 'session_bind_tab':
       sessionManager.bindSessionToTab(msg.sessionId, msg.tabId);
@@ -357,7 +418,7 @@ function handleClientMessage(msg: any, client?: WebSocket): void {
     case 'browser_command_result': {
       const pending = pendingCommands.get(msg.id);
       if (pending) {
-        clearTimeout(pending.timer);
+        clearPendingCommandTimer(pending);
         pendingCommands.delete(msg.id);
         if (msg.error) {
           pending.reject(new Error(msg.error));
@@ -405,7 +466,6 @@ wss.on('headers', (_headers, req) => {
 });
 
 wss.on('connection', (client, req) => {
-  clearLastClientSessionCleanupTimer();
   const meta = socketMeta(req.socket);
   appendConnectionLog('ws_connected', meta);
 
@@ -414,6 +474,7 @@ wss.on('connection', (client, req) => {
   sendClientMessage(client, { type: 'session_snapshot', sessions: sessionManager.listSnapshots() });
   sessionManager.replayAllOutputToClient((message) => sendClientMessage(client, message));
   clients.add(client);
+  sendUndeliveredBrowserCommands(client);
   sessionManager.flushAllOutputs();
 
   client.on('message', (raw) => {
@@ -453,7 +514,15 @@ wss.on('connection', (client, req) => {
       code,
       reason: reason.toString(),
     });
-    scheduleLastClientSessionCleanup();
+    if (clients.size === 0) {
+      const pausedCommands = markPendingCommandsUndelivered();
+      if (pausedCommands > 0) {
+        appendConnectionLog('ws_pending_commands_paused', {
+          pausedCommands,
+          sessionCount: sessionManager.listSnapshots().length,
+        });
+      }
+    }
   });
 });
 
@@ -503,7 +572,7 @@ function startIpcServer(_socketPath: string): void {
             return;
           }
           appendConnectionLog('ipc_command', { ...meta, sessionId, command });
-          dispatchBrowserCommand(tabId, command as string, (params ?? {}) as Record<string, unknown>, timeoutMs as number | undefined)
+          dispatchBrowserCommand(sessionId, tabId, command as string, (params ?? {}) as Record<string, unknown>, timeoutMs as number | undefined)
             .then((result) => reply({ ok: true, result }))
             .catch((err) => reply({ error: err instanceof Error ? err.message : String(err) }));
         } else {
@@ -749,7 +818,7 @@ async function getLivePageContentForQuery(
   maxChars: number,
   includeHtml: boolean
 ) {
-  const result = await dispatchBrowserCommand(tabId, 'get_page_content', {
+  const result = await dispatchBrowserCommand(sessionId, tabId, 'get_page_content', {
     include_html: includeHtml,
     max_chars: maxChars,
   }, 10_000) as { url: string; title: string; text: string; html?: string };
@@ -766,9 +835,9 @@ async function getLivePageContentForQuery(
   };
 }
 
-async function getCapturePolicyForTab(tabId: number) {
+async function getCapturePolicyForTab(sessionId: string, tabId: number) {
   try {
-    const result = await dispatchBrowserCommand(tabId, 'get_capture_settings', {}, 5_000) as {
+    const result = await dispatchBrowserCommand(sessionId, tabId, 'get_capture_settings', {}, 5_000) as {
       captureResponseBodies?: boolean;
     };
 
@@ -900,7 +969,7 @@ async function handleStoreQuery(sessionId: string | undefined, tool: string, par
     }
     case 'get_status': {
       if ('error' in context) return context.error;
-      const capturePolicy = await getCapturePolicyForTab(context.tabId);
+      const capturePolicy = await getCapturePolicyForTab(context.sessionId, context.tabId);
       return {
         ok: true,
         sessionId: context.sessionId,
@@ -949,7 +1018,7 @@ async function handleStoreQuery(sessionId: string | undefined, tool: string, par
     }
     case 'get_session_context': {
       if ('error' in context) return context.error;
-      const capturePolicy = await getCapturePolicyForTab(context.tabId);
+      const capturePolicy = await getCapturePolicyForTab(context.sessionId, context.tabId);
       const sessionContext = summarizeSessionContext(context);
       return {
         ...sessionContext,
@@ -961,7 +1030,7 @@ async function handleStoreQuery(sessionId: string | undefined, tool: string, par
     }
     case 'get_binding_status': {
       if ('error' in context) return context.error;
-      const capturePolicy = await getCapturePolicyForTab(context.tabId);
+      const capturePolicy = await getCapturePolicyForTab(context.sessionId, context.tabId);
       return {
         ok: true,
         sessionId: context.sessionId,
@@ -982,7 +1051,7 @@ async function handleStoreQuery(sessionId: string | undefined, tool: string, par
       };
     case 'get_capture_policy': {
       if ('error' in context) return context.error;
-      const capturePolicy = await getCapturePolicyForTab(context.tabId);
+      const capturePolicy = await getCapturePolicyForTab(context.sessionId, context.tabId);
       return {
         ok: true,
         sessionId: context.sessionId,
@@ -992,7 +1061,7 @@ async function handleStoreQuery(sessionId: string | undefined, tool: string, par
     }
     case 'get_capture_stats': {
       if ('error' in context) return context.error;
-      const capturePolicy = await getCapturePolicyForTab(context.tabId);
+      const capturePolicy = await getCapturePolicyForTab(context.sessionId, context.tabId);
       return {
         ok: true,
         sessionId: context.sessionId,
@@ -1005,7 +1074,7 @@ async function handleStoreQuery(sessionId: string | undefined, tool: string, par
       return explainUnavailable(context, String(params.target || params.tool_name || ''));
     case 'self_check': {
       if ('error' in context) return context.error;
-      const capturePolicy = await getCapturePolicyForTab(context.tabId);
+      const capturePolicy = await getCapturePolicyForTab(context.sessionId, context.tabId);
       const checks = [
         {
           name: 'session_snapshot',
@@ -1085,7 +1154,6 @@ function cleanup(): void {
     process.exit(1);
   }
   cleanupStarted = true;
-  clearLastClientSessionCleanupTimer();
   failPendingCommands('ClaudeChrome host is shutting down.');
   sessionManager.shutdown();
   for (const client of clients) {

@@ -8,7 +8,6 @@ import type {
   GetCurrentWindowActiveTabResultMessage,
   LaunchConfigAgentType,
   SessionBindTabMessage,
-  SessionCloseAllMessage,
   SessionCreateMessage,
   SessionInputMessage,
   SessionOutputMessage,
@@ -118,7 +117,6 @@ type CaptureSettings = {
 
 let panelAutoCollapseArmed = window.innerWidth >= PANEL_AUTO_COLLAPSE_ARM_WIDTH;
 let panelCloseInFlight = false;
-let panelUnloadCleanupSent = false;
 let connectionStatusState: 'connected' | 'disconnected' | 'connecting' | 'error' = 'disconnected';
 let connectionStatusUrl: string | null = null;
 let captureSettings: CaptureSettings = { captureResponseBodies: false };
@@ -527,17 +525,7 @@ function notifyPanelClosed(): void {
   chrome.runtime.sendMessage({ type: 'panel_closed' }, () => void chrome.runtime.lastError);
 }
 
-function closeAllHostSessionsOnUnload(): void {
-  if (panelUnloadCleanupSent || !isWsOpen()) {
-    return;
-  }
-  panelUnloadCleanupSent = true;
-  const message: SessionCloseAllMessage = { type: 'session_close_all' };
-  sendToHost(message);
-}
-
 function handlePanelUnload(): void {
-  closeAllHostSessionsOnUnload();
   notifyPanelClosed();
 }
 
@@ -664,7 +652,6 @@ function requestPanelStateFileLoad(): Promise<{ found: boolean; state?: unknown;
 async function restorePanelStateFromLocalFile(): Promise<void> {
   if (loadedPersistedPanelState || !isWsOpen()) {
     sendToHost({ type: 'session_list_request' });
-    ensurePaneSessions();
     return;
   }
 
@@ -687,7 +674,6 @@ async function restorePanelStateFromLocalFile(): Promise<void> {
   }
 
   sendToHost({ type: 'session_list_request' });
-  ensurePaneSessions();
 }
 
 function validateWorkingDirectoryWithHost(pathValue: string): Promise<WorkingDirectoryValidationResult> {

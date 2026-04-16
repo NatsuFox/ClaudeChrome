@@ -146,6 +146,13 @@ function forceKillProcessGroup(pid) {
   }
 }
 
+function closeSession(wsClient, sessionId) {
+  if (!wsClient || wsClient.readyState !== WebSocket.OPEN) {
+    return;
+  }
+  wsClient.send(JSON.stringify({ type: 'session_close', sessionId }));
+}
+
 async function main() {
   console.log('\nClaudeChrome - Exit Cleanup Integration Test');
   console.log('='.repeat(48));
@@ -235,13 +242,12 @@ async function main() {
     ws.terminate();
     ws = null;
 
-    await waitFor(() => !processExists(leaderPid), 'shell leader cleanup after last client disconnect', 9000);
-    await waitFor(() => !processExists(childPid), 'detached child cleanup after last client disconnect', 9000);
+    await sleep(2000);
 
-    record(`Shell leader ${leaderPid} exits after last client disconnect`, () => assert.strictEqual(processExists(leaderPid), false));
-    record(`Detached child ${childPid} exits after last client disconnect`, () => assert.strictEqual(processExists(childPid), false));
+    record(`Shell leader ${leaderPid} stays running after final panel disconnect`, () => assert.strictEqual(processExists(leaderPid), true));
+    record(`Detached child ${childPid} stays running after final panel disconnect`, () => assert.strictEqual(processExists(childPid), true));
 
-    console.log('\n[4] Reconnecting to confirm host has no live sessions...');
+    console.log('\n[4] Reconnecting to confirm the host still advertises the live session...');
     let latestSnapshot = null;
     ws2 = await connectWs(wsPort);
     ws2.on('message', (raw) => {
@@ -258,13 +264,17 @@ async function main() {
     ws2.send(JSON.stringify({ type: 'session_list_request' }));
     await waitFor(() => Array.isArray(latestSnapshot), 'session snapshot after reconnect');
 
-    record('Reconnected host reports no leftover cleanup session', () => {
-      assert.strictEqual(latestSnapshot.some((entry) => entry.sessionId === SESSION_ID), false);
+    record('Reconnected host reports the shell session is still live', () => {
+      const session = latestSnapshot.find((entry) => entry.sessionId === SESSION_ID);
+      assert(session);
+      assert.notStrictEqual(session.status, 'exited');
     });
   } catch (error) {
     const detail = error instanceof Error ? error.message : String(error);
     fail('Exit cleanup integration failed', stderr ? `${detail}\n${stderr.trim()}` : detail);
   } finally {
+    closeSession(ws, SESSION_ID);
+    closeSession(ws2, SESSION_ID);
     if (ws && ws.readyState === WebSocket.OPEN) {
       ws.close();
     }

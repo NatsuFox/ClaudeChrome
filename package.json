@@ -13,7 +13,14 @@
     "test": "npm run build && npm run build:host && node scripts/test-agent-runtime.js && node scripts/test-session-history.js && node scripts/test-panel-state-file.js && node scripts/test-working-directory.js && node scripts/test-workspace-default-agent.js && node scripts/test-terminal-shortcuts.js && node scripts/test-terminal-input.js && node scripts/test-capture-utils.js && node scripts/test-network-update-buffer.js && node scripts/test-pty-cleanup.js && node scripts/test-exit-cleanup.js && node scripts/test-commands.js && node scripts/test-dispatcher.js",
     "test:live": "npm run build && npm run build:host && node scripts/test-live.js",
     "test:live:config-settings": "npm run build && npm run build:host && node scripts/test-live-config-settings.js",
-    "test:live:focused": "npm run build && npm run build:host && node scripts/test-live-path-shortcuts.js"
+    "test:live:focused": "npm run build && npm run build:host && node scripts/test-live-path-shortcuts.js",
+    "test:live:all": "npm run build && npm run build:host && node scripts/test-live.js && node scripts/test-live-config-settings.js && node scripts/test-live-path-shortcuts.js",
+    "ci": "npm test",
+    "ci:live": "npm run test:live:all",
+    "release:check": "node scripts/check-release-metadata.js",
+    "release:artifacts": "node scripts/build-release-artifacts.js",
+    "release:smoke": "node scripts/test-release-artifacts.js",
+    "ci:release": "npm run ci && npm run ci:live && npm run release:check && npm run release:artifacts && npm run release:smoke"
   },
   "devDependencies": {
     "@anthropic-ai/sdk": "^0.39.0",

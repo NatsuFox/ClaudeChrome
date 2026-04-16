@@ -1,0 +1,104 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*.*.*"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: |
+            package-lock.json
+            native-host/package-lock.json
+
+      - name: Install browser helpers
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y xvfb
+
+      - name: Install root dependencies
+        run: npm ci
+
+      - name: Install native-host dependencies
+        run: npm ci --prefix native-host
+
+      - name: Validate release metadata
+        env:
+          CLAUDECHROME_EXPECT_RELEASE_TAG: ${{ startsWith(github.ref, 'refs/tags/') && github.ref_name || '' }}
+        run: npm run release:check
+
+      - name: Run build and Node tests
+        run: npm run ci
+
+      - name: Run live browser suite
+        run: npm run ci:live
+
+      - name: Stage release artifacts
+        run: npm run release:artifacts
+
+      - name: Validate staged release artifacts
+        run: npm run release:smoke
+
+      - name: Install staged native-host runtime dependencies
+        run: |
+          VERSION="$(node -p "require('./package.json').version")"
+          npm ci --omit=dev --prefix ".release/build/ClaudeChrome-native-host-v${VERSION}"
+
+      - name: Run staged artifact live smoke
+        run: |
+          VERSION="$(node -p "require('./package.json').version")"
+          export CLAUDECHROME_EXTENSION_DIR="$PWD/.release/build/ClaudeChrome-extension-v${VERSION}"
+          export CLAUDECHROME_HOST_DIR="$PWD/.release/build/ClaudeChrome-native-host-v${VERSION}"
+          node scripts/test-live.js
+          node scripts/test-live-config-settings.js
+          node scripts/test-live-path-shortcuts.js
+
+      - name: Build ZIP artifacts and checksums
+        run: |
+          VERSION="$(node -p "require('./package.json').version")"
+          EXT_BASENAME="ClaudeChrome-extension-v${VERSION}"
+          HOST_BASENAME="ClaudeChrome-native-host-v${VERSION}"
+          mkdir -p .release/dist
+          (
+            cd .release/build
+            zip -qr "../dist/${EXT_BASENAME}.zip" "${EXT_BASENAME}"
+            zip -qr "../dist/${HOST_BASENAME}.zip" "${HOST_BASENAME}"
+          )
+          (
+            cd .release/dist
+            sha256sum "${EXT_BASENAME}.zip" "${HOST_BASENAME}.zip" > "ClaudeChrome-v${VERSION}.sha256"
+          )
+
+      - name: Upload workflow artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: claudechrome-release-${{ github.ref_name }}
+          path: .release/dist/*
+
+      - name: Publish GitHub release assets
+        if: startsWith(github.ref, 'refs/tags/')
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release view "${GITHUB_REF_NAME}" >/dev/null 2>&1 || gh release create "${GITHUB_REF_NAME}" --title "${GITHUB_REF_NAME}" --notes ""
+          gh release upload "${GITHUB_REF_NAME}" .release/dist/* --clobber

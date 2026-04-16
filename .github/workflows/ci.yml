@@ -1,0 +1,131 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  node-tests:
+    name: Build and Node Tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: |
+            package-lock.json
+            native-host/package-lock.json
+
+      - name: Install root dependencies
+        run: npm ci
+
+      - name: Install native-host dependencies
+        run: npm ci --prefix native-host
+
+      - name: Run metadata checks
+        run: npm run release:check
+
+      - name: Run build and Node tests
+        run: npm run ci
+
+      - name: Stage release artifacts
+        run: npm run release:artifacts
+
+      - name: Validate staged release artifacts
+        run: npm run release:smoke
+
+  live-browser:
+    name: Live Browser Smoke
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: |
+            package-lock.json
+            native-host/package-lock.json
+
+      - name: Install browser helpers
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y xvfb
+
+      - name: Install root dependencies
+        run: npm ci
+
+      - name: Install native-host dependencies
+        run: npm ci --prefix native-host
+
+      - name: Run repo live browser suite
+        run: npm run ci:live
+
+      - name: Stage release artifacts
+        run: npm run release:artifacts
+
+      - name: Install staged native-host runtime dependencies
+        run: |
+          VERSION="$(node -p "require('./package.json').version")"
+          npm ci --omit=dev --prefix ".release/build/ClaudeChrome-native-host-v${VERSION}"
+
+      - name: Run live smoke against staged release artifacts
+        run: |
+          VERSION="$(node -p "require('./package.json').version")"
+          export CLAUDECHROME_EXTENSION_DIR="$PWD/.release/build/ClaudeChrome-extension-v${VERSION}"
+          export CLAUDECHROME_HOST_DIR="$PWD/.release/build/ClaudeChrome-native-host-v${VERSION}"
+          node scripts/test-live.js
+          node scripts/test-live-config-settings.js
+          node scripts/test-live-path-shortcuts.js
+
+  cross-platform-build:
+    name: Cross-Platform Build Smoke (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 25
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-latest, windows-latest]
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: |
+            package-lock.json
+            native-host/package-lock.json
+
+      - name: Install root dependencies
+        run: npm ci
+
+      - name: Install native-host dependencies
+        run: npm ci --prefix native-host
+
+      - name: Build extension and native host
+        run: npm run package
