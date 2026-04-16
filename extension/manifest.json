@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "ClaudeChrome",
-  "version": "0.0.1",
+  "version": "0.1.0",
   "description": "Claude Code CLI in a browser side panel with full browser context access",
   "permissions": [
     "sidePanel",

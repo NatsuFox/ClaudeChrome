@@ -5,7 +5,7 @@ import { ContextStore } from './context-store.js';
 export function createMcpServer(_store: ContextStore): McpServer {
   const server = new McpServer({
     name: 'claudechrome-browser',
-    version: '0.0.1',
+    version: '0.1.0',
   });
 
   const notAvailable = (name: string) => ({

@@ -1,6 +1,6 @@
 {
   "name": "claude-chrome",
-  "version": "0.0.1",
+  "version": "0.1.0",
   "private": true,
   "description": "Chrome extension embedding Claude Code CLI with full browser context via MCP",
   "scripts": {
