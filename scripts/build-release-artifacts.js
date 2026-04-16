@@ -63,6 +63,7 @@ if [ ! -f "node_modules/ws/package.json" ]; then
   echo "Installing ClaudeChrome native-host runtime dependencies for ${osLabel}..."
   npm install --omit=dev
 fi
+find node_modules/node-pty -name spawn-helper -type f -exec chmod 755 {} + 2>/dev/null || true
 export CLAUDECHROME_WS_PORT="${'${CLAUDECHROME_WS_PORT:-9999}'}"
 echo "Starting ClaudeChrome native host on port ${'${CLAUDECHROME_WS_PORT}'} (${osLabel})"
 exec node dist/main.js
@@ -72,26 +73,6 @@ exec node dist/main.js
 
 writeUnixLauncher('start-native-host-macos.sh', 'macOS');
 writeUnixLauncher('start-native-host-linux.sh', 'Linux');
-
-writeExecutable(
-  path.join(releasePaths.nativeHostDir, 'start-native-host.sh'),
-  `#!/usr/bin/env bash
-set -euo pipefail
-SCRIPT_DIR="$(cd "$(dirname "${'${BASH_SOURCE[0]}'}")" && pwd)"
-case "$(uname -s)" in
-  Darwin)
-    exec "$SCRIPT_DIR/start-native-host-macos.sh" "$@"
-    ;;
-  Linux|MINGW*|MSYS*|CYGWIN*)
-    exec "$SCRIPT_DIR/start-native-host-linux.sh" "$@"
-    ;;
-  *)
-    echo "Unsupported OS for start-native-host.sh. Use the OS-tagged launcher in this bundle." >&2
-    exit 1
-    ;;
-esac
-`,
-);
 
 writeExecutable(
   path.join(releasePaths.nativeHostDir, 'start-native-host-windows.cmd'),
@@ -116,16 +97,6 @@ if not exist "node_modules\ws\package.json" (
 if "%CLAUDECHROME_WS_PORT%"=="" set CLAUDECHROME_WS_PORT=9999
 echo Starting ClaudeChrome native host on port %CLAUDECHROME_WS_PORT% (Windows)
 node dist/main.js
-exit /b %errorlevel%
-`,
-);
-
-writeExecutable(
-  path.join(releasePaths.nativeHostDir, 'start-native-host.cmd'),
-  `@echo off
-setlocal
-cd /d "%~dp0"
-call "%~dp0start-native-host-windows.cmd"
 exit /b %errorlevel%
 `,
 );
@@ -156,15 +127,6 @@ exit $LASTEXITCODE
 `,
 );
 
-writeExecutable(
-  path.join(releasePaths.nativeHostDir, 'start-native-host.ps1'),
-  `param([int]$Port = 9999)
-$scriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
-& "$scriptDir/start-native-host-windows.ps1" -Port $Port
-exit $LASTEXITCODE
-`,
-);
-
 const manifest = {
   version,
   tag: `v${version}`,
@@ -177,12 +139,9 @@ const manifest = {
     baseName: releasePaths.nativeHostBaseName,
     dir: path.relative(ROOT, releasePaths.nativeHostDir),
     launchers: [
-      'start-native-host.sh',
       'start-native-host-macos.sh',
       'start-native-host-linux.sh',
-      'start-native-host.cmd',
       'start-native-host-windows.cmd',
-      'start-native-host.ps1',
       'start-native-host-windows.ps1',
     ],
   },
