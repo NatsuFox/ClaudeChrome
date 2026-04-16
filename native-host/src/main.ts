@@ -30,6 +30,7 @@ const sessionManager = new SessionManager({
   mcpBridgeScript: MCP_BRIDGE_SCRIPT,
   storeSocketPath: STORE_SOCKET_PATH,
   broadcast,
+  logEvent: appendConnectionLog,
 });
 
 function appendConnectionLog(event: string, details: Record<string, unknown> = {}): void {

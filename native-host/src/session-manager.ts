@@ -2,6 +2,7 @@ import {
   buildAgentLaunch,
   formatLaunchDiagnosticsNotice,
   normalizeStartupOptions,
+  type AgentLaunchPlan,
   type AgentStartupOptions,
   type AgentType,
 } from './agent-runtime.js';
@@ -65,6 +66,7 @@ export interface SessionManagerOptions {
   mcpBridgeScript: string;
   storeSocketPath: string;
   broadcast: (message: object) => void;
+  logEvent?: (event: string, details: Record<string, unknown>) => void;
 }
 
 const FLUSH_INTERVAL_MS = 16;
@@ -72,6 +74,26 @@ const TRANSCRIPT_CHUNK_CHARS = 200_000;
 const EARLY_EXIT_WINDOW_MS = 10_000;
 const RECENT_OUTPUT_BUFFER_CHARS = 4_000;
 const OUTPUT_PREVIEW_CHARS = 220;
+const LAUNCH_FAILURE_ENV_KEYS = [
+  'PATH',
+  'SHELL',
+  'HOME',
+  'PWD',
+  'USER',
+  'LOGNAME',
+  'TERM',
+  'TMPDIR',
+  'TMP',
+  'TEMP',
+  'CLAUDECHROME_BASH_PATH',
+  'CLAUDECHROME_CWD',
+  'CLAUDECHROME_RUNTIME_DIR',
+  'CLAUDECHROME_WS_PORT',
+  'npm_execpath',
+  'npm_command',
+  'npm_config_prefix',
+  'npm_lifecycle_event',
+];
 
 type AgentStartupFailure = {
   statusMessage: string;
@@ -164,6 +186,43 @@ function makeSessionTranscriptPath(runtimeDir: string, sessionId: string): strin
   return path.join(sessionDir, 'terminal-history.ansi');
 }
 
+function pickLaunchEnvironment(env: NodeJS.ProcessEnv): Record<string, string> {
+  const snapshot: Record<string, string> = {};
+  for (const key of LAUNCH_FAILURE_ENV_KEYS) {
+    const value = env[key];
+    if (typeof value === 'string' && value.trim()) {
+      snapshot[key] = value;
+    }
+  }
+  return snapshot;
+}
+
+function serializeLaunchError(error: unknown): Record<string, unknown> {
+  if (!(error instanceof Error)) {
+    return { message: String(error) };
+  }
+
+  const details: Record<string, unknown> = {
+    name: error.name,
+    message: error.message,
+    stack: error.stack,
+  };
+
+  const errorRecord = error as unknown as Record<string, unknown>;
+  for (const key of Object.getOwnPropertyNames(error)) {
+    if (key in details) {
+      continue;
+    }
+    const value = errorRecord[key];
+    if (typeof value === 'function') {
+      continue;
+    }
+    details[key] = value;
+  }
+
+  return details;
+}
+
 export class SessionManager {
   private readonly contextStore: ContextStore;
   private readonly runtimeDir: string;
@@ -171,6 +230,7 @@ export class SessionManager {
   private storeSocketPath: string;
   private storePort = 0;
   private readonly broadcast: (message: object) => void;
+  private readonly logEvent?: (event: string, details: Record<string, unknown>) => void;
   private readonly sessions = new Map<string, AgentSession>();
 
   constructor(options: SessionManagerOptions) {
@@ -179,6 +239,7 @@ export class SessionManager {
     this.mcpBridgeScript = options.mcpBridgeScript;
     this.storeSocketPath = options.storeSocketPath;
     this.broadcast = options.broadcast;
+    this.logEvent = options.logEvent;
   }
 
   setStorePort(port: number): void {
@@ -359,6 +420,52 @@ export class SessionManager {
     this.closeAllSessions();
   }
 
+  private makeLaunchFailureArtifactPath(session: AgentSession): string {
+    return path.join(path.dirname(session.transcriptPath), 'launch-failure.json');
+  }
+
+  private recordLaunchFailure(session: AgentSession, launchPlan: AgentLaunchPlan | null, error: unknown): string {
+    const artifactPath = this.makeLaunchFailureArtifactPath(session);
+    const payload = {
+      ts: new Date().toISOString(),
+      sessionId: session.sessionId,
+      agentType: session.agentType,
+      title: session.title,
+      bindingTabId: session.bindingTabId,
+      configuredWorkingDirectory: session.startupOptions.workingDirectory.trim(),
+      resolvedWorkingDirectory: launchPlan?.spawn.cwd ?? session.cwd,
+      command: launchPlan?.spawn.command ?? null,
+      args: launchPlan?.spawn.args ?? [],
+      cwdExists: fs.existsSync(launchPlan?.spawn.cwd ?? session.cwd),
+      commandExists: launchPlan?.spawn.command && path.isAbsolute(launchPlan.spawn.command)
+        ? fs.existsSync(launchPlan.spawn.command)
+        : null,
+      diagnostics: launchPlan?.diagnostics ?? null,
+      env: pickLaunchEnvironment(launchPlan?.spawn.env ?? process.env),
+      process: {
+        platform: process.platform,
+        version: process.version,
+        arch: process.arch,
+      },
+      error: serializeLaunchError(error),
+    };
+
+    fs.writeFileSync(artifactPath, `${JSON.stringify(payload, null, 2)}\n`, 'utf8');
+    this.logEvent?.('session_launch_failed', {
+      sessionId: session.sessionId,
+      agentType: session.agentType,
+      artifactPath,
+      command: payload.command,
+      args: payload.args,
+      cwd: payload.resolvedWorkingDirectory,
+      cwdExists: payload.cwdExists,
+      commandExists: payload.commandExists,
+      env: payload.env,
+      error: payload.error,
+    });
+    return artifactPath;
+  }
+
   private launchSession(session: AgentSession): void {
     const bridge = new PtyBridge();
     session.pty = bridge;
@@ -384,8 +491,10 @@ export class SessionManager {
       this.handleProcessExit(session, code);
     });
 
+    let launchPlan: AgentLaunchPlan | null = null;
+
     try {
-      const launchPlan = buildAgentLaunch({
+      launchPlan = buildAgentLaunch({
         sessionId: session.sessionId,
         agentType: session.agentType,
         cwd: session.cwd,
@@ -410,6 +519,12 @@ export class SessionManager {
       session.pty = null;
       session.processState = 'error';
       session.statusMessage = error instanceof Error ? error.message : String(error);
+      const artifactPath = this.recordLaunchFailure(session, launchPlan, error);
+      this.emitSystemNotice(
+        session,
+        `${displayAgentName(session.agentType)} 启动失败。\n错误: ${session.statusMessage}\n诊断文件: ${artifactPath}`,
+      );
+      this.flushOutput(session);
     }
   }
 

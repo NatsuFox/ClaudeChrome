@@ -149,6 +149,43 @@ test('system notices prefix each rendered line in the transcript', () => {
   assert.match(transcript, /\[ClaudeChrome\] line one\r\n\[ClaudeChrome\] line two/);
 });
 
+test('launch failures write a per-session diagnostics artifact and host log entry', () => {
+  const runtimeDir = fs.mkdtempSync(path.join(os.tmpdir(), 'claudechrome-session-history-'));
+  const logEntries = [];
+  const manager = createManager(runtimeDir, {
+    logEvent: (event, details) => logEntries.push({ event, details }),
+  });
+  const session = createSession(manager, { sessionId: 'session-5', title: 'Shell 5', agentType: 'shell' });
+
+  manager.recordLaunchFailure(session, {
+    spawn: {
+      command: '/bin/bash',
+      args: ['--login'],
+      cwd: '/tmp/workspace',
+      env: {
+        PATH: '/usr/bin:/bin',
+        HOME: '/Users/tester',
+      },
+      cols: 100,
+      rows: 40,
+    },
+    diagnostics: {
+      transport: 'disabled',
+      configuredWorkingDirectory: '',
+      resolvedWorkingDirectory: '/tmp/workspace',
+      launchArgs: '',
+      effectivePrompt: '',
+    },
+  }, Object.assign(new Error('posix_spawnp failed.'), { code: 'ENOENT' }));
+
+  const artifactPath = path.join(runtimeDir, 'sessions', 'session-5', 'launch-failure.json');
+  const artifact = JSON.parse(fs.readFileSync(artifactPath, 'utf8'));
+  assert.strictEqual(artifact.command, '/bin/bash');
+  assert.strictEqual(artifact.error.message, 'posix_spawnp failed.');
+  assert.strictEqual(artifact.error.code, 'ENOENT');
+  assert.strictEqual(logEntries.some((entry) => entry.event === 'session_launch_failed' && entry.details.artifactPath === artifactPath), true);
+});
+
 console.log(`\nResults: \x1b[32m${passed} passed\x1b[0m, \x1b[31m${failed} failed\x1b[0m`);
 if (failed > 0) {
   process.exit(1);

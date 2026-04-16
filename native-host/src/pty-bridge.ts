@@ -1,8 +1,37 @@
+import * as fs from 'node:fs';
+import * as path from 'node:path';
 import * as pty from 'node-pty';
 import { execFile, execFileSync } from 'node:child_process';
 import { EventEmitter } from 'node:events';
 
 const PROCESS_TREE_KILL_GRACE_MS = 2_000;
+
+function ensureNodePtySpawnHelperExecutable(): void {
+  if (process.platform === 'win32') {
+    return;
+  }
+
+  try {
+    const nodePtyRoot = path.dirname(require.resolve('node-pty/package.json'));
+    const candidates = [
+      path.join(nodePtyRoot, 'build', 'Release', 'spawn-helper'),
+      path.join(nodePtyRoot, 'prebuilds', `${process.platform}-${process.arch}`, 'spawn-helper'),
+    ];
+
+    for (const candidate of candidates) {
+      if (!fs.existsSync(candidate)) {
+        continue;
+      }
+      const mode = fs.statSync(candidate).mode & 0o777;
+      if ((mode & 0o111) !== 0) {
+        continue;
+      }
+      fs.chmodSync(candidate, mode | 0o755);
+    }
+  } catch {
+    // Best-effort self-heal for macOS node-pty helper permissions.
+  }
+}
 
 export interface PtySpawnOptions {
   command: string;
@@ -22,6 +51,7 @@ export class PtyBridge extends EventEmitter {
   spawn(options: PtySpawnOptions): void {
     this.clearForceKillTimer();
     this.pendingCleanupPid = null;
+    ensureNodePtySpawnHelperExecutable();
     this.proc = pty.spawn(options.command, options.args, {
       name: 'xterm-256color',
       cols: options.cols,
