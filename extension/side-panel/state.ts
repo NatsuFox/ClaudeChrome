@@ -145,7 +145,7 @@ function localizeLegacyWorkspaceTitle(title: string): string {
 }
 
 function localizeLegacyWorkspaceHint(hint: string): string {
-  if (hint === 'Focused browser tab binding') {
+  if (hint === 'Focused browser tab binding' || hint === 'Linked to current tab') {
     return defaultPanelText.workspaceHintFocusedTab;
   }
   if (hint === 'Recovered from host') {

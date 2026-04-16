@@ -612,7 +612,7 @@ async function main() {
       localizationCheck?.after?.languageButton !== 'English' ||
       localizationCheck?.after?.themeButton !== 'Dark' ||
       localizationCheck?.after?.themeTitle !== 'Current theme: Dark' ||
-      localizationCheck?.after?.closeButton !== 'Close Panel' ||
+      localizationCheck?.after?.closeButton !== 'Close Sidebar' ||
       localizationCheck?.after?.addShellButton !== '+ Shell' ||
       localizationCheck?.after?.workspaceEdge !== 'Collapse' ||
       localizationCheck?.after?.workspaceTitle !== 'Workspace 1' ||
@@ -649,7 +649,7 @@ async function main() {
       configLocalizationCheck?.english?.claudeHeading !== 'Claude default settings' ||
       configLocalizationCheck?.english?.workingDirLabel !== 'Working directory' ||
       configLocalizationCheck?.english?.promptModeLabel !== 'Browser context prompt mode' ||
-      configLocalizationCheck?.english?.resetLabel !== 'Restore product defaults' ||
+      configLocalizationCheck?.english?.resetLabel !== 'Restore defaults' ||
       configLocalizationCheck?.english?.saveLabel !== 'Save default settings' ||
       configLocalizationCheck?.english?.closeTitle !== 'Close' ||
       configLocalizationCheck?.chinese?.title !== '默认启动设置' ||
@@ -658,7 +658,7 @@ async function main() {
       configLocalizationCheck?.chinese?.claudeHeading !== 'Claude 默认配置' ||
       configLocalizationCheck?.chinese?.workingDirLabel !== '工作目录' ||
       configLocalizationCheck?.chinese?.promptModeLabel !== '浏览器环境提示模式' ||
-      configLocalizationCheck?.chinese?.resetLabel !== '恢复产品默认' ||
+      configLocalizationCheck?.chinese?.resetLabel !== '恢复默认' ||
       configLocalizationCheck?.chinese?.saveLabel !== '保存默认设置' ||
       configLocalizationCheck?.chinese?.closeTitle !== '关闭'
     ) {

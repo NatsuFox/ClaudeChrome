@@ -231,7 +231,11 @@ function localizeWorkspaceTitle(title: string): string {
 
 function localizeWorkspaceHint(hint: string): string {
   const t = currentTranslations();
-  if (hint === '关联当前标签页' || hint === 'Focused browser tab binding') {
+  if (
+    hint === '关联当前标签页' ||
+    hint === 'Focused browser tab binding' ||
+    hint === 'Linked to current tab'
+  ) {
     return t.workspaceHintFocusedTab;
   }
   if (hint === '从主机恢复' || hint === 'Recovered from host') {

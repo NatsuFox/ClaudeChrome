@@ -210,7 +210,7 @@
       "languageLabelEn": "English",
       "workspaceTitle": "Workspace {index}",
       "restoredWorkspaceTitle": "Restored Workspace {index}",
-      "workspaceHintFocusedTab": "Linked to current tab",
+      "workspaceHintFocusedTab": "Focused browser tab binding",
       "workspaceHintRecovered": "Recovered from host",
       "errorOnlyStartupSettings": "Only Claude and Codex panes support startup settings.",
       "confirmRestartPane": "Restart this {agent} pane now to apply new settings?",
