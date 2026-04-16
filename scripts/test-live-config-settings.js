@@ -524,6 +524,13 @@ async function main() {
     record('active tab resolution', `tabId=${boundTabId}`);
 
     await panelClient.evaluate(`window.__ccSentMessages = []; window.__ccConfirmCalls = []; document.getElementById('btn-launch-defaults')?.click();`);
+    await waitFor(async () => {
+      const overlayVisible = await panelClient.evaluate(`(() => {
+        const overlay = document.getElementById('config-panel-overlay');
+        return overlay?.getAttribute('aria-hidden') === 'false';
+      })()`);
+      return overlayVisible ? true : null;
+    }, 'launch defaults panel open', 15000, 100);
 
     await panelClient.evaluate(`(() => {
       const input = document.getElementById('codex-working-dir');

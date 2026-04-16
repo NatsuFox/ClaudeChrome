@@ -457,44 +457,6 @@ async function main() {
       return ready ? true : null;
     }, 'panel DOM ready', 30000, 100);
 
-    const invalidPathState = await panelClient.evaluate(`(() => {
-      document.getElementById('btn-launch-defaults')?.click();
-      const input = document.getElementById('claude-working-dir');
-      const save = document.getElementById('config-save');
-      const hint = input?.parentElement?.querySelector('.config-hint');
-      input.value = 'relative/path';
-      input.dispatchEvent(new Event('input', { bubbles: true }));
-      return {
-        validationMessage: input.validationMessage,
-        ariaInvalid: input.getAttribute('aria-invalid'),
-        saveDisabled: Boolean(save.disabled),
-        hintText: hint?.textContent || '',
-      };
-    })()`);
-    if (!invalidPathState?.validationMessage || invalidPathState.ariaInvalid !== 'true' || invalidPathState.saveDisabled !== true) {
-      throw makeError(`Relative-path validation did not trigger correctly: ${JSON.stringify(invalidPathState)}`);
-    }
-    record('config working-directory rejection', JSON.stringify(invalidPathState));
-
-    const tildePathState = await panelClient.evaluate(`(() => {
-      const input = document.getElementById('claude-working-dir');
-      const save = document.getElementById('config-save');
-      const hint = input?.parentElement?.querySelector('.config-hint');
-      input.value = '~/demo';
-      input.dispatchEvent(new Event('input', { bubbles: true }));
-      document.getElementById('config-close')?.click();
-      return {
-        validationMessage: input.validationMessage,
-        ariaInvalid: input.getAttribute('aria-invalid'),
-        saveDisabled: Boolean(save.disabled),
-        hintText: hint?.textContent || '',
-      };
-    })()`);
-    if (tildePathState?.validationMessage || tildePathState.ariaInvalid !== 'false' || tildePathState.saveDisabled !== false) {
-      throw makeError(`Tilde-path validation did not clear correctly: ${JSON.stringify(tildePathState)}`);
-    }
-    record('config working-directory tilde acceptance', JSON.stringify(tildePathState));
-
     const panelConfig = await panelClient.evaluate(`(() => {
       const input = document.getElementById('ws-port');
       const button = document.getElementById('btn-apply-port');
@@ -512,6 +474,66 @@ async function main() {
       return panelStatus && (panelStatus.state === 'connected' || String(panelStatus.text).includes('Connected to ClaudeChrome host')) ? panelStatus : null;
     }, 'panel WebSocket connection', 30000, 250);
     record('panel relay connection', 'connected');
+
+    await panelClient.evaluate(`document.getElementById('btn-launch-defaults')?.click()`);
+    await waitFor(async () => {
+      const overlayVisible = await panelClient.evaluate(`(() => {
+        const overlay = document.getElementById('config-panel-overlay');
+        return overlay?.getAttribute('aria-hidden') === 'false';
+      })()`);
+      return overlayVisible ? true : null;
+    }, 'launch defaults panel open', 15000, 100);
+
+    await panelClient.evaluate(`(() => {
+      const input = document.getElementById('claude-working-dir');
+      input.value = 'relative/path';
+      input.dispatchEvent(new Event('input', { bubbles: true }));
+      return true;
+    })()`);
+    const invalidPathState = await waitFor(async () => {
+      const result = await panelClient.evaluate(`(() => {
+        const input = document.getElementById('claude-working-dir');
+        const save = document.getElementById('config-save');
+        const hint = input?.parentElement?.querySelector('.config-hint');
+        return {
+          validationMessage: input.validationMessage,
+          ariaInvalid: input.getAttribute('aria-invalid'),
+          saveDisabled: Boolean(save.disabled),
+          hintText: hint?.textContent || '',
+        };
+      })()`);
+      return result && result.validationMessage && result.ariaInvalid === 'true' && result.saveDisabled === true ? result : null;
+    }, 'relative-path rejection', 15000, 150);
+    if (!invalidPathState?.validationMessage || invalidPathState.ariaInvalid !== 'true' || invalidPathState.saveDisabled !== true) {
+      throw makeError(`Relative-path validation did not trigger correctly: ${JSON.stringify(invalidPathState)}`);
+    }
+    record('config working-directory rejection', JSON.stringify(invalidPathState));
+
+    await panelClient.evaluate(`(() => {
+      const input = document.getElementById('claude-working-dir');
+      input.value = '~';
+      input.dispatchEvent(new Event('input', { bubbles: true }));
+      return true;
+    })()`);
+    const tildePathState = await waitFor(async () => {
+      const result = await panelClient.evaluate(`(() => {
+        const input = document.getElementById('claude-working-dir');
+        const save = document.getElementById('config-save');
+        const hint = input?.parentElement?.querySelector('.config-hint');
+        return {
+          validationMessage: input.validationMessage,
+          ariaInvalid: input.getAttribute('aria-invalid'),
+          saveDisabled: Boolean(save.disabled),
+          hintText: hint?.textContent || '',
+        };
+      })()`);
+      return result && !result.validationMessage && result.ariaInvalid === 'false' && result.saveDisabled === false ? result : null;
+    }, 'tilde-path acceptance', 15000, 150);
+    await panelClient.evaluate(`document.getElementById('config-close')?.click()`);
+    if (tildePathState?.validationMessage || tildePathState.ariaInvalid !== 'false' || tildePathState.saveDisabled !== false) {
+      throw makeError(`Tilde-path validation did not clear correctly: ${JSON.stringify(tildePathState)}`);
+    }
+    record('config working-directory tilde acceptance', JSON.stringify(tildePathState));
 
     await openTarget(debugPort, testUrl);
     await waitFor(async () => {
