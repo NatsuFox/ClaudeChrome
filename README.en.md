@@ -137,27 +137,33 @@ The `v0.0.1` release ships two separate downloads:
 Recommended deployment order:
 
 1. Download and extract both archives into your own local directories.
-2. Inside the native-host bundle, install runtime dependencies once, without rebuilding:
+2. Inside the native-host bundle, run the OS-tagged launcher that matches your machine. On first run it installs the native-host runtime dependencies automatically if `node_modules/` is still missing.
+
+macOS:
 
 ```bash
-npm install --omit=dev
+./start-native-host-macos.sh
 ```
 
-3. Start the native host:
-
-macOS / Linux / Git Bash:
+Linux / Git Bash:
 
 ```bash
-CLAUDECHROME_WS_PORT=9999 npm run start
+./start-native-host-linux.sh
 ```
 
 PowerShell:
 
 ```powershell
-$env:CLAUDECHROME_WS_PORT=9999
-npm run start
+.\start-native-host-windows.ps1
 ```
 
+Command Prompt:
+
+```bat
+start-native-host-windows.cmd
+```
+
+3. If you prefer to install dependencies manually instead of using the bootstrap scripts, `npm install --omit=dev` inside the native-host bundle is still a valid fallback.
 4. Open `chrome://extensions`, enable Developer mode, and use `Load unpacked` on the extracted extension bundle.
 5. Open the ClaudeChrome side panel, keep the port at `9999`, click `Apply`, and wait for the connection status to turn healthy.
 6. Create a `Shell` pane first to verify the bridge, then start `Claude` or `Codex` panes on machines where those CLIs are installed.

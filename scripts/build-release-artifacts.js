@@ -44,34 +44,124 @@ copyDir(nativeHostDistDir, path.join(releasePaths.nativeHostDir, 'dist'));
 copyFile(NATIVE_HOST_PACKAGE_PATH, path.join(releasePaths.nativeHostDir, 'package.json'));
 copyFile(nativeHostLockPath, path.join(releasePaths.nativeHostDir, 'package-lock.json'));
 
+function writeUnixLauncher(fileName, osLabel) {
+  writeExecutable(
+    path.join(releasePaths.nativeHostDir, fileName),
+    `#!/usr/bin/env bash
+set -euo pipefail
+SCRIPT_DIR="$(cd "$(dirname "${'${BASH_SOURCE[0]}'}")" && pwd)"
+cd "$SCRIPT_DIR"
+if ! command -v node >/dev/null 2>&1; then
+  echo "Node.js is required to start the ClaudeChrome native host bundle on ${osLabel}." >&2
+  exit 1
+fi
+if ! command -v npm >/dev/null 2>&1; then
+  echo "npm is required to start the ClaudeChrome native host bundle on ${osLabel}." >&2
+  exit 1
+fi
+if [ ! -f "node_modules/ws/package.json" ]; then
+  echo "Installing ClaudeChrome native-host runtime dependencies for ${osLabel}..."
+  npm install --omit=dev
+fi
+export CLAUDECHROME_WS_PORT="${'${CLAUDECHROME_WS_PORT:-9999}'}"
+echo "Starting ClaudeChrome native host on port ${'${CLAUDECHROME_WS_PORT}'} (${osLabel})"
+exec node dist/main.js
+`,
+  );
+}
+
+writeUnixLauncher('start-native-host-macos.sh', 'macOS');
+writeUnixLauncher('start-native-host-linux.sh', 'Linux');
+
 writeExecutable(
   path.join(releasePaths.nativeHostDir, 'start-native-host.sh'),
   `#!/usr/bin/env bash
 set -euo pipefail
-export CLAUDECHROME_WS_PORT="${'${CLAUDECHROME_WS_PORT:-9999}'}"
-echo "Starting ClaudeChrome native host on port ${'${CLAUDECHROME_WS_PORT}'}"
-npm run start
+SCRIPT_DIR="$(cd "$(dirname "${'${BASH_SOURCE[0]}'}")" && pwd)"
+case "$(uname -s)" in
+  Darwin)
+    exec "$SCRIPT_DIR/start-native-host-macos.sh" "$@"
+    ;;
+  Linux|MINGW*|MSYS*|CYGWIN*)
+    exec "$SCRIPT_DIR/start-native-host-linux.sh" "$@"
+    ;;
+  *)
+    echo "Unsupported OS for start-native-host.sh. Use the OS-tagged launcher in this bundle." >&2
+    exit 1
+    ;;
+esac
+`,
+);
+
+writeExecutable(
+  path.join(releasePaths.nativeHostDir, 'start-native-host-windows.cmd'),
+  `@echo off
+setlocal
+cd /d "%~dp0"
+where node >nul 2>nul
+if errorlevel 1 (
+  echo Node.js is required to start the ClaudeChrome native host bundle on Windows.
+  exit /b 1
+)
+where npm >nul 2>nul
+if errorlevel 1 (
+  echo npm is required to start the ClaudeChrome native host bundle on Windows.
+  exit /b 1
+)
+if not exist "node_modules\ws\package.json" (
+  echo Installing ClaudeChrome native-host runtime dependencies for Windows...
+  call npm install --omit=dev
+  if errorlevel 1 exit /b %errorlevel%
+)
+if "%CLAUDECHROME_WS_PORT%"=="" set CLAUDECHROME_WS_PORT=9999
+echo Starting ClaudeChrome native host on port %CLAUDECHROME_WS_PORT% (Windows)
+node dist/main.js
+exit /b %errorlevel%
 `,
 );
 
 writeExecutable(
   path.join(releasePaths.nativeHostDir, 'start-native-host.cmd'),
   `@echo off
-if "%CLAUDECHROME_WS_PORT%"=="" set CLAUDECHROME_WS_PORT=9999
-echo Starting ClaudeChrome native host on port %CLAUDECHROME_WS_PORT%
-npm run start
+setlocal
+cd /d "%~dp0"
+call "%~dp0start-native-host-windows.cmd"
+exit /b %errorlevel%
+`,
+);
+
+writeExecutable(
+  path.join(releasePaths.nativeHostDir, 'start-native-host-windows.ps1'),
+  `param([int]$Port = 9999)
+$scriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
+Set-Location $scriptDir
+if (-not (Get-Command node -ErrorAction SilentlyContinue)) {
+  throw 'Node.js is required to start the ClaudeChrome native host bundle on Windows.'
+}
+if (-not (Get-Command npm -ErrorAction SilentlyContinue)) {
+  throw 'npm is required to start the ClaudeChrome native host bundle on Windows.'
+}
+if (-not (Test-Path 'node_modules/ws/package.json')) {
+  Write-Host 'Installing ClaudeChrome native-host runtime dependencies for Windows...'
+  npm install --omit=dev
+  if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+}
+if ($env:CLAUDECHROME_WS_PORT) {
+  $Port = [int]$env:CLAUDECHROME_WS_PORT
+}
+$env:CLAUDECHROME_WS_PORT = "$Port"
+Write-Host "Starting ClaudeChrome native host on port $Port (Windows)"
+node dist/main.js
+exit $LASTEXITCODE
 `,
 );
 
 writeExecutable(
   path.join(releasePaths.nativeHostDir, 'start-native-host.ps1'),
   `param([int]$Port = 9999)
-if ($env:CLAUDECHROME_WS_PORT) {
-  $Port = [int]$env:CLAUDECHROME_WS_PORT
-}
-$env:CLAUDECHROME_WS_PORT = "$Port"
-Write-Host "Starting ClaudeChrome native host on port $Port"
-npm run start
+$scriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
+& "$scriptDir/start-native-host-windows.ps1" -Port $Port
+exit $LASTEXITCODE
 `,
 );
 
@@ -86,6 +176,15 @@ const manifest = {
   nativeHost: {
     baseName: releasePaths.nativeHostBaseName,
     dir: path.relative(ROOT, releasePaths.nativeHostDir),
+    launchers: [
+      'start-native-host.sh',
+      'start-native-host-macos.sh',
+      'start-native-host-linux.sh',
+      'start-native-host.cmd',
+      'start-native-host-windows.cmd',
+      'start-native-host.ps1',
+      'start-native-host-windows.ps1',
+    ],
   },
 };
 

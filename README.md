@@ -137,27 +137,33 @@ ClaudeChrome 当前由两个本地组件协同工作：
 推荐部署顺序：
 
 1. 下载并解压这两个压缩包到你自己的本地目录。
-2. 对 native host 包执行一次依赖安装，但不需要再重新编译：
+2. 在 native host 包里直接运行与当前系统对应的启动脚本。首次启动时，如果 `node_modules/` 还不存在，脚本会自动安装 native-host 的运行时依赖。
+
+macOS：
 
 ```bash
-npm install --omit=dev
+./start-native-host-macos.sh
 ```
 
-3. 启动 native host：
-
-macOS / Linux / Git Bash:
+Linux / Git Bash：
 
 ```bash
-CLAUDECHROME_WS_PORT=9999 npm run start
+./start-native-host-linux.sh
 ```
 
-PowerShell:
+PowerShell：
 
 ```powershell
-$env:CLAUDECHROME_WS_PORT=9999
-npm run start
+.\start-native-host-windows.ps1
 ```
 
+命令提示符：
+
+```bat
+start-native-host-windows.cmd
+```
+
+3. 如果你更希望手动安装依赖，而不是使用自带的 bootstrap 脚本，也可以在 native-host 包里执行 `npm install --omit=dev`。
 4. 在 Chrome 的 `chrome://extensions` 中打开 Developer mode，选择扩展包解压后的目录执行 `Load unpacked`。
 5. 打开 ClaudeChrome 侧边栏，确认端口为 `9999`，点击 `Apply`，等待状态变为已连接。
 6. 先创建一个 `Shell` pane 验证桥接，再根据本机环境启动 `Claude` 或 `Codex` pane。

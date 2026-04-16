@@ -170,6 +170,23 @@ test('Non-Windows launches use an absolute bash path when available', () => {
   assert.strictEqual(plan.spawn.cwd, '/tmp/workspace');
 });
 
+test('Launch environment removes npm lifecycle variables before spawning sessions', () => {
+  const plan = withPlatform('linux', () => withEnv({
+    npm_execpath: '/tmp/npm-cli.js',
+    npm_command: 'run-script',
+    npm_config_prefix: '/tmp/npm-prefix',
+    npm_lifecycle_event: 'start',
+  }, () => buildAgentLaunch(baseOptions({
+    agentType: 'shell',
+    cwd: '/tmp/workspace',
+  }))));
+
+  assert.strictEqual(plan.spawn.env.npm_execpath, undefined);
+  assert.strictEqual(plan.spawn.env.npm_command, undefined);
+  assert.strictEqual(plan.spawn.env.npm_config_prefix, undefined);
+  assert.strictEqual(plan.spawn.env.npm_lifecycle_event, undefined);
+});
+
 test('Disabling prompt injection leaves launch transport disabled', () => {
   const plan = withPlatform('linux', () => buildAgentLaunch(baseOptions({
     agentType: 'claude',

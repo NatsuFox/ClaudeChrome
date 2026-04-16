@@ -114,6 +114,19 @@ function resolveBashCommand(): string {
   return gitBash || 'bash';
 }
 
+function buildLaunchEnv(): NodeJS.ProcessEnv {
+  const env: NodeJS.ProcessEnv = { ...process.env };
+  delete env.CLAUDECODE;
+
+  for (const key of Object.keys(env)) {
+    if (key.startsWith('npm_')) {
+      delete env[key];
+    }
+  }
+
+  return env;
+}
+
 function wrapWithLoginShell(command: string, args: string[], cwd: string, env: NodeJS.ProcessEnv, cols: number, rows: number): PtySpawnOptions {
   const commandLine = ['exec', shellQuote(command), ...args.map(shellQuote)].join(' ');
   return {
@@ -286,8 +299,7 @@ export function formatLaunchDiagnosticsNotice(agentType: AgentType, diagnostics:
 function buildClaudeLaunch(options: AgentLaunchOptions, startupOptions: AgentStartupOptions): AgentLaunchPlan {
   const sessionDir = ensureSessionDir(options.runtimeDir, options.sessionId);
   const configPath = path.join(sessionDir, 'claude-mcp-config.json');
-  const env = { ...process.env };
-  delete env.CLAUDECODE;
+  const env = buildLaunchEnv();
 
   const config = {
     mcpServers: {
@@ -331,7 +343,7 @@ function buildClaudeLaunch(options: AgentLaunchOptions, startupOptions: AgentSta
 }
 
 function buildCodexLaunch(options: AgentLaunchOptions, startupOptions: AgentStartupOptions): AgentLaunchPlan {
-  const env = { ...process.env };
+  const env = buildLaunchEnv();
   const bridgeScript = escapeTomlBasicString(normalizePathForToml(options.mcpBridgeScript));
   const sessionId = escapeTomlBasicString(options.sessionId);
   const effectivePrompt = buildEffectiveStartupPrompt(options, startupOptions);
@@ -369,7 +381,7 @@ function buildShellLaunch(options: AgentLaunchOptions, startupOptions: AgentStar
       command: resolveBashCommand(),
       args: ['--login'],
       cwd: options.cwd,
-      env: { ...process.env },
+      env: buildLaunchEnv(),
       cols: options.cols,
       rows: options.rows,
     },

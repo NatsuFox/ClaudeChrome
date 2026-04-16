@@ -56,8 +56,12 @@ for (const relativePath of [
   'dist/mcp-stdio-bridge.js',
   'dist/install.js',
   'start-native-host.sh',
+  'start-native-host-macos.sh',
+  'start-native-host-linux.sh',
   'start-native-host.cmd',
+  'start-native-host-windows.cmd',
   'start-native-host.ps1',
+  'start-native-host-windows.ps1',
 ]) {
   assertExists(path.join(releasePaths.nativeHostDir, relativePath), `Staged native-host artifact is missing ${relativePath}`);
 }
