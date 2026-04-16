@@ -151,13 +151,13 @@ Linux / Git Bash:
 ./start-native-host-linux.sh
 ```
 
-PowerShell:
+Windows PowerShell:
 
 ```powershell
 .\start-native-host-windows.ps1
 ```
 
-Command Prompt:
+Windows Command Prompt:
 
 ```bat
 start-native-host-windows.cmd
