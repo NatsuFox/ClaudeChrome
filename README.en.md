@@ -17,7 +17,7 @@ Friend link: [LINUX DO](https://linux.do)
 ## 🎉 Latest updates
 
 - **2026-04-15**
-  - Published the first official `v0.0.1` release with two separate prebuilt downloads: one for the browser extension and one for the local native host.
+  - Published the first official `v0.1.0` release with two separate prebuilt downloads: one for the browser extension and one for the local native host.
   - Finalized the local deployment path so users can install, connect, and launch without rebuilding from source first.
   - Completed the remaining shortcut, working-directory validation, local-settings recovery, and exit-cleanup hardening needed for a real release.
 
@@ -30,12 +30,12 @@ Friend link: [LINUX DO](https://linux.do)
 
 ## 🎯 Near-term roadmap
 
-- **Release 0.0.2**
+- **Release 0.2.0**
   - [ ] Add multi-tab collaboration support, validate it in sign-up flow scenarios, and record a demo
   - [ ] Add interfaces for changing page elements and styles, strengthening the extension for page debugging, theme design, and similar workflows
   - [ ] Publish the release
 
-- **Release 0.0.1**
+- **Release 0.1.0**
   - [x] Build the landing page and demo videos, improve the open-source repo, and present the core features and use cases
   - [x] Fix Windows compatibility issues and make sure the main flows are usable
   - [x] Publish the release
@@ -44,7 +44,7 @@ Friend link: [LINUX DO](https://linux.do)
 
 GitHub README rendering does not reliably show inline `<video>` or `<iframe>` players here, so this gallery uses clickable GIF previews that open the bundled MP4 recordings.
 
-**The `v0.0.1` release is now available, so people can download the prebuilt extension and native-host bundles directly instead of cloning and rebuilding first.**
+**The `v0.1.0` release is now available, so people can download the prebuilt extension and native-host bundles directly instead of cloning and rebuilding first.**
 
 <table>
   <tr>
@@ -129,10 +129,10 @@ Notes:
 
 #### Fastest path: use the two prebuilt GitHub release bundles
 
-The `v0.0.1` release ships two separate downloads:
+The `v0.1.0` release ships two separate downloads:
 
-- `ClaudeChrome-extension-v0.0.1.zip`: after extraction, this is the unpacked extension directory you can load directly from `chrome://extensions`.
-- `ClaudeChrome-native-host-v0.0.1.zip`: after extraction, this contains the already compiled native-host code, launch scripts, and the minimal `package.json` / `package-lock.json` needed to run it.
+- `ClaudeChrome-extension-v0.1.0.zip`: after extraction, this is the unpacked extension directory you can load directly from `chrome://extensions`.
+- `ClaudeChrome-native-host-v0.1.0.zip`: after extraction, this contains the already compiled native-host code, launch scripts, and the minimal `package.json` / `package-lock.json` needed to run it.
 
 Recommended deployment order:
 
