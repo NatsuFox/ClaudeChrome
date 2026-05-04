@@ -1,0 +1,4 @@
+interface:
+  display_name: "ClaudeChrome Endpoint Extractor"
+  short_description: "Extract live tab APIs into docs and Python"
+  default_prompt: "Use $claudechrome-endpoint-extractor to capture the current tab's desired endpoints into local docs and Python scripts."
