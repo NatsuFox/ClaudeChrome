@@ -11,7 +11,7 @@ const {
   DEFAULT_CODEX_LAUNCH_ARGS,
   formatLaunchDiagnosticsNotice,
 } = require(path.resolve(__dirname, '../native-host/dist/agent-runtime.js'));
-const { IMPLEMENTED_SESSION_TOOLS } = require(path.resolve(__dirname, '../native-host/dist/browser-tools.js'));
+const { IMPLEMENTED_SESSION_TOOLS, codexMcpToolName } = require(path.resolve(__dirname, '../native-host/dist/browser-tools.js'));
 
 let passed = 0;
 let failed = 0;
@@ -144,11 +144,16 @@ test('Codex launch carries browser context as initial startup instructions', () 
 
   assert.strictEqual(plan.spawn.command, fakeBash);
   assert.strictEqual(plan.spawn.cwd, 'C:\\Workspace\\project');
+  assert(plan.spawn.args[2].includes('mcp_servers.claudechrome-browser.command="node"'));
+  assert(!plan.spawn.args[2].includes('command=\\\"node\\\"'));
   assert(plan.spawn.args[2].includes('C:/Repo/native-host/dist/mcp-stdio-bridge.js'));
+  assert(plan.spawn.args[2].includes('CLAUDECHROME_MCP_TOOL_STYLE="codex"'));
   assert(plan.spawn.args[2].includes('workspace-write'));
   IMPLEMENTED_SESSION_TOOLS.forEach((toolName) => {
-    assert(plan.spawn.args[2].includes(`tools.${toolName}.approval_mode`));
+    assert(plan.spawn.args[2].includes(`tools.${codexMcpToolName(toolName)}.approval_mode`));
   });
+  assert(!plan.spawn.args[2].includes('tools.browser__session_context.approval_mode'));
+  assert(plan.spawn.args[2].includes('tools.session_context.approval_mode'));
   assert(plan.spawn.args[2].includes('You are running inside ClaudeChrome'));
   assert(plan.spawn.args[2].includes('https://example.com/docs'));
   assert.strictEqual(plan.diagnostics.transport, 'initial-prompt');

@@ -1,6 +1,6 @@
 import * as fs from 'node:fs';
 import * as path from 'node:path';
-import { IMPLEMENTED_SESSION_TOOLS } from './browser-tools.js';
+import { IMPLEMENTED_SESSION_TOOLS, codexMcpToolName } from './browser-tools.js';
 import type { PtySpawnOptions } from './pty-bridge.js';
 
 export type AgentType = 'claude' | 'codex' | 'shell';
@@ -55,7 +55,7 @@ const CODEX_MCP_TOOL_APPROVAL_MODE = 'approve';
 function buildCodexMcpApprovalOverrides(serverName: string): string[] {
   return IMPLEMENTED_SESSION_TOOLS.flatMap((toolName) => [
     '-c',
-    `mcp_servers.${serverName}.tools.${toolName}.approval_mode="${CODEX_MCP_TOOL_APPROVAL_MODE}"`,
+    `mcp_servers.${serverName}.tools.${codexMcpToolName(toolName)}.approval_mode="${CODEX_MCP_TOOL_APPROVAL_MODE}"`,
   ]);
 }
 
@@ -350,11 +350,11 @@ function buildCodexLaunch(options: AgentLaunchOptions, startupOptions: AgentStar
 
   const args = [
     '-c',
-    `mcp_servers.${CLAUDECHROME_BROWSER_MCP_SERVER}.command=\"node\"`,
+    `mcp_servers.${CLAUDECHROME_BROWSER_MCP_SERVER}.command="node"`,
     '-c',
     `mcp_servers.${CLAUDECHROME_BROWSER_MCP_SERVER}.args=["${bridgeScript}"]`,
     '-c',
-    `mcp_servers.${CLAUDECHROME_BROWSER_MCP_SERVER}.env={CLAUDECHROME_STORE_PORT="${options.storePort}",CLAUDECHROME_SESSION_ID="${sessionId}"}`,
+    `mcp_servers.${CLAUDECHROME_BROWSER_MCP_SERVER}.env={CLAUDECHROME_STORE_PORT="${options.storePort}",CLAUDECHROME_SESSION_ID="${sessionId}",CLAUDECHROME_MCP_TOOL_STYLE="codex"}`,
     ...buildCodexMcpApprovalOverrides(CLAUDECHROME_BROWSER_MCP_SERVER),
     ...splitCommandLine(startupOptions.launchArgs),
   ];

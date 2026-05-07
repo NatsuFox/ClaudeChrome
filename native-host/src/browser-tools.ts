@@ -31,3 +31,17 @@ export const IMPLEMENTED_SESSION_TOOLS = [
 ] as const;
 
 export type ImplementedSessionTool = (typeof IMPLEMENTED_SESSION_TOOLS)[number];
+
+const BROWSER_TOOL_PREFIX = 'browser__';
+
+export function codexMcpToolName(toolName: string): string {
+  return toolName.startsWith(BROWSER_TOOL_PREFIX)
+    ? toolName.slice(BROWSER_TOOL_PREFIX.length)
+    : toolName;
+}
+
+export function legacyMcpToolName(toolName: string): string {
+  return toolName.startsWith(BROWSER_TOOL_PREFIX)
+    ? toolName
+    : `${BROWSER_TOOL_PREFIX}${toolName}`;
+}

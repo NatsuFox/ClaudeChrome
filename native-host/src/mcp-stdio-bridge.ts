@@ -3,9 +3,39 @@ import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import { z } from 'zod';
 import * as net from 'node:net';
+import { codexMcpToolName, legacyMcpToolName } from './browser-tools.js';
 
 const STORE_PORT = parseInt(process.env.CLAUDECHROME_STORE_PORT || '0', 10);
 const SESSION_ID = process.env.CLAUDECHROME_SESSION_ID;
+const MCP_TOOL_STYLE = process.env.CLAUDECHROME_MCP_TOOL_STYLE === 'codex' ? 'codex' : 'legacy';
+
+function mcpToolName(toolName: string): string {
+  return MCP_TOOL_STYLE === 'codex' ? codexMcpToolName(toolName) : toolName;
+}
+
+function remapToolNames(value: unknown): unknown {
+  if (typeof value === 'string') {
+    const legacyName = legacyMcpToolName(value);
+    return MCP_TOOL_STYLE === 'codex' ? codexMcpToolName(legacyName) : legacyName;
+  }
+  if (Array.isArray(value)) {
+    return value.map(remapToolNames);
+  }
+  if (value && typeof value === 'object') {
+    return Object.fromEntries(Object.entries(value).map(([key, entry]) => [key, remapToolNames(entry)]));
+  }
+  return value;
+}
+
+function toolResponse(result: unknown, pretty = false) {
+  const mapped = MCP_TOOL_STYLE === 'codex' ? remapToolNames(result) : result;
+  return {
+    content: [{
+      type: 'text' as const,
+      text: JSON.stringify(mapped, null, pretty ? 2 : undefined),
+    }],
+  };
+}
 
 function sendCommand(command: string, params: Record<string, unknown>, timeoutMs?: number): Promise<any> {
   return new Promise((resolve, reject) => {
@@ -96,10 +126,13 @@ async function main() {
 
   const server = new McpServer({
     name: 'claudechrome-browser',
-    version: '0.1.0',
+    version: '0.1.1',
   });
+  const registerTool: McpServer['tool'] = ((name: string, ...args: unknown[]) => {
+    return (server.tool as (...toolArgs: unknown[]) => unknown)(mcpToolName(name), ...args);
+  }) as McpServer['tool'];
 
-  server.tool(
+  registerTool(
     'browser__get_requests',
     'List captured HTTP requests from the browser tab bound to this session. Use this when the current task depends on page network activity rather than local workspace files.',
     {
@@ -110,21 +143,21 @@ async function main() {
     },
     async (params) => {
       const result = await queryStore('get_requests', params);
-      return { content: [{ type: 'text', text: JSON.stringify(result, null, 2) }] };
+      return toolResponse(result, true);
     }
   );
 
-  server.tool(
+  registerTool(
     'browser__get_request_detail',
     'Get full details of a captured HTTP request from the browser tab bound to this session',
     { request_id: z.string().describe('Request ID from get_requests') },
     async (params) => {
       const result = await queryStore('get_request_detail', params);
-      return { content: [{ type: 'text', text: JSON.stringify(result, null, 2) }] };
+      return toolResponse(result, true);
     }
   );
 
-  server.tool(
+  registerTool(
     'browser__search_responses',
     'Search response bodies by regex pattern in the browser tab bound to this session',
     {
@@ -133,11 +166,11 @@ async function main() {
     },
     async (params) => {
       const result = await queryStore('search_responses', params);
-      return { content: [{ type: 'text', text: JSON.stringify(result, null, 2) }] };
+      return toolResponse(result, true);
     }
   );
 
-  server.tool(
+  registerTool(
     'browser__get_console_logs',
     'Get captured browser console output from the browser tab bound to this session',
     {
@@ -147,21 +180,21 @@ async function main() {
     },
     async (params) => {
       const result = await queryStore('get_console_logs', params);
-      return { content: [{ type: 'text', text: JSON.stringify(result, null, 2) }] };
+      return toolResponse(result, true);
     }
   );
 
-  server.tool(
+  registerTool(
     'browser__get_page_info',
     'Get current page identity and direct-capture summary for the browser tab bound to this session. Prefer this over local file inspection when the task is about the current page.',
     {},
     async () => {
       const result = await queryStore('get_page_info', {});
-      return { content: [{ type: 'text', text: JSON.stringify(result, null, 2) }] };
+      return toolResponse(result, true);
     }
   );
 
-  server.tool(
+  registerTool(
     'browser__get_page_text',
     'Get visible page text captured directly from the live DOM in the browser tab bound to this session',
     {
@@ -169,11 +202,11 @@ async function main() {
     },
     async (params) => {
       const result = await queryStore('get_page_text', params);
-      return { content: [{ type: 'text', text: JSON.stringify(result, null, 2) }] };
+      return toolResponse(result, true);
     }
   );
 
-  server.tool(
+  registerTool(
     'browser__get_page_html',
     'Get live page HTML captured directly from the browser tab bound to this session',
     {
@@ -181,71 +214,71 @@ async function main() {
     },
     async (params) => {
       const result = await queryStore('get_page_html', params);
-      return { content: [{ type: 'text', text: JSON.stringify(result, null, 2) }] };
+      return toolResponse(result, true);
     }
   );
 
-  server.tool(
+  registerTool(
     'browser__status',
     'Get host, transport, collector, and session health for the browser tab bound to this session',
     {},
     async () => {
       const result = await queryStore('get_status', {});
-      return { content: [{ type: 'text', text: JSON.stringify(result, null, 2) }] };
+      return toolResponse(result, true);
     }
   );
 
-  server.tool(
+  registerTool(
     'browser__session_context',
     'Get the current bound browser session context and suggested next browser tools. Call this first when the task depends on the current page or bound-tab session state.',
     {},
     async () => {
       const result = await queryStore('get_session_context', {});
-      return { content: [{ type: 'text', text: JSON.stringify(result, null, 2) }] };
+      return toolResponse(result, true);
     }
   );
 
-  server.tool(
+  registerTool(
     'browser__binding_status',
     'Get the current tab binding and page context status for this session. Use this to confirm which bound tab the current agent session should reason about.',
     {},
     async () => {
       const result = await queryStore('get_binding_status', {});
-      return { content: [{ type: 'text', text: JSON.stringify(result, null, 2) }] };
+      return toolResponse(result, true);
     }
   );
 
-  server.tool(
+  registerTool(
     'browser__capabilities',
     'List which browser MCP tool families are currently available for this session so the agent can choose session-bound browser tools before falling back to unrelated local inspection.',
     {},
     async () => {
       const result = await queryStore('get_capabilities', {});
-      return { content: [{ type: 'text', text: JSON.stringify(result, null, 2) }] };
+      return toolResponse(result, true);
     }
   );
 
-  server.tool(
+  registerTool(
     'browser__capture_policy',
     'Get the current browser capture policy for the tab bound to this session, including whether response-body capture is enabled',
     {},
     async () => {
       const result = await queryStore('get_capture_policy', {});
-      return { content: [{ type: 'text', text: JSON.stringify(result, null, 2) }] };
+      return toolResponse(result, true);
     }
   );
 
-  server.tool(
+  registerTool(
     'browser__capture_stats',
     'Get capture counts, timestamps, and related browser context statistics for this session',
     {},
     async () => {
       const result = await queryStore('get_capture_stats', {});
-      return { content: [{ type: 'text', text: JSON.stringify(result, null, 2) }] };
+      return toolResponse(result, true);
     }
   );
 
-  server.tool(
+  registerTool(
     'browser__explain_unavailable',
     'Explain why a browser tool or capability is unavailable for this session',
     {
@@ -253,21 +286,21 @@ async function main() {
     },
     async (params) => {
       const result = await queryStore('explain_unavailable', params);
-      return { content: [{ type: 'text', text: JSON.stringify(result, null, 2) }] };
+      return toolResponse(result, true);
     }
   );
 
-  server.tool(
+  registerTool(
     'browser__self_check',
     'Run a diagnostic self-check for the browser context bound to this session',
     {},
     async () => {
       const result = await queryStore('self_check', {});
-      return { content: [{ type: 'text', text: JSON.stringify(result, null, 2) }] };
+      return toolResponse(result, true);
     }
   );
 
-  server.tool(
+  registerTool(
     'browser__list_tabs',
     'List tabs from the user Chrome window, with optional filtering to the last-focused window or active tabs only',
     {
@@ -276,11 +309,11 @@ async function main() {
     },
     async (params) => {
       const result = await sendCommand('list_tabs', params);
-      return { content: [{ type: 'text', text: JSON.stringify(result) }] };
+      return toolResponse(result);
     }
   );
 
-  server.tool(
+  registerTool(
     'browser__screenshot',
     'Take a screenshot of the browser tab bound to this session',
     {
@@ -289,12 +322,12 @@ async function main() {
     },
     async (params) => {
       const result = await sendCommand('screenshot', params);
-      if (result.error) return { content: [{ type: 'text', text: JSON.stringify(result) }] };
+      if (result.error) return toolResponse(result);
       return { content: [{ type: 'image', data: result.result.dataUrl.replace(/^data:[^;]+;base64,/, ''), mimeType: result.result.format === 'jpeg' ? 'image/jpeg' : 'image/png' }] };
     }
   );
 
-  server.tool(
+  registerTool(
     'browser__navigate',
     'Navigate the browser tab bound to this session to a URL',
     {
@@ -303,11 +336,11 @@ async function main() {
     },
     async (params) => {
       const result = await sendCommand('navigate', params);
-      return { content: [{ type: 'text', text: JSON.stringify(result) }] };
+      return toolResponse(result);
     }
   );
 
-  server.tool(
+  registerTool(
     'browser__reload',
     'Reload the browser tab bound to this session',
     {
@@ -315,11 +348,11 @@ async function main() {
     },
     async (params) => {
       const result = await sendCommand('reload', params);
-      return { content: [{ type: 'text', text: JSON.stringify(result) }] };
+      return toolResponse(result);
     }
   );
 
-  server.tool(
+  registerTool(
     'browser__get_page_content',
     'Get the live page content (URL, title, visible text, optionally HTML) from the browser tab bound to this session',
     {
@@ -328,11 +361,11 @@ async function main() {
     },
     async (params) => {
       const result = await sendCommand('get_page_content', params);
-      return { content: [{ type: 'text', text: JSON.stringify(result) }] };
+      return toolResponse(result);
     }
   );
 
-  server.tool(
+  registerTool(
     'browser__find_elements',
     'Find DOM elements by CSS selector in the browser tab bound to this session',
     {
@@ -341,11 +374,11 @@ async function main() {
     },
     async (params) => {
       const result = await sendCommand('find_elements', params);
-      return { content: [{ type: 'text', text: JSON.stringify(result) }] };
+      return toolResponse(result);
     }
   );
 
-  server.tool(
+  registerTool(
     'browser__evaluate_js',
     'Evaluate a JavaScript expression in the browser tab bound to this session and return the result',
     {
@@ -353,11 +386,11 @@ async function main() {
     },
     async (params) => {
       const result = await sendCommand('evaluate_js', params);
-      return { content: [{ type: 'text', text: JSON.stringify(result) }] };
+      return toolResponse(result);
     }
   );
 
-  server.tool(
+  registerTool(
     'browser__click',
     'Click an element in the browser tab bound to this session',
     {
@@ -367,11 +400,11 @@ async function main() {
     },
     async (params) => {
       const result = await sendCommand('click', params);
-      return { content: [{ type: 'text', text: JSON.stringify(result) }] };
+      return toolResponse(result);
     }
   );
 
-  server.tool(
+  registerTool(
     'browser__type',
     'Type text into an input element in the browser tab bound to this session',
     {
@@ -381,11 +414,11 @@ async function main() {
     },
     async (params) => {
       const result = await sendCommand('type', params);
-      return { content: [{ type: 'text', text: JSON.stringify(result) }] };
+      return toolResponse(result);
     }
   );
 
-  server.tool(
+  registerTool(
     'browser__scroll',
     'Scroll the page or an element in the browser tab bound to this session',
     {
@@ -396,11 +429,11 @@ async function main() {
     },
     async (params) => {
       const result = await sendCommand('scroll', params);
-      return { content: [{ type: 'text', text: JSON.stringify(result) }] };
+      return toolResponse(result);
     }
   );
 
-  server.tool(
+  registerTool(
     'browser__wait_for',
     'Wait for a condition to be met in the browser tab bound to this session',
     {
@@ -410,11 +443,11 @@ async function main() {
     },
     async (params) => {
       const result = await sendCommand('wait_for', params, (params.timeout_ms as number | undefined));
-      return { content: [{ type: 'text', text: JSON.stringify(result) }] };
+      return toolResponse(result);
     }
   );
 
-  server.tool(
+  registerTool(
     'browser__get_cookies',
     'Get cookies from the browser tab bound to this session',
     {
@@ -424,11 +457,11 @@ async function main() {
     },
     async (params) => {
       const result = await sendCommand('get_cookies', params);
-      return { content: [{ type: 'text', text: JSON.stringify(result) }] };
+      return toolResponse(result);
     }
   );
 
-  server.tool(
+  registerTool(
     'browser__get_storage',
     'Get localStorage or sessionStorage values from the browser tab bound to this session',
     {
@@ -437,21 +470,21 @@ async function main() {
     },
     async (params) => {
       const result = await sendCommand('get_storage', params);
-      return { content: [{ type: 'text', text: JSON.stringify(result) }] };
+      return toolResponse(result);
     }
   );
 
-  server.tool(
+  registerTool(
     'browser__get_selection',
     'Get the text currently selected by the user on the browser tab bound to this session',
     {},
     async () => {
       const result = await sendCommand('get_selection', {});
-      return { content: [{ type: 'text', text: JSON.stringify(result) }] };
+      return toolResponse(result);
     }
   );
 
-  server.tool(
+  registerTool(
     'browser__set_element_text',
     'Set the text content of an element in the browser tab bound to this session',
     {
@@ -460,11 +493,11 @@ async function main() {
     },
     async (params) => {
       const result = await sendCommand('set_element_text', params, 10000);
-      return { content: [{ type: 'text', text: JSON.stringify(result, null, 2) }] };
+      return toolResponse(result, true);
     }
   );
 
-  server.tool(
+  registerTool(
     'browser__set_element_html',
     'Set the HTML content of an element in the browser tab bound to this session',
     {
@@ -474,11 +507,11 @@ async function main() {
     },
     async (params) => {
       const result = await sendCommand('set_element_html', params, 10000);
-      return { content: [{ type: 'text', text: JSON.stringify(result, null, 2) }] };
+      return toolResponse(result, true);
     }
   );
 
-  server.tool(
+  registerTool(
     'browser__set_element_style',
     'Set inline CSS styles on an element in the browser tab bound to this session',
     {
@@ -487,11 +520,11 @@ async function main() {
     },
     async (params) => {
       const result = await sendCommand('set_element_style', params, 10000);
-      return { content: [{ type: 'text', text: JSON.stringify(result, null, 2) }] };
+      return toolResponse(result, true);
     }
   );
 
-  server.tool(
+  registerTool(
     'browser__add_element_class',
     'Add CSS class(es) to an element in the browser tab bound to this session',
     {
@@ -500,11 +533,11 @@ async function main() {
     },
     async (params) => {
       const result = await sendCommand('add_element_class', params, 10000);
-      return { content: [{ type: 'text', text: JSON.stringify(result, null, 2) }] };
+      return toolResponse(result, true);
     }
   );
 
-  server.tool(
+  registerTool(
     'browser__remove_element_class',
     'Remove CSS class(es) from an element in the browser tab bound to this session',
     {
@@ -513,11 +546,11 @@ async function main() {
     },
     async (params) => {
       const result = await sendCommand('remove_element_class', params, 10000);
-      return { content: [{ type: 'text', text: JSON.stringify(result, null, 2) }] };
+      return toolResponse(result, true);
     }
   );
 
-  server.tool(
+  registerTool(
     'browser__get_computed_style',
     'Get computed CSS styles of an element in the browser tab bound to this session',
     {
@@ -526,11 +559,11 @@ async function main() {
     },
     async (params) => {
       const result = await sendCommand('get_computed_style', params, 10000);
-      return { content: [{ type: 'text', text: JSON.stringify(result, null, 2) }] };
+      return toolResponse(result, true);
     }
   );
 
-  server.tool(
+  registerTool(
     'browser__get_element_properties',
     'Get comprehensive properties of an element in the browser tab bound to this session',
     {
@@ -538,11 +571,11 @@ async function main() {
     },
     async (params) => {
       const result = await sendCommand('get_element_properties', params, 10000);
-      return { content: [{ type: 'text', text: JSON.stringify(result, null, 2) }] };
+      return toolResponse(result, true);
     }
   );
 
-  server.tool(
+  registerTool(
     'browser__highlight_element',
     'Add a visual highlight overlay to an element in the browser tab bound to this session for debugging',
     {
@@ -552,7 +585,7 @@ async function main() {
     },
     async (params) => {
       const result = await sendCommand('highlight_element', params, 10000);
-      return { content: [{ type: 'text', text: JSON.stringify(result, null, 2) }] };
+      return toolResponse(result, true);
     }
   );
 
