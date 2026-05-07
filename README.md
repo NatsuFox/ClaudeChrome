@@ -16,6 +16,9 @@ Switch to English version: [README.en.md](README.en.md)
 
 ## 🎉 最新进展
 
+- **2026-05-07**
+  - 发布 `v0.1.1` 修复版本，修复 Codex v0.128.0 下 ClaudeChrome MCP 工具调用被判定为 `unsupported calls` 的问题。
+
 - **2026-04-15**
   - 发布首个正式版本 `v0.1.0`，并提供两个独立的预编译下载包：一个用于浏览器扩展本体，一个用于本地 native host。
   - 整理并稳定了本地部署路径，使用户无需从源码重新构建，就可以快速完成安装、连接和首次启动。
@@ -44,7 +47,7 @@ Switch to English version: [README.en.md](README.en.md)
 
 GitHub 的 README 渲染并不能稳定展示内联 `<video>` 或 `<iframe>` 播放器，因此这里使用可点击的 GIF 预览图，点击后可跳转到仓库内附带的 MP4 录屏。
 
-**现在已经提供 `v0.1.0` release，可直接下载预编译扩展包和 native host 包，无需先 clone 仓库再重新构建。**
+**现在已经提供 `v0.1.1` release，可直接下载预编译扩展包和 native host 包，无需先 clone 仓库再重新构建。**
 
 <table>
   <tr>
@@ -129,10 +132,10 @@ ClaudeChrome 当前由两个本地组件协同工作：
 
 #### 最快路径：直接使用 GitHub release 里的两个预编译包
 
-`v0.1.0` release 会提供两个独立下载项：
+`v0.1.1` release 会提供两个独立下载项：
 
-- `ClaudeChrome-extension-v0.1.0.zip`：解压后直接得到可在 `chrome://extensions` 里通过 `Load unpacked` 加载的扩展目录。
-- `ClaudeChrome-native-host-v0.1.0.zip`：解压后直接得到已经编译好的 native host 代码、运行脚本，以及最小启动所需的 `package.json` / `package-lock.json`。
+- `ClaudeChrome-extension-v0.1.1.zip`：解压后直接得到可在 `chrome://extensions` 里通过 `Load unpacked` 加载的扩展目录。
+- `ClaudeChrome-native-host-v0.1.1.zip`：解压后直接得到已经编译好的 native host 代码、运行脚本，以及最小启动所需的 `package.json` / `package-lock.json`。
 
 推荐部署顺序：
 
