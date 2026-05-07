@@ -17,6 +17,7 @@ Friend link: [LINUX DO](https://linux.do)
 ## 🎉 Latest updates
 
 - **2026-05-07**
+  - Published the `v0.1.2` fix release with the missing MCP element tools, screenshot file artifacts, `evaluate_js` console capture, page-info invalidation, and clearer response-body capture policy reporting.
   - Published the `v0.1.1` fix release for Codex v0.128.0 treating ClaudeChrome MCP tool calls as `unsupported calls`.
 
 - **2026-04-15**
@@ -47,7 +48,7 @@ Friend link: [LINUX DO](https://linux.do)
 
 GitHub README rendering does not reliably show inline `<video>` or `<iframe>` players here, so this gallery uses clickable GIF previews that open the bundled MP4 recordings.
 
-**The `v0.1.1` release is now available, so people can download the prebuilt extension and native-host bundles directly instead of cloning and rebuilding first.**
+**The `v0.1.2` release is now available, so people can download the prebuilt extension and native-host bundles directly instead of cloning and rebuilding first.**
 
 <table>
   <tr>
@@ -132,10 +133,10 @@ Notes:
 
 #### Fastest path: use the two prebuilt GitHub release bundles
 
-The `v0.1.1` release ships two separate downloads:
+The `v0.1.2` release ships two separate downloads:
 
-- `ClaudeChrome-extension-v0.1.1.zip`: after extraction, this is the unpacked extension directory you can load directly from `chrome://extensions`.
-- `ClaudeChrome-native-host-v0.1.1.zip`: after extraction, this contains the already compiled native-host code, launch scripts, and the minimal `package.json` / `package-lock.json` needed to run it.
+- `ClaudeChrome-extension-v0.1.2.zip`: after extraction, this is the unpacked extension directory you can load directly from `chrome://extensions`.
+- `ClaudeChrome-native-host-v0.1.2.zip`: after extraction, this contains the already compiled native-host code, launch scripts, and the minimal `package.json` / `package-lock.json` needed to run it.
 
 Recommended deployment order:
 
