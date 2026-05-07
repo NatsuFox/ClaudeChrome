@@ -304,6 +304,10 @@ function handleContextUpdate(msg: { category: string; payload: unknown }): void 
     }
     case 'tab_state': {
       const tab = msg.payload as StoredTabSummary;
+      const previousTab = contextStore.getTab(tab.tabId);
+      if (previousTab?.url && tab.url && previousTab.url !== tab.url) {
+        contextStore.invalidatePageInfo(tab.tabId);
+      }
       contextStore.upsertTab(tab);
       // Session snapshots drive panel rerenders, so only emit them when tab metadata changes.
       sessionManager.noteTabUpdated(tab.tabId);
@@ -678,6 +682,12 @@ function summarizePageInfo(pageInfo: StoredPageInfo | null) {
   };
 }
 
+function normalizeBrowserToolTarget(target: string): string {
+  const trimmed = target.trim();
+  if (!trimmed) return '';
+  return trimmed.startsWith('browser__') ? trimmed : `browser__${trimmed}`;
+}
+
 function makeMissingPageInfoError(sessionId: string, tabId: number) {
   return makeError('not_captured_yet', 'No page info has been captured for the bound tab yet.', {
     sessionId,
@@ -728,7 +738,7 @@ function getCapabilities(context: ReturnType<typeof getSessionContext>) {
     families: {
       page: {
         available: true,
-        tools: ['browser__get_page_info', 'browser__get_page_text', 'browser__get_page_html', 'browser__get_page_content', 'browser__find_elements'],
+        tools: ['browser__get_page_info', 'browser__get_page_text', 'browser__get_page_html', 'browser__get_page_content', 'browser__find_elements', 'browser__get_computed_style', 'browser__get_element_properties'],
       },
       network: {
         available: true,
@@ -754,6 +764,10 @@ function getCapabilities(context: ReturnType<typeof getSessionContext>) {
         available: true,
         tools: ['browser__get_storage'],
       },
+      element: {
+        available: true,
+        tools: ['browser__set_element_text', 'browser__set_element_html', 'browser__set_element_style', 'browser__add_element_class', 'browser__remove_element_class', 'browser__get_computed_style', 'browser__get_element_properties', 'browser__highlight_element'],
+      },
       debugger: {
         available: false,
         code: 'not_implemented_yet',
@@ -761,7 +775,7 @@ function getCapabilities(context: ReturnType<typeof getSessionContext>) {
       },
       action: {
         available: true,
-        tools: ['browser__screenshot', 'browser__navigate', 'browser__reload', 'browser__evaluate_js', 'browser__click', 'browser__type', 'browser__scroll', 'browser__wait_for'],
+        tools: ['browser__screenshot', 'browser__navigate', 'browser__reload', 'browser__evaluate_js', 'browser__click', 'browser__type', 'browser__scroll', 'browser__wait_for', 'browser__set_element_text', 'browser__set_element_html', 'browser__set_element_style', 'browser__add_element_class', 'browser__remove_element_class', 'browser__get_computed_style', 'browser__get_element_properties', 'browser__highlight_element'],
       },
     },
     bindingReady: hasContext,
@@ -780,23 +794,27 @@ function explainUnavailable(context: ReturnType<typeof getSessionContext>, targe
     });
   }
 
-  if (IMPLEMENTED_SESSION_TOOLS.includes(target as (typeof IMPLEMENTED_SESSION_TOOLS)[number])) {
+  const normalizedTarget = normalizeBrowserToolTarget(target);
+
+  if (IMPLEMENTED_SESSION_TOOLS.includes(normalizedTarget as (typeof IMPLEMENTED_SESSION_TOOLS)[number])) {
     return {
       ok: true,
-      target,
+      target: normalizedTarget,
+      requestedTarget: target,
       available: true,
-      message: `${target} is implemented and available for this session.`,
+      message: `${normalizedTarget} is implemented and available for this session.`,
     };
   }
 
   const capabilities = getCapabilities(context);
   for (const [family, info] of Object.entries(capabilities.families)) {
     const tools = 'tools' in info && Array.isArray(info.tools) ? info.tools : [];
-    if (family === target || tools.includes(target)) {
+    if (family === target || tools.includes(normalizedTarget)) {
       if (info.available) {
         return {
           ok: true,
-          target,
+          target: tools.includes(normalizedTarget) ? normalizedTarget : target,
+          requestedTarget: target,
           available: true,
           family,
         };
@@ -804,13 +822,16 @@ function explainUnavailable(context: ReturnType<typeof getSessionContext>, targe
       const unavailable = info as { available: boolean; code?: string; reason?: string };
       return makeError(
         unavailable.code || 'not_implemented_yet',
-        typeof unavailable.reason === 'string' ? unavailable.reason : `${target} is not available.`,
-        { target, family },
+        typeof unavailable.reason === 'string' ? unavailable.reason : `${normalizedTarget || target} is not available.`,
+        { target: normalizedTarget || target, requestedTarget: target, family },
       );
     }
   }
 
-  return makeError('not_implemented_yet', `${target} is not implemented in the current host.`, { target });
+  return makeError('not_implemented_yet', `${normalizedTarget || target} is not implemented in the current host.`, {
+    target: normalizedTarget || target,
+    requestedTarget: target,
+  });
 }
 
 async function getLivePageContentForQuery(
@@ -867,6 +888,7 @@ async function handleStoreQuery(sessionId: string | undefined, tool: string, par
   switch (tool) {
     case 'get_requests': {
       if ('error' in context) return context.error;
+      const capturePolicy = params.include_bodies ? await getCapturePolicyForTab(context.sessionId, context.tabId) : null;
       const [statusMin, statusMax] = params.status_range
         ? params.status_range.split('-').map(Number)
         : [undefined, undefined];
@@ -887,6 +909,12 @@ async function handleStoreQuery(sessionId: string | undefined, tool: string, par
         ...(params.include_bodies ? {
           requestBody: request.requestBody,
           responseBody: request.responseBody?.slice(0, 10_000),
+          responseBodyCapture: {
+            ...capturePolicy?.responseBodies,
+            message: capturePolicy?.responseBodies.enabled
+              ? 'Response body capture is enabled; bodies are included when captured.'
+              : 'Response body capture is disabled in opt-in mode, so responseBody fields may be absent.',
+          },
         } : {}),
       }));
     }
@@ -895,8 +923,9 @@ async function handleStoreQuery(sessionId: string | undefined, tool: string, par
       return contextStore.getRequestById(context.tabId, params.request_id) || null;
     case 'search_responses': {
       if ('error' in context) return context.error;
+      const capturePolicy = await getCapturePolicyForTab(context.sessionId, context.tabId);
       const re = new RegExp(params.body_pattern, 'i');
-      return contextStore.getRequests(context.tabId)
+      const matches = contextStore.getRequests(context.tabId)
         .filter((request) => request.responseBody && re.test(request.responseBody))
         .filter((request) => !params.content_type || request.mimeType?.includes(params.content_type))
         .map((request) => {
@@ -911,6 +940,16 @@ async function handleStoreQuery(sessionId: string | undefined, tool: string, par
             matchSnippet: snippet,
           };
         });
+      return {
+        ok: true,
+        matches,
+        responseBodies: {
+          ...capturePolicy.responseBodies,
+          message: capturePolicy.responseBodies.enabled
+            ? 'Response body capture is enabled; search covers captured response bodies.'
+            : 'Response body capture is disabled in opt-in mode, so body search can only match previously captured bodies.',
+        },
+      };
     }
     case 'get_console_logs':
       if ('error' in context) return context.error;

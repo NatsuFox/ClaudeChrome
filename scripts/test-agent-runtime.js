@@ -115,6 +115,9 @@ test('Claude launch appends browser-aware startup prompt', () => {
   assert(plan.spawn.args[2].includes('--append-system-prompt'));
   assert(plan.spawn.args[2].includes('https://example.com/docs'));
   assert(plan.spawn.args[2].includes('Always mention the injected browser context'));
+  const mcpConfigPath = path.join('/tmp/claudechrome-runtime', 'sessions', 'session-123', 'claude-mcp-config.json');
+  const mcpConfig = JSON.parse(fs.readFileSync(mcpConfigPath, 'utf8'));
+  assert(mcpConfig.mcpServers['claudechrome-browser'].env.CLAUDECHROME_SESSION_WORKSPACE.endsWith('/session-123/workspace'));
   assert.strictEqual(plan.diagnostics.transport, 'append-system-prompt');
   assert(plan.diagnostics.effectivePrompt.includes('Example page'));
 });
@@ -148,6 +151,7 @@ test('Codex launch carries browser context as initial startup instructions', () 
   assert(!plan.spawn.args[2].includes('command=\\\"node\\\"'));
   assert(plan.spawn.args[2].includes('C:/Repo/native-host/dist/mcp-stdio-bridge.js'));
   assert(plan.spawn.args[2].includes('CLAUDECHROME_MCP_TOOL_STYLE="codex"'));
+  assert(plan.spawn.args[2].includes('CLAUDECHROME_SESSION_WORKSPACE'));
   assert(plan.spawn.args[2].includes('workspace-write'));
   IMPLEMENTED_SESSION_TOOLS.forEach((toolName) => {
     assert(plan.spawn.args[2].includes(`tools.${codexMcpToolName(toolName)}.approval_mode`));

@@ -3,11 +3,14 @@ import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import { z } from 'zod';
 import * as net from 'node:net';
+import * as fs from 'node:fs';
+import * as path from 'node:path';
 import { codexMcpToolName, legacyMcpToolName } from './browser-tools.js';
 
 const STORE_PORT = parseInt(process.env.CLAUDECHROME_STORE_PORT || '0', 10);
 const SESSION_ID = process.env.CLAUDECHROME_SESSION_ID;
 const MCP_TOOL_STYLE = process.env.CLAUDECHROME_MCP_TOOL_STYLE === 'codex' ? 'codex' : 'legacy';
+const SESSION_WORKSPACE = process.env.CLAUDECHROME_SESSION_WORKSPACE;
 
 function mcpToolName(toolName: string): string {
   return MCP_TOOL_STYLE === 'codex' ? codexMcpToolName(toolName) : toolName;
@@ -35,6 +38,19 @@ function toolResponse(result: unknown, pretty = false) {
       text: JSON.stringify(mapped, null, pretty ? 2 : undefined),
     }],
   };
+}
+
+function writeScreenshotArtifact(result: { dataUrl: string; format: string }): string | null {
+  if (!SESSION_WORKSPACE) return null;
+  const match = /^data:[^;]+;base64,(.*)$/.exec(result.dataUrl);
+  if (!match) return null;
+
+  const safeFormat = result.format === 'jpeg' ? 'jpeg' : 'png';
+  const outputDir = path.join(SESSION_WORKSPACE, 'outputs', 'screenshots');
+  fs.mkdirSync(outputDir, { recursive: true });
+  const filePath = path.join(outputDir, `claudechrome-screenshot-${new Date().toISOString().replace(/[:.]/g, '-')}.${safeFormat === 'jpeg' ? 'jpg' : 'png'}`);
+  fs.writeFileSync(filePath, Buffer.from(match[1], 'base64'));
+  return filePath;
 }
 
 function sendCommand(command: string, params: Record<string, unknown>, timeoutMs?: number): Promise<any> {
@@ -323,7 +339,24 @@ async function main() {
     async (params) => {
       const result = await sendCommand('screenshot', params);
       if (result.error) return toolResponse(result);
-      return { content: [{ type: 'image', data: result.result.dataUrl.replace(/^data:[^;]+;base64,/, ''), mimeType: result.result.format === 'jpeg' ? 'image/jpeg' : 'image/png' }] };
+      const artifactPath = writeScreenshotArtifact(result.result);
+      return {
+        content: [
+          {
+            type: 'text' as const,
+            text: JSON.stringify({
+              ok: true,
+              artifactPath,
+              format: result.result.format,
+            }),
+          },
+          {
+            type: 'image' as const,
+            data: result.result.dataUrl.replace(/^data:[^;]+;base64,/, ''),
+            mimeType: result.result.format === 'jpeg' ? 'image/jpeg' : 'image/png',
+          },
+        ],
+      };
     }
   );
 

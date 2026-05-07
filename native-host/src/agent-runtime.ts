@@ -298,6 +298,7 @@ export function formatLaunchDiagnosticsNotice(agentType: AgentType, diagnostics:
 
 function buildClaudeLaunch(options: AgentLaunchOptions, startupOptions: AgentStartupOptions): AgentLaunchPlan {
   const sessionDir = ensureSessionDir(options.runtimeDir, options.sessionId);
+  const sessionWorkspace = path.join(sessionDir, 'workspace');
   const configPath = path.join(sessionDir, 'claude-mcp-config.json');
   const env = buildLaunchEnv();
 
@@ -309,6 +310,7 @@ function buildClaudeLaunch(options: AgentLaunchOptions, startupOptions: AgentSta
         env: {
           CLAUDECHROME_STORE_PORT: String(options.storePort),
           CLAUDECHROME_SESSION_ID: options.sessionId,
+          CLAUDECHROME_SESSION_WORKSPACE: sessionWorkspace,
         },
       },
     },
@@ -344,6 +346,8 @@ function buildClaudeLaunch(options: AgentLaunchOptions, startupOptions: AgentSta
 
 function buildCodexLaunch(options: AgentLaunchOptions, startupOptions: AgentStartupOptions): AgentLaunchPlan {
   const env = buildLaunchEnv();
+  const sessionDir = ensureSessionDir(options.runtimeDir, options.sessionId);
+  const sessionWorkspace = escapeTomlBasicString(normalizePathForToml(path.join(sessionDir, 'workspace')));
   const bridgeScript = escapeTomlBasicString(normalizePathForToml(options.mcpBridgeScript));
   const sessionId = escapeTomlBasicString(options.sessionId);
   const effectivePrompt = buildEffectiveStartupPrompt(options, startupOptions);
@@ -354,7 +358,7 @@ function buildCodexLaunch(options: AgentLaunchOptions, startupOptions: AgentStar
     '-c',
     `mcp_servers.${CLAUDECHROME_BROWSER_MCP_SERVER}.args=["${bridgeScript}"]`,
     '-c',
-    `mcp_servers.${CLAUDECHROME_BROWSER_MCP_SERVER}.env={CLAUDECHROME_STORE_PORT="${options.storePort}",CLAUDECHROME_SESSION_ID="${sessionId}",CLAUDECHROME_MCP_TOOL_STYLE="codex"}`,
+    `mcp_servers.${CLAUDECHROME_BROWSER_MCP_SERVER}.env={CLAUDECHROME_STORE_PORT="${options.storePort}",CLAUDECHROME_SESSION_ID="${sessionId}",CLAUDECHROME_SESSION_WORKSPACE="${sessionWorkspace}",CLAUDECHROME_MCP_TOOL_STYLE="codex"}`,
     ...buildCodexMcpApprovalOverrides(CLAUDECHROME_BROWSER_MCP_SERVER),
     ...splitCommandLine(startupOptions.launchArgs),
   ];

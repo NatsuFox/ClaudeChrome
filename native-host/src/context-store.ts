@@ -197,6 +197,12 @@ export class ContextStore {
     };
   }
 
+  invalidatePageInfo(tabId: number): void {
+    const context = this.tabContexts.get(tabId);
+    if (!context) return;
+    context.pageInfo = null;
+  }
+
   getPageInfo(tabId: number): StoredPageInfo | null {
     const context = this.tabContexts.get(tabId);
     if (!context?.pageInfo) return null;

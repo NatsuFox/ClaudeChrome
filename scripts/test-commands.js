@@ -275,12 +275,34 @@ async function main() {
   assert(caps.implementedTools.includes('browser__list_tabs'), 'get_capabilities includes browser__list_tabs');
   assert(caps.implementedTools.includes('browser__session_context'), 'get_capabilities includes browser__session_context');
   assert(caps.implementedTools.includes('browser__capture_policy'), 'get_capabilities includes browser__capture_policy');
+  assert(caps.implementedTools.includes('browser__set_element_text'), 'get_capabilities includes browser__set_element_text');
+  assert(caps.implementedTools.includes('browser__get_computed_style'), 'get_capabilities includes browser__get_computed_style');
   assert(caps.families?.action?.available === true, 'get_capabilities marks action family available');
   assert(caps.families?.tabs?.available === true, 'get_capabilities marks tabs family available');
   assert(caps.families?.cookies?.available === true, 'get_capabilities marks cookies family available');
   assert(caps.families?.storage?.available === true, 'get_capabilities marks storage family available');
+  assert(caps.families?.element?.available === true, 'get_capabilities marks element family available');
+  assert(caps.families?.element?.tools?.includes('browser__highlight_element'), 'get_capabilities lists browser__highlight_element in element tools');
   assert(caps.families?.introspection?.tools?.includes('browser__session_context'), 'get_capabilities lists browser__session_context in introspection tools');
   assert(caps.families?.introspection?.tools?.includes('browser__capture_policy'), 'get_capabilities lists browser__capture_policy in introspection tools');
+
+  ws.send(JSON.stringify({
+    type: 'context_update',
+    category: 'tab_state',
+    payload: {
+      tabId: TAB_ID,
+      windowId: 1,
+      title: 'Example',
+      url: 'https://example.com',
+      available: true,
+      lastSeenAt: Date.now(),
+    },
+  }));
+  await new Promise((resolve) => setTimeout(resolve, 100));
+
+  const explainUnprefixed = await ipcQuery({ sessionId: SESSION_ID, tool: 'explain_unavailable', params: { target: 'get_page_text' } });
+  assert(explainUnprefixed.ok === true, 'explain_unavailable accepts unprefixed tool names');
+  assert(explainUnprefixed.target === 'browser__get_page_text', 'explain_unavailable normalizes unprefixed tool names');
 
   const sessionContext = await ipcQuery({ sessionId: SESSION_ID, tool: 'get_session_context', params: {} });
   assert(sessionContext.ok === true, 'get_session_context query succeeds');
@@ -349,6 +371,7 @@ async function main() {
   assert(Array.isArray(batchedRequests), 'get_requests returns batched request rows');
   assert(batchedRequests.some((request) => request.id === 'batched-network-1'), 'batched network payload stores first request');
   assert(batchedRequests.some((request) => request.id === 'batched-network-2'), 'batched network payload stores second request');
+  assert(batchedRequests.every((request) => request.responseBodyCapture?.mode === 'opt_in'), 'get_requests include_bodies reports response-body policy per row');
 
   ws.send(JSON.stringify({
     type: 'context_update',
@@ -374,6 +397,16 @@ async function main() {
     params: { request_id: 'batched-network-2' },
   });
   assert(batchedDetail?.responseBody === '{"ok":true}', 'batched network request detail keeps later response-body upsert');
+
+  const responseSearch = await ipcQuery({
+    sessionId: SESSION_ID,
+    tool: 'search_responses',
+    params: { body_pattern: 'ok' },
+  });
+  assert(responseSearch.ok === true, 'search_responses query succeeds');
+  assert(Array.isArray(responseSearch.matches), 'search_responses returns matches array');
+  assert(responseSearch.matches.some((request) => request.id === 'batched-network-2'), 'search_responses finds captured response body');
+  assert(responseSearch.responseBodies?.mode === 'opt_in', 'search_responses reports response-body policy');
 
   const livePageText = await ipcQuery({ sessionId: SESSION_ID, tool: 'get_page_text', params: { max_chars: 64 } });
   assert(livePageText.ok === true, 'get_page_text query succeeds');

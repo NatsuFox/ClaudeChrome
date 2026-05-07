@@ -166,6 +166,10 @@ function ensureTabContext(tabId: number): TabContextState {
 
 function updateTabSummary(tabId: number, patch: Partial<TabSummary>): TabSummary {
   const context = ensureTabContext(tabId);
+  const previousUrl = context.tab.url;
+  if (typeof patch.url === 'string' && patch.url && patch.url !== previousUrl) {
+    context.pageInfo = null;
+  }
   context.tab = {
     ...context.tab,
     ...patch,
@@ -210,6 +214,19 @@ function pushPageInfo(tabId: number): void {
   const context = tabContexts.get(tabId);
   if (!context?.pageInfo) return;
   forwardContextUpdate('page_info', clonePageInfo(context.pageInfo), tabId);
+}
+
+function addConsoleEntry(tabId: number, entry: Omit<ConsoleEntry, 'tabId'>): void {
+  const context = ensureTabContext(tabId);
+  const nextEntry: ConsoleEntry = {
+    ...entry,
+    tabId,
+  };
+  context.consoleLogs.push(nextEntry);
+  if (context.consoleLogs.length > MAX_CONSOLE) {
+    context.consoleLogs.splice(0, context.consoleLogs.length - MAX_CONSOLE);
+  }
+  forwardContextUpdate('console', cloneConsoleEntry(nextEntry), tabId);
 }
 
 function isInjectableUrl(url?: string): boolean {
@@ -513,14 +530,6 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   if (msg.type === 'console_entry') {
     if (!sender.tab?.id) return;
     const context = ensureTabContext(sender.tab.id);
-    const entry: ConsoleEntry = {
-      ...msg.entry,
-      tabId: sender.tab.id,
-    };
-    context.consoleLogs.push(entry);
-    if (context.consoleLogs.length > MAX_CONSOLE) {
-      context.consoleLogs.splice(0, context.consoleLogs.length - MAX_CONSOLE);
-    }
     updateTabSummary(sender.tab.id, {
       windowId: sender.tab.windowId ?? null,
       title: sender.tab.title || context.tab.title,
@@ -530,7 +539,7 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
       lastSeenAt: Date.now(),
     });
     pushTabState(sender.tab.id);
-    forwardContextUpdate('console', cloneConsoleEntry(entry), sender.tab.id);
+    addConsoleEntry(sender.tab.id, msg.entry);
     return;
   }
 
@@ -538,7 +547,6 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     if (!sender.tab?.id) return;
     const nextPageInfo = buildPageInfo(sender.tab.id, msg.info);
     const context = ensureTabContext(sender.tab.id);
-    context.pageInfo = nextPageInfo;
     updateTabSummary(sender.tab.id, {
       windowId: sender.tab.windowId ?? null,
       title: nextPageInfo.title || sender.tab.title || context.tab.title,
@@ -547,6 +555,7 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
       available: true,
       lastSeenAt: nextPageInfo.lastSeenAt,
     });
+    context.pageInfo = nextPageInfo;
     pushTabState(sender.tab.id);
     pushPageInfo(sender.tab.id);
     return;
@@ -645,6 +654,22 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     const { id, tabId, command, params } = msg;
     dispatchCommand(command as string, tabId as number, params as Record<string, unknown>)
       .then((result) => {
+        if (command === 'evaluate_js' && result && typeof result === 'object') {
+          const entries = (result as { consoleEntries?: unknown }).consoleEntries;
+          if (Array.isArray(entries)) {
+            for (const entry of entries) {
+              if (!entry || typeof entry !== 'object') continue;
+              const candidate = entry as Partial<ConsoleEntry>;
+              if (typeof candidate.level !== 'string' || typeof candidate.message !== 'string') continue;
+              addConsoleEntry(tabId as number, {
+                level: candidate.level as ConsoleEntry['level'],
+                message: candidate.message,
+                timestamp: typeof candidate.timestamp === 'number' ? candidate.timestamp : Date.now(),
+                source: typeof candidate.source === 'string' ? candidate.source : 'evaluate_js',
+              });
+            }
+          }
+        }
         chrome.runtime.sendMessage(
           { type: 'browser_command_result', id, result },
           () => void chrome.runtime.lastError

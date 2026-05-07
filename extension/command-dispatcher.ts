@@ -25,6 +25,14 @@ export async function dispatchCommand(
     case 'get_storage':           return cmdGetStorage(tabId, params);
     case 'get_selection':         return cmdGetSelection(tabId, params);
     case 'get_capture_settings':  return cmdGetCaptureSettings(tabId, params);
+    case 'set_element_text':      return cmdSetElementText(tabId, params);
+    case 'set_element_html':      return cmdSetElementHtml(tabId, params);
+    case 'set_element_style':     return cmdSetElementStyle(tabId, params);
+    case 'add_element_class':     return cmdAddElementClass(tabId, params);
+    case 'remove_element_class':  return cmdRemoveElementClass(tabId, params);
+    case 'get_computed_style':    return cmdGetComputedStyle(tabId, params);
+    case 'get_element_properties': return cmdGetElementProperties(tabId, params);
+    case 'highlight_element':     return cmdHighlightElement(tabId, params);
     default:
       throw new Error(`Unknown browser command: ${command}`);
   }
@@ -32,6 +40,56 @@ export async function dispatchCommand(
 
 function toScriptArg<T>(value: T | undefined): T | null {
   return value === undefined ? null : value;
+}
+
+function normalizeClassNames(value: unknown): string[] {
+  const raw = Array.isArray(value) ? value : [value];
+  const names = raw
+    .flatMap((entry) => typeof entry === 'string' ? entry.split(/\s+/) : [])
+    .map((entry) => entry.trim())
+    .filter(Boolean);
+  return [...new Set(names)];
+}
+
+function normalizeStyleMap(value: unknown): Record<string, string> {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    return {};
+  }
+
+  const out: Record<string, string> = {};
+  for (const [key, entry] of Object.entries(value as Record<string, unknown>)) {
+    if (!key || entry == null) continue;
+    out[key] = String(entry);
+  }
+  return out;
+}
+
+function normalizeStyleProperties(value: unknown): string[] {
+  const defaults = [
+    'display',
+    'visibility',
+    'opacity',
+    'color',
+    'backgroundColor',
+    'fontSize',
+    'fontWeight',
+    'lineHeight',
+    'position',
+    'zIndex',
+    'width',
+    'height',
+    'margin',
+    'padding',
+    'border',
+  ];
+  if (!Array.isArray(value)) {
+    return defaults;
+  }
+  const properties = value
+    .filter((entry): entry is string => typeof entry === 'string')
+    .map((entry) => entry.trim())
+    .filter(Boolean);
+  return properties.length > 0 ? [...new Set(properties)] : defaults;
 }
 
 function summarizeTabForList(tab: chrome.tabs.Tab) {
@@ -198,24 +256,53 @@ async function cmdFindElements(
 async function cmdEvaluateJs(
   tabId: number,
   params: Record<string, unknown>
-): Promise<{ result: unknown; error?: string }> {
+): Promise<{ result: unknown; error?: string; consoleEntries?: Array<{ level: string; message: string; timestamp: number; source: string }> }> {
   const expression = String(params.expression ?? '');
   const [res] = await chrome.scripting.executeScript({
     target: { tabId },
     world: 'MAIN',  // Run in page context so page CSP (unsafe-eval) doesn't apply
     func: (expr: string) => {
+      const levels = ['log', 'warn', 'error', 'info', 'debug'] as const;
+      const originals = new Map<typeof levels[number], (...args: any[]) => void>();
+      const consoleEntries: Array<{ level: string; message: string; timestamp: number; source: string }> = [];
+      const stringifyConsoleArg = (value: unknown) => {
+        if (typeof value === 'string') return value;
+        try { return JSON.stringify(value); }
+        catch { return String(value); }
+      };
+
       try {
+        for (const level of levels) {
+          const original = console[level].bind(console);
+          originals.set(level, original);
+          console[level] = (...args: any[]) => {
+            consoleEntries.push({
+              level,
+              message: args.map(stringifyConsoleArg).join(' '),
+              timestamp: Date.now(),
+              source: 'evaluate_js',
+            });
+            return original(...args);
+          };
+        }
         // eslint-disable-next-line no-eval
         const result = eval(expr);
-        try { JSON.stringify(result); } catch { return { result: String(result) }; }
-        return { result };
+        const response = (() => {
+          try { JSON.stringify(result); } catch { return { result: String(result) }; }
+          return { result };
+        })();
+        return { ...response, consoleEntries };
       } catch (e) {
-        return { result: null, error: String(e) };
+        return { result: null, error: String(e), consoleEntries };
+      } finally {
+        for (const [level, original] of originals) {
+          console[level] = original;
+        }
       }
     },
     args: [expression],
   });
-  return res.result as { result: unknown; error?: string };
+  return res.result as { result: unknown; error?: string; consoleEntries?: Array<{ level: string; message: string; timestamp: number; source: string }> };
 }
 
 // --- Interaction ---
@@ -421,4 +508,229 @@ async function cmdGetCaptureSettings(
   return {
     captureResponseBodies: raw?.captureResponseBodies === true,
   };
+}
+
+// --- Element Mutation / Inspection ---
+
+async function cmdSetElementText(
+  tabId: number,
+  params: Record<string, unknown>
+): Promise<{ success: boolean; previousText?: string; text?: string; error?: string }> {
+  const selector = String(params.selector ?? '');
+  const text = String(params.text ?? '');
+  const [result] = await chrome.scripting.executeScript({
+    target: { tabId },
+    func: (sel: string, nextText: string) => {
+      const el = document.querySelector(sel) as HTMLElement | null;
+      if (!el) return { success: false, error: `Element not found: ${sel}` };
+      const previousText = el.textContent ?? '';
+      el.textContent = nextText;
+      return { success: true, previousText, text: el.textContent ?? '' };
+    },
+    args: [selector, text],
+  });
+  return result.result as { success: boolean; previousText?: string; text?: string; error?: string };
+}
+
+async function cmdSetElementHtml(
+  tabId: number,
+  params: Record<string, unknown>
+): Promise<{ success: boolean; previousHtml?: string; html?: string; sanitized?: boolean; error?: string }> {
+  const selector = String(params.selector ?? '');
+  const html = String(params.html ?? '');
+  const sanitize = params.sanitize !== false;
+  const [result] = await chrome.scripting.executeScript({
+    target: { tabId },
+    func: (sel: string, nextHtml: string, shouldSanitize: boolean) => {
+      const el = document.querySelector(sel) as HTMLElement | null;
+      if (!el) return { success: false, error: `Element not found: ${sel}` };
+      const previousHtml = el.innerHTML;
+
+      if (shouldSanitize) {
+        const template = document.createElement('template');
+        template.innerHTML = nextHtml;
+        template.content.querySelectorAll('script, iframe, object, embed, link[rel="import"]').forEach((node) => node.remove());
+        template.content.querySelectorAll<HTMLElement>('*').forEach((node) => {
+          for (const attr of Array.from(node.attributes)) {
+            const name = attr.name.toLowerCase();
+            const value = attr.value.trim().toLowerCase();
+            if (name.startsWith('on') || ((name === 'href' || name === 'src' || name === 'xlink:href') && value.startsWith('javascript:'))) {
+              node.removeAttribute(attr.name);
+            }
+          }
+        });
+        el.replaceChildren(template.content.cloneNode(true));
+      } else {
+        el.innerHTML = nextHtml;
+      }
+
+      return { success: true, previousHtml, html: el.innerHTML, sanitized: shouldSanitize };
+    },
+    args: [selector, html, sanitize],
+  });
+  return result.result as { success: boolean; previousHtml?: string; html?: string; sanitized?: boolean; error?: string };
+}
+
+async function cmdSetElementStyle(
+  tabId: number,
+  params: Record<string, unknown>
+): Promise<{ success: boolean; previousStyles?: Record<string, string>; currentStyles?: Record<string, string>; error?: string }> {
+  const selector = String(params.selector ?? '');
+  const styles = normalizeStyleMap(params.styles);
+  const [result] = await chrome.scripting.executeScript({
+    target: { tabId },
+    func: (sel: string, nextStyles: Record<string, string>) => {
+      const el = document.querySelector(sel) as HTMLElement | null;
+      if (!el) return { success: false, error: `Element not found: ${sel}` };
+      const previousStyles: Record<string, string> = {};
+      const currentStyles: Record<string, string> = {};
+      for (const [property, value] of Object.entries(nextStyles)) {
+        const cssProperty = property.replace(/[A-Z]/g, (match) => `-${match.toLowerCase()}`);
+        previousStyles[property] = el.style.getPropertyValue(cssProperty) || (el.style as unknown as Record<string, string>)[property] || '';
+        if (property.includes('-')) {
+          el.style.setProperty(property, value);
+        } else {
+          (el.style as unknown as Record<string, string>)[property] = value;
+        }
+        currentStyles[property] = el.style.getPropertyValue(cssProperty) || (el.style as unknown as Record<string, string>)[property] || '';
+      }
+      return { success: true, previousStyles, currentStyles };
+    },
+    args: [selector, styles],
+  });
+  return result.result as { success: boolean; previousStyles?: Record<string, string>; currentStyles?: Record<string, string>; error?: string };
+}
+
+async function cmdAddElementClass(
+  tabId: number,
+  params: Record<string, unknown>
+): Promise<{ success: boolean; addedClasses?: string[]; currentClasses?: string[]; error?: string }> {
+  const selector = String(params.selector ?? '');
+  const classes = normalizeClassNames(params.classes);
+  const [result] = await chrome.scripting.executeScript({
+    target: { tabId },
+    func: (sel: string, classNames: string[]) => {
+      const el = document.querySelector(sel) as HTMLElement | null;
+      if (!el) return { success: false, error: `Element not found: ${sel}` };
+      el.classList.add(...classNames);
+      return { success: true, addedClasses: classNames, currentClasses: Array.from(el.classList) };
+    },
+    args: [selector, classes],
+  });
+  return result.result as { success: boolean; addedClasses?: string[]; currentClasses?: string[]; error?: string };
+}
+
+async function cmdRemoveElementClass(
+  tabId: number,
+  params: Record<string, unknown>
+): Promise<{ success: boolean; removedClasses?: string[]; currentClasses?: string[]; error?: string }> {
+  const selector = String(params.selector ?? '');
+  const classes = normalizeClassNames(params.classes);
+  const [result] = await chrome.scripting.executeScript({
+    target: { tabId },
+    func: (sel: string, classNames: string[]) => {
+      const el = document.querySelector(sel) as HTMLElement | null;
+      if (!el) return { success: false, error: `Element not found: ${sel}` };
+      el.classList.remove(...classNames);
+      return { success: true, removedClasses: classNames, currentClasses: Array.from(el.classList) };
+    },
+    args: [selector, classes],
+  });
+  return result.result as { success: boolean; removedClasses?: string[]; currentClasses?: string[]; error?: string };
+}
+
+async function cmdGetComputedStyle(
+  tabId: number,
+  params: Record<string, unknown>
+): Promise<{ success: boolean; styles?: Record<string, string>; error?: string }> {
+  const selector = String(params.selector ?? '');
+  const properties = normalizeStyleProperties(params.properties);
+  const [result] = await chrome.scripting.executeScript({
+    target: { tabId },
+    func: (sel: string, props: string[]) => {
+      const el = document.querySelector(sel) as HTMLElement | null;
+      if (!el) return { success: false, error: `Element not found: ${sel}` };
+      const computed = window.getComputedStyle(el);
+      const styles: Record<string, string> = {};
+      for (const property of props) {
+        styles[property] = computed.getPropertyValue(property) || (computed as unknown as Record<string, string>)[property] || '';
+      }
+      return { success: true, styles };
+    },
+    args: [selector, properties],
+  });
+  return result.result as { success: boolean; styles?: Record<string, string>; error?: string };
+}
+
+async function cmdGetElementProperties(
+  tabId: number,
+  params: Record<string, unknown>
+): Promise<{ success: boolean; properties?: Record<string, unknown>; error?: string }> {
+  const selector = String(params.selector ?? '');
+  const [result] = await chrome.scripting.executeScript({
+    target: { tabId },
+    func: (sel: string) => {
+      const el = document.querySelector(sel) as HTMLElement | null;
+      if (!el) return { success: false, error: `Element not found: ${sel}` };
+      const rect = el.getBoundingClientRect();
+      const attributes = Object.fromEntries(Array.from(el.attributes).map((attr) => [attr.name, attr.value]));
+      return {
+        success: true,
+        properties: {
+          tagName: el.tagName,
+          id: el.id,
+          className: el.className,
+          attributes,
+          textContent: el.textContent ?? '',
+          innerHTML: el.innerHTML,
+          value: 'value' in el ? String((el as HTMLInputElement).value ?? '') : undefined,
+          checked: 'checked' in el ? Boolean((el as HTMLInputElement).checked) : undefined,
+          disabled: 'disabled' in el ? Boolean((el as HTMLInputElement).disabled) : undefined,
+          dimensions: { width: rect.width, height: rect.height },
+          position: { top: rect.top, left: rect.left, bottom: rect.bottom, right: rect.right },
+          pagePosition: { x: rect.left + window.scrollX, y: rect.top + window.scrollY },
+        },
+      };
+    },
+    args: [selector],
+  });
+  return result.result as { success: boolean; properties?: Record<string, unknown>; error?: string };
+}
+
+async function cmdHighlightElement(
+  tabId: number,
+  params: Record<string, unknown>
+): Promise<{ success: boolean; highlightId?: string; error?: string }> {
+  const selector = String(params.selector ?? '');
+  const color = typeof params.color === 'string' && params.color.trim() ? params.color : 'red';
+  const duration = typeof params.duration === 'number' ? Math.max(0, params.duration) : 0;
+  const [result] = await chrome.scripting.executeScript({
+    target: { tabId },
+    func: (sel: string, highlightColor: string, durationMs: number) => {
+      const el = document.querySelector(sel) as HTMLElement | null;
+      if (!el) return { success: false, error: `Element not found: ${sel}` };
+      const rect = el.getBoundingClientRect();
+      const highlightId = `claudechrome-highlight-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+      const overlay = document.createElement('div');
+      overlay.id = highlightId;
+      overlay.setAttribute('data-claudechrome-highlight', '1');
+      overlay.style.position = 'fixed';
+      overlay.style.left = `${rect.left}px`;
+      overlay.style.top = `${rect.top}px`;
+      overlay.style.width = `${rect.width}px`;
+      overlay.style.height = `${rect.height}px`;
+      overlay.style.border = `2px solid ${highlightColor}`;
+      overlay.style.background = 'transparent';
+      overlay.style.boxSizing = 'border-box';
+      overlay.style.pointerEvents = 'none';
+      overlay.style.zIndex = '2147483647';
+      document.documentElement.appendChild(overlay);
+      if (durationMs > 0) {
+        window.setTimeout(() => overlay.remove(), durationMs);
+      }
+      return { success: true, highlightId };
+    },
+    args: [selector, color, duration],
+  });
+  return result.result as { success: boolean; highlightId?: string; error?: string };
 }

@@ -125,32 +125,102 @@ global.chrome = {
       // Execute the function with the given args in-process (no real DOM)
       try {
         // Provide minimal DOM stubs
+        function makeElement(overrides = {}) {
+          const classSet = new Set(['existing']);
+          const styleValues = new Map();
+          const style = new Proxy({
+            setProperty: (name, value) => styleValues.set(name, String(value)),
+            getPropertyValue: (name) => styleValues.get(name) || '',
+          }, {
+            get(target, prop) {
+              if (prop in target) return target[prop];
+              return styleValues.get(String(prop)) || '';
+            },
+            set(_target, prop, value) {
+              styleValues.set(String(prop), String(value));
+              return true;
+            },
+          });
+          const el = {
+            tagName: 'DIV',
+            id: 'main',
+            className: 'existing',
+            innerText: 'Example Domain',
+            textContent: 'Example Domain',
+            innerHTML: '<span>Example Domain</span>',
+            value: '',
+            checked: false,
+            disabled: false,
+            style,
+            attributes: [
+              { name: 'id', value: 'main' },
+              { name: 'class', value: 'existing' },
+            ],
+            classList: {
+              add: (...names) => names.forEach((name) => classSet.add(name)),
+              remove: (...names) => names.forEach((name) => classSet.delete(name)),
+              [Symbol.iterator]: function* () { yield* classSet; },
+            },
+            getBoundingClientRect: () => ({
+              x: 0, y: 0, width: 800, height: 40,
+              top: 0, left: 0, bottom: 40, right: 800,
+              toJSON: () => ({ x:0,y:0,width:800,height:40 }),
+            }),
+            click() {}, focus() {}, dispatchEvent() {}, scrollIntoView() {},
+            replaceChildren(fragment) { this.innerHTML = fragment?.innerHTML || ''; },
+            remove() { this.removed = true; },
+            setAttribute(name, value) { this[name] = value; },
+          };
+          return Object.assign(el, overrides);
+        }
+
+        const fakeElement = makeElement();
         const fakeDoc = {
           title: 'Example Domain',
           location: { href: 'https://example.com' },
           body: { innerText: 'Example Domain\nThis domain is for use in illustrative examples.' },
-          documentElement: { outerHTML: '<html><body>Example</body></html>' },
-          querySelectorAll: (sel) => [{
-            tagName: 'H1', id: '', innerText: 'Example Domain',
-            getBoundingClientRect: () => ({ toJSON: () => ({ x:0,y:0,width:800,height:40 }) }),
-          }],
-          querySelector: (sel) => ({
-            tagName: 'INPUT', id: '', innerText: '',
-            getBoundingClientRect: () => ({ toJSON: () => ({ x:0,y:0,width:200,height:30 }) }),
-            click() {}, focus() {},
-            value: '',
-            dispatchEvent() {},
-            scrollIntoView() {},
+          documentElement: {
+            outerHTML: '<html><body>Example</body></html>',
+            appendChild(node) { this.lastChild = node; return node; },
+          },
+          querySelectorAll: (sel) => [fakeElement],
+          querySelector: (sel) => fakeElement,
+          elementFromPoint: (x, y) => makeElement({
+            getBoundingClientRect: () => ({ x, y, width: 10, height: 10, top: y, left: x, bottom: y + 10, right: x + 10, toJSON: () => ({ x,y,width:10,height:10 }) }),
           }),
-          elementFromPoint: (x, y) => ({
-            click() {},
-            getBoundingClientRect: () => ({ toJSON: () => ({ x,y,width:10,height:10 }) }),
-          }),
+          createElement: (tagName) => {
+            const element = makeElement({ tagName: String(tagName).toUpperCase(), content: null });
+            if (tagName === 'template') {
+              element.content = {
+                innerHTML: '',
+                cloneNode() { return this; },
+                querySelectorAll() { return []; },
+              };
+              Object.defineProperty(element, 'innerHTML', {
+                get() { return this.content.innerHTML; },
+                set(value) { this.content.innerHTML = String(value); },
+              });
+            }
+            return element;
+          },
           scripts: [],
         };
         const fakeWindow = {
           location: { href: 'https://example.com' },
           scrollTo() {},
+          scrollX: 0,
+          scrollY: 0,
+          setTimeout: (fn) => { fn(); return 1; },
+          getComputedStyle: (el) => new Proxy({
+            getPropertyValue: (name) => el.style.getPropertyValue(name) || ({ color: 'rgb(0, 0, 0)', display: 'block' }[name] || ''),
+          }, {
+            get(target, prop) {
+              if (prop in target) return target[prop];
+              if (prop === 'fontSize') return '16px';
+              if (prop === 'backgroundColor') return 'rgba(0, 0, 0, 0)';
+              return el.style[prop] || '';
+            },
+          }),
         };
         const fakeLS = { getItem: (k) => k === 'theme' ? 'dark' : null };
         const fakeLS2 = { getItem: (k) => k === 'draft' ? 'hello' : null };
@@ -161,11 +231,15 @@ global.chrome = {
         const origLocation = global.location;
         const origLS       = global.localStorage;
         const origSS       = global.sessionStorage;
+        const origGetComputedStyle = global.getComputedStyle;
+        const origEvent = global.Event;
         global.document      = fakeDoc;
         global.window        = fakeWindow;
         global.location      = fakeDoc.location;
         global.localStorage  = fakeLS;
         global.sessionStorage = fakeLS2;
+        global.getComputedStyle = fakeWindow.getComputedStyle;
+        global.Event = function Event() {};
         // eval is needed by evaluate_js
         // Patch eval so (0, eval)(expr) works in Node.js CJS context
         global.eval = new Proxy(global.eval, {
@@ -184,6 +258,8 @@ global.chrome = {
           global.location      = origLocation;
           global.localStorage  = origLS;
           global.sessionStorage = origSS;
+          global.getComputedStyle = origGetComputedStyle;
+          global.Event = origEvent;
         }
         return Promise.resolve([{ result }]);
       } catch (e) {
@@ -282,8 +358,9 @@ async function runTests() {
 
   // evaluate_js
   {
-    const r = await assertOk(dispatchCommand('evaluate_js', 42, { expression: '1 + 1' }), 'evaluate_js');
+    const r = await assertOk(dispatchCommand('evaluate_js', 42, { expression: 'console.log("from evaluate", { ok: true }), 1 + 1' }), 'evaluate_js');
     assert(r?.result === 2, `evaluate_js: 1+1=${r?.result}`);
+    assert(r?.consoleEntries?.some((entry) => entry.level === 'log' && entry.message.includes('from evaluate')), 'evaluate_js captures console entries');
   }
 
   // evaluate_js error case
@@ -352,6 +429,60 @@ async function runTests() {
   {
     const r = await assertOk(dispatchCommand('get_capture_settings', 42, {}), 'get_capture_settings');
     assert(r?.captureResponseBodies === true, 'get_capture_settings returns stored body-capture flag');
+  }
+
+  // element mutation and inspection commands
+  {
+    const r = await assertOk(dispatchCommand('set_element_text', 42, { selector: '#main', text: 'New Title' }), 'set_element_text');
+    assert(r?.success === true, 'set_element_text returns success=true');
+    assert(r?.previousText === 'Example Domain', 'set_element_text returns previous text');
+    assert(r?.text === 'New Title', 'set_element_text returns new text');
+  }
+
+  {
+    const r = await assertOk(dispatchCommand('set_element_html', 42, { selector: '#main', html: '<p>New content</p>' }), 'set_element_html');
+    assert(r?.success === true, 'set_element_html returns success=true');
+    assert(typeof r?.previousHtml === 'string', 'set_element_html returns previous HTML');
+    assert(r?.sanitized === true, 'set_element_html sanitizes by default');
+  }
+
+  {
+    const r = await assertOk(dispatchCommand('set_element_style', 42, { selector: '#main', styles: { color: 'red', fontSize: '20px' } }), 'set_element_style');
+    assert(r?.success === true, 'set_element_style returns success=true');
+    assert(r?.currentStyles?.color === 'red', 'set_element_style applies CSS property');
+    assert(r?.currentStyles?.fontSize === '20px', 'set_element_style applies DOM style property');
+  }
+
+  {
+    const r = await assertOk(dispatchCommand('add_element_class', 42, { selector: '#main', classes: ['active', 'highlight'] }), 'add_element_class');
+    assert(r?.success === true, 'add_element_class returns success=true');
+    assert(r?.currentClasses?.includes('active'), 'add_element_class applies class list');
+  }
+
+  {
+    const r = await assertOk(dispatchCommand('remove_element_class', 42, { selector: '#main', classes: 'existing' }), 'remove_element_class');
+    assert(r?.success === true, 'remove_element_class returns success=true');
+    assert(!r?.currentClasses?.includes('existing'), 'remove_element_class removes class');
+  }
+
+  {
+    const r = await assertOk(dispatchCommand('get_computed_style', 42, { selector: '#main', properties: ['color', 'fontSize'] }), 'get_computed_style');
+    assert(r?.success === true, 'get_computed_style returns success=true');
+    assert(typeof r?.styles?.color === 'string', 'get_computed_style returns requested color');
+    assert(typeof r?.styles?.fontSize === 'string', 'get_computed_style returns requested fontSize');
+  }
+
+  {
+    const r = await assertOk(dispatchCommand('get_element_properties', 42, { selector: '#main' }), 'get_element_properties');
+    assert(r?.success === true, 'get_element_properties returns success=true');
+    assert(r?.properties?.tagName === 'DIV', 'get_element_properties returns tagName');
+    assert(r?.properties?.attributes?.id === 'main', 'get_element_properties returns attributes');
+  }
+
+  {
+    const r = await assertOk(dispatchCommand('highlight_element', 42, { selector: '#main', color: 'blue', duration: 1 }), 'highlight_element');
+    assert(r?.success === true, 'highlight_element returns success=true');
+    assert(typeof r?.highlightId === 'string' && r.highlightId.startsWith('claudechrome-highlight-'), 'highlight_element returns highlightId');
   }
 
   // unknown command

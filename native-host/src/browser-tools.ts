@@ -28,6 +28,14 @@ export const IMPLEMENTED_SESSION_TOOLS = [
   'browser__get_cookies',
   'browser__get_storage',
   'browser__get_selection',
+  'browser__set_element_text',
+  'browser__set_element_html',
+  'browser__set_element_style',
+  'browser__add_element_class',
+  'browser__remove_element_class',
+  'browser__get_computed_style',
+  'browser__get_element_properties',
+  'browser__highlight_element',
 ] as const;
 
 export type ImplementedSessionTool = (typeof IMPLEMENTED_SESSION_TOOLS)[number];
