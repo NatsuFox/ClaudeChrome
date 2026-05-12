@@ -1,7 +1,9 @@
 node_modules/
+node_modules
 dist/
 native-host/dist/
 native-host/node_modules/
+native-host/node_modules
 .release/
 .playwright-mcp/
 docs/
