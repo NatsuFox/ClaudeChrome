@@ -10,6 +10,7 @@ import * as fs from 'node:fs';
 import * as path from 'node:path';
 import * as os from 'node:os';
 import * as net from 'node:net';
+import { randomUUID } from 'node:crypto';
 
 const WS_HOST = process.env.CLAUDECHROME_WS_HOST || '127.0.0.1';
 const WS_PORT = parseInt(process.env.CLAUDECHROME_WS_PORT || '0', 10);
@@ -30,6 +31,7 @@ const sessionManager = new SessionManager({
   mcpBridgeScript: MCP_BRIDGE_SCRIPT,
   storeSocketPath: STORE_SOCKET_PATH,
   broadcast,
+  dispatchBrowserCommand,
   logEvent: appendConnectionLog,
 });
 
@@ -174,7 +176,7 @@ function dispatchBrowserCommand(
   timeoutMs = 20_000
 ): Promise<unknown> {
   return new Promise((resolve, reject) => {
-    const id = crypto.randomUUID();
+    const id = randomUUID();
     const pending: PendingCommand = {
       sessionId,
       tabId,
@@ -191,9 +193,9 @@ function dispatchBrowserCommand(
     pendingCommands.set(id, pending);
 
     if (clients.size > 0) {
-      broadcast({ type: 'browser_command', id, tabId, command, params });
-      pending.delivered = true;
-      armPendingCommandTimeout(id, pending);
+      for (const client of clients) {
+        sendPendingBrowserCommand(client, id, pending);
+      }
       return;
     }
 
@@ -250,6 +252,14 @@ function trackMessageRate(category: string, tabId?: number): void {
   counter.byCategory[category] = (counter.byCategory[category] || 0) + 1;
 }
 
+function recordTabContextEvent(tab: StoredTabSummary, status: string): void {
+  appendConnectionLog('tab_context_event', { tabId: tab.tabId, status, url: tab.url || null });
+}
+
+function recordPageInfoEvent(info: StoredPageInfo): void {
+  appendConnectionLog('page_info_event', { tabId: info.tabId, title: info.title, url: info.url });
+}
+
 function handleContextUpdate(msg: { category: string; payload: unknown }): void {
   // Log message size and track rate
   const payloadSize = JSON.stringify(msg.payload).length;
@@ -300,6 +310,7 @@ function handleContextUpdate(msg: { category: string; payload: unknown }): void 
     case 'page_info': {
       const info = msg.payload as StoredPageInfo;
       contextStore.setPageInfo(info);
+      recordPageInfoEvent(info);
       break;
     }
     case 'tab_state': {
@@ -311,6 +322,7 @@ function handleContextUpdate(msg: { category: string; payload: unknown }): void 
       contextStore.upsertTab(tab);
       // Session snapshots drive panel rerenders, so only emit them when tab metadata changes.
       sessionManager.noteTabUpdated(tab.tabId);
+      recordTabContextEvent(tab, previousTab?.url && tab.url && previousTab.url !== tab.url ? 'navigated' : 'updated');
       break;
     }
     default:
@@ -338,6 +350,7 @@ function handleClientMessage(msg: any, client?: WebSocket): void {
       sessionManager.createSession({
         sessionId: msg.sessionId,
         agentType: msg.agentType as AgentType,
+        mode: msg.mode,
         title: msg.title,
         bindingTabId: msg.binding?.tabId,
         cols: msg.cols,
@@ -364,9 +377,19 @@ function handleClientMessage(msg: any, client?: WebSocket): void {
         resolveSessionCwd(msg.sessionId, startupOptions?.workingDirectory),
         msg.agentType as AgentType | undefined,
         startupOptions,
+        msg.mode,
       );
       break;
     }
+    case 'session_set_mode':
+      sessionManager.setSessionMode(msg.sessionId, msg.mode);
+      break;
+    case 'agent_chat_request':
+      sessionManager.sendChatMessage(msg.sessionId, msg.requestId, String(msg.input ?? ''));
+      break;
+    case 'agent_chat_cancel':
+      sessionManager.cancelChatMessage(msg.sessionId, typeof msg.requestId === 'string' ? msg.requestId : undefined);
+      break;
     case 'session_close':
       failPendingCommandsForSession(msg.sessionId, 'The ClaudeChrome session was closed before the browser command completed.');
       sessionManager.closeSession(msg.sessionId);
@@ -394,7 +417,7 @@ function handleClientMessage(msg: any, client?: WebSocket): void {
       const result = readPanelStateFile();
       sendClientMessage(client, {
         type: 'panel_state_file_load_result',
-        id: typeof msg.id === 'string' ? msg.id : crypto.randomUUID(),
+        id: typeof msg.id === 'string' ? msg.id : randomUUID(),
         found: result.found,
         state: result.state,
         path: result.path,
@@ -410,7 +433,7 @@ function handleClientMessage(msg: any, client?: WebSocket): void {
       const validation = validateConfiguredWorkingDirectory(pathValue);
       sendClientMessage(client, {
         type: 'working_directory_validate_result',
-        id: typeof msg.id === 'string' ? msg.id : crypto.randomUUID(),
+        id: typeof msg.id === 'string' ? msg.id : randomUUID(),
         code: validation.code,
         normalizedPath: validation.normalizedPath || undefined,
         message: validation.message || undefined,

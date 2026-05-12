@@ -12,6 +12,9 @@ export interface AgentStartupOptions {
   workingDirectory: string;
   systemPromptMode: SystemPromptMode;
   customSystemPrompt: string;
+  apiBaseUrl?: string;
+  apiKey?: string;
+  model?: string;
 }
 
 export interface BoundTabContext {
@@ -221,6 +224,9 @@ export function defaultStartupOptionsForAgent(agentType: AgentType): AgentStartu
     workingDirectory: '',
     systemPromptMode: 'default',
     customSystemPrompt: '',
+    apiBaseUrl: '',
+    apiKey: '',
+    model: '',
   };
 }
 
@@ -233,6 +239,9 @@ export function normalizeStartupOptions(agentType: AgentType, value: Partial<Age
       ? value.systemPromptMode
       : defaults.systemPromptMode,
     customSystemPrompt: typeof value?.customSystemPrompt === 'string' ? value.customSystemPrompt : defaults.customSystemPrompt,
+    apiBaseUrl: typeof value?.apiBaseUrl === 'string' ? value.apiBaseUrl : defaults.apiBaseUrl,
+    apiKey: typeof value?.apiKey === 'string' ? value.apiKey : defaults.apiKey,
+    model: typeof value?.model === 'string' ? value.model : defaults.model,
   };
 }
 

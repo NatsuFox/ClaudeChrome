@@ -9,9 +9,11 @@ import {
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { ContextStore } from './context-store.js';
+import { CodexChatRuntime, type CodexChatRuntimeOptions } from './codex-chat-runtime.js';
 import { PtyBridge } from './pty-bridge.js';
 
 type ProcessState = 'starting' | 'running' | 'error' | 'exited';
+export type SessionMode = 'terminal' | 'chat';
 
 type AgentSession = {
   sessionId: string;
@@ -23,7 +25,9 @@ type AgentSession = {
   launchStartedAt: number;
   processState: ProcessState;
   statusMessage?: string;
+  mode: SessionMode;
   pty: PtyBridge | null;
+  chatRuntime: CodexChatRuntime | null;
   outputBuffer: string;
   recentOutput: string;
   transcriptPath: string;
@@ -37,6 +41,7 @@ type AgentSession = {
 export interface SessionSnapshot {
   sessionId: string;
   agentType: AgentType;
+  mode: SessionMode;
   title: string;
   binding: {
     kind: 'tab';
@@ -52,6 +57,7 @@ export interface SessionSnapshot {
 export interface CreateSessionOptions {
   sessionId: string;
   agentType: AgentType;
+  mode?: SessionMode;
   title: string;
   bindingTabId: number;
   cols: number;
@@ -66,6 +72,14 @@ export interface SessionManagerOptions {
   mcpBridgeScript: string;
   storeSocketPath: string;
   broadcast: (message: object) => void;
+  dispatchBrowserCommand: (
+    sessionId: string,
+    tabId: number,
+    command: string,
+    params: Record<string, unknown>,
+    timeoutMs?: number,
+  ) => Promise<unknown>;
+  createCodexChatRuntime?: (options: CodexChatRuntimeOptions) => CodexChatRuntime;
   logEvent?: (event: string, details: Record<string, unknown>) => void;
 }
 
@@ -117,6 +131,16 @@ function summarizeRecentOutput(value: string): string {
   return cleaned.length > OUTPUT_PREVIEW_CHARS
     ? `...${cleaned.slice(-OUTPUT_PREVIEW_CHARS)}`
     : cleaned;
+}
+
+function startupOptionsEqual(left: AgentStartupOptions, right: AgentStartupOptions): boolean {
+  return left.launchArgs === right.launchArgs
+    && left.workingDirectory === right.workingDirectory
+    && left.systemPromptMode === right.systemPromptMode
+    && left.customSystemPrompt === right.customSystemPrompt
+    && (left.apiBaseUrl ?? '') === (right.apiBaseUrl ?? '')
+    && (left.apiKey ?? '') === (right.apiKey ?? '')
+    && (left.model ?? '') === (right.model ?? '');
 }
 
 function classifyLocalAgentStartupFailure(session: AgentSession, code: number): AgentStartupFailure | null {
@@ -186,6 +210,13 @@ function makeSessionTranscriptPath(runtimeDir: string, sessionId: string): strin
   return path.join(sessionDir, 'terminal-history.ansi');
 }
 
+function normalizeSessionMode(agentType: AgentType, mode: SessionMode | undefined): SessionMode {
+  if (agentType === 'codex' || agentType === 'claude') {
+    return mode === 'terminal' ? 'terminal' : 'chat';
+  }
+  return 'terminal';
+}
+
 function pickLaunchEnvironment(env: NodeJS.ProcessEnv): Record<string, string> {
   const snapshot: Record<string, string> = {};
   for (const key of LAUNCH_FAILURE_ENV_KEYS) {
@@ -230,6 +261,8 @@ export class SessionManager {
   private storeSocketPath: string;
   private storePort = 0;
   private readonly broadcast: (message: object) => void;
+  private readonly dispatchBrowserCommand: SessionManagerOptions['dispatchBrowserCommand'];
+  private readonly createCodexChatRuntime: (options: CodexChatRuntimeOptions) => CodexChatRuntime;
   private readonly logEvent?: (event: string, details: Record<string, unknown>) => void;
   private readonly sessions = new Map<string, AgentSession>();
 
@@ -239,6 +272,8 @@ export class SessionManager {
     this.mcpBridgeScript = options.mcpBridgeScript;
     this.storeSocketPath = options.storeSocketPath;
     this.broadcast = options.broadcast;
+    this.dispatchBrowserCommand = options.dispatchBrowserCommand;
+    this.createCodexChatRuntime = options.createCodexChatRuntime ?? ((runtimeOptions) => new CodexChatRuntime(runtimeOptions));
     this.logEvent = options.logEvent;
   }
 
@@ -269,15 +304,20 @@ export class SessionManager {
 
   createSession(options: CreateSessionOptions): SessionSnapshot {
     const normalizedStartupOptions = normalizeStartupOptions(options.agentType, options.startupOptions);
+    const mode = normalizeSessionMode(options.agentType, options.mode);
     const existing = this.sessions.get(options.sessionId);
     if (existing) {
       existing.agentType = options.agentType;
+      existing.mode = mode;
       existing.title = options.title;
       existing.bindingTabId = options.bindingTabId;
       existing.cwd = options.cwd;
       existing.startupOptions = normalizedStartupOptions;
       existing.transcriptPath = existing.transcriptPath || makeSessionTranscriptPath(this.runtimeDir, options.sessionId);
       existing.lastActiveAt = Date.now();
+      if (existing.mode === 'chat' && !existing.chatRuntime) {
+        existing.chatRuntime = this.createChatRuntime(existing);
+      }
       this.broadcastSnapshot();
       return this.toSnapshot(existing);
     }
@@ -293,7 +333,9 @@ export class SessionManager {
       launchStartedAt: now,
       processState: 'starting',
       statusMessage: `正在启动 ${displayAgentName(options.agentType)}…`,
+      mode,
       pty: null,
+      chatRuntime: null,
       outputBuffer: '',
       recentOutput: '',
       transcriptPath: makeSessionTranscriptPath(this.runtimeDir, options.sessionId),
@@ -335,24 +377,69 @@ export class SessionManager {
     this.broadcastSnapshot();
   }
 
-  restartSession(sessionId: string, cwd?: string, agentType?: AgentType, startupOptions?: AgentStartupOptions): void {
+  setSessionMode(sessionId: string, mode: SessionMode): void {
     const session = this.sessions.get(sessionId);
     if (!session) return;
+    const nextMode = normalizeSessionMode(session.agentType, mode);
+    if (session.mode === nextMode) {
+      this.broadcastSnapshot();
+      return;
+    }
+    session.mode = nextMode;
+    session.lastActiveAt = Date.now();
+
+    if (nextMode === 'chat' && (session.agentType === 'codex' || session.agentType === 'claude')) {
+      session.chatRuntime = session.chatRuntime ?? this.createChatRuntime(session);
+      session.statusMessage = session.pty
+        ? `${displayAgentName(session.agentType)} 本地 CLI 仍在后台运行；已切换到内置聊天视图`
+        : `${displayAgentName(session.agentType)} 内置聊天已启动`;
+    } else if (session.pty) {
+      session.statusMessage = `${displayAgentName(session.agentType)} 本地 CLI 已恢复显示`;
+    }
+
+    this.broadcastSnapshot();
+  }
+
+  restartSession(sessionId: string, cwd?: string, agentType?: AgentType, startupOptions?: AgentStartupOptions, mode?: SessionMode): void {
+    const session = this.sessions.get(sessionId);
+    if (!session) return;
+    const previousAgentType = session.agentType;
+    const previousMode = session.mode;
+    const previousCwd = session.cwd;
+    const previousStartupOptions = session.startupOptions;
+    const hasPty = Boolean(session.pty);
     if (agentType) {
       session.agentType = agentType;
     }
+    const nextMode = normalizeSessionMode(session.agentType, mode ?? session.mode);
     if (cwd) {
       session.cwd = cwd;
     }
     if (startupOptions !== undefined) {
       session.startupOptions = normalizeStartupOptions(session.agentType, startupOptions);
     }
+    const onlyModeChanged = previousAgentType === session.agentType
+      && previousMode !== nextMode
+      && previousCwd === session.cwd
+      && startupOptionsEqual(previousStartupOptions, session.startupOptions);
+    const canPreserveRunningLocalCliForViewSwitch = hasPty
+      && previousAgentType === session.agentType
+      && previousMode !== nextMode
+      && previousCwd === session.cwd;
+    if (onlyModeChanged || canPreserveRunningLocalCliForViewSwitch) {
+      session.startupOptions = previousStartupOptions;
+      this.setSessionMode(sessionId, nextMode);
+      return;
+    }
+    session.mode = nextMode;
     session.lastActiveAt = Date.now();
     session.statusMessage = `正在重启 ${displayAgentName(session.agentType)}…`;
 
     const previous = session.pty;
     session.pty = null;
     previous?.kill();
+    session.chatRuntime?.dispose();
+    session.chatRuntime = null;
     this.flushOutput(session);
     this.launchSession(session);
     this.broadcastSnapshot();
@@ -370,6 +457,8 @@ export class SessionManager {
     const previous = session.pty;
     session.pty = null;
     previous?.kill();
+    session.chatRuntime?.dispose();
+    session.chatRuntime = null;
     this.broadcast({ type: 'session_closed', sessionId });
     this.broadcastSnapshot();
   }
@@ -391,6 +480,8 @@ export class SessionManager {
       const previous = session.pty;
       session.pty = null;
       previous?.kill();
+      session.chatRuntime?.dispose();
+      session.chatRuntime = null;
       this.sessions.delete(sessionId);
       this.broadcast({ type: 'session_closed', sessionId });
     }
@@ -413,7 +504,35 @@ export class SessionManager {
   replayAllOutputToClient(send: (message: object) => void): void {
     for (const session of this.sessions.values()) {
       this.replayOutputToClient(session, send);
+      session.chatRuntime?.replay(send);
     }
+  }
+
+  sendChatMessage(sessionId: string, requestId: string, input: string): void {
+    const session = this.sessions.get(sessionId);
+    if (!session || session.mode !== 'chat' || (session.agentType !== 'codex' && session.agentType !== 'claude')) {
+      const agentName = session?.agentType ? displayAgentName(session.agentType) : 'Agent';
+      this.broadcast({
+        type: 'agent_chat_update',
+        sessionId,
+        message: {
+          id: requestId,
+          role: 'assistant',
+          content: '',
+          createdAt: Date.now(),
+          status: 'error',
+          error: `No built-in ${agentName} chat session is active for session: ${sessionId}`,
+        },
+      });
+      return;
+    }
+    session.lastActiveAt = Date.now();
+    session.chatRuntime = session.chatRuntime ?? this.createChatRuntime(session);
+    session.chatRuntime.handleRequest(requestId, input);
+  }
+
+  cancelChatMessage(sessionId: string, requestId?: string): void {
+    this.sessions.get(sessionId)?.chatRuntime?.cancel(requestId);
   }
 
   shutdown(): void {
@@ -430,6 +549,7 @@ export class SessionManager {
       ts: new Date().toISOString(),
       sessionId: session.sessionId,
       agentType: session.agentType,
+      mode: session.mode,
       title: session.title,
       bindingTabId: session.bindingTabId,
       configuredWorkingDirectory: session.startupOptions.workingDirectory.trim(),
@@ -466,7 +586,33 @@ export class SessionManager {
     return artifactPath;
   }
 
+  private createChatRuntime(session: AgentSession): CodexChatRuntime {
+    return this.createCodexChatRuntime({
+      sessionId: session.sessionId,
+      runtimeDir: this.runtimeDir,
+      agentType: session.agentType,
+      contextStore: this.contextStore,
+      getBindingTabId: () => this.getBindingTabId(session.sessionId),
+      getWorkingDirectory: () => session.cwd,
+      getStartupOptions: () => session.startupOptions,
+      dispatchBrowserCommand: (sessionId, tabId, command, params, timeoutMs) => {
+        return this.dispatchBrowserCommand(sessionId, tabId, command, params, timeoutMs);
+      },
+      broadcast: this.broadcast,
+      logEvent: this.logEvent,
+    });
+  }
+
   private launchSession(session: AgentSession): void {
+    if (session.mode === 'chat' && (session.agentType === 'codex' || session.agentType === 'claude')) {
+      session.pty = null;
+      session.chatRuntime = this.createChatRuntime(session);
+      session.processState = 'running';
+      session.statusMessage = `${displayAgentName(session.agentType)} 内置聊天已启动`;
+      this.broadcastSnapshot();
+      return;
+    }
+
     const bridge = new PtyBridge();
     session.pty = bridge;
     session.processState = 'starting';
@@ -681,6 +827,7 @@ export class SessionManager {
     return {
       sessionId: session.sessionId,
       agentType: session.agentType,
+      mode: session.mode,
       title: session.title,
       binding: {
         kind: 'tab',

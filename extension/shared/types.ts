@@ -13,6 +13,9 @@ export interface AgentStartupOptions {
   workingDirectory: string;
   systemPromptMode: SystemPromptMode;
   customSystemPrompt: string;
+  apiBaseUrl?: string;
+  apiKey?: string;
+  model?: string;
 }
 
 export interface AgentLaunchConfig {
@@ -46,6 +49,7 @@ export interface SessionBinding {
 export interface SessionSnapshot {
   sessionId: string;
   agentType: AgentType;
+  mode?: SessionMode;
   title: string;
   binding: SessionBinding;
   boundTab: TabSummary | null;
@@ -64,6 +68,54 @@ export interface SessionOutputMessage {
   reset?: boolean;
 }
 
+export type SessionMode = 'terminal' | 'chat';
+
+export type AgentChatMessageRole = 'user' | 'assistant' | 'system';
+export type AgentChatMessageStatus = 'pending' | 'streaming' | 'completed' | 'error';
+export type AgentChatToolStatus = 'pending' | 'running' | 'completed' | 'error';
+
+export interface AgentChatToolTrace {
+  id: string;
+  kind?: 'browser_tool' | 'web_search' | 'function' | 'mcp_tool';
+  name: string;
+  status: AgentChatToolStatus;
+  input?: unknown;
+  outputPreview?: string;
+  error?: string;
+}
+
+export interface AgentChatMessage {
+  id: string;
+  role: AgentChatMessageRole;
+  content: string;
+  createdAt: number;
+  status: AgentChatMessageStatus;
+  reasoning?: string;
+  error?: string;
+  tools?: AgentChatToolTrace[];
+}
+
+export interface AgentChatRequestMessage {
+  type: 'agent_chat_request';
+  sessionId: string;
+  requestId: string;
+  input: string;
+}
+
+export interface AgentChatCancelMessage {
+  type: 'agent_chat_cancel';
+  sessionId: string;
+  requestId?: string;
+}
+
+export interface AgentChatUpdateMessage {
+  type: 'agent_chat_update';
+  sessionId: string;
+  message: AgentChatMessage;
+  replay?: boolean;
+  reset?: boolean;
+}
+
 // PTY input from extension → native host
 export interface SessionInputMessage {
   type: 'session_input';
@@ -75,6 +127,7 @@ export interface SessionCreateMessage {
   type: 'session_create';
   sessionId: string;
   agentType: AgentType;
+  mode?: SessionMode;
   title: string;
   binding: SessionBinding;
   cols: number;
@@ -87,8 +140,15 @@ export interface SessionRestartMessage {
   type: 'session_restart';
   sessionId: string;
   agentType?: AgentType;
+  mode?: SessionMode;
   launchArgs?: string;
   startupOptions?: AgentStartupOptions;
+}
+
+export interface SessionSetModeMessage {
+  type: 'session_set_mode';
+  sessionId: string;
+  mode: SessionMode;
 }
 
 export interface SessionCloseMessage {
@@ -319,6 +379,9 @@ export interface BrowserCommandResultMessage {
 
 export type ExtensionMessage =
   | ActivateTabMessage
+  | AgentChatCancelMessage
+  | AgentChatRequestMessage
+  | AgentChatUpdateMessage
   | ActivateTabResultMessage
   | BrowserCommandMessage
   | BrowserCommandResultMessage
