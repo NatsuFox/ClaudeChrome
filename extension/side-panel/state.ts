@@ -3,6 +3,9 @@ import { DEFAULT_PANEL_LANGUAGE, formatPanelMessage, getDefaultPanelLocale } fro
 
 export type PanelTheme = 'dark' | 'light';
 export type PanelLanguage = 'zh' | 'en';
+export type AgentViewMode = 'chat' | 'terminal';
+export type ChatAgentType = 'claude' | 'codex';
+export type PanelPageId = 'workspace' | 'settings' | 'plugins';
 
 export interface WorkspaceTab {
   workspaceId: string;
@@ -20,6 +23,7 @@ export interface PaneLayout {
   title: string;
   sizeRatio: number;
   agentType: AgentType;
+  agentViewMode: AgentViewMode;
   bindingTabId: number | null;
   launchOverrides: AgentLaunchConfig;
 }
@@ -29,6 +33,9 @@ export interface PersistedPanelState {
   workspaces: WorkspaceTab[];
   panes: PaneLayout[];
   launchDefaults: AgentLaunchConfig;
+  activePageId: PanelPageId;
+  claudeDefaultViewMode: AgentViewMode;
+  codexDefaultViewMode: AgentViewMode;
   shellWorkingDirectory: string;
   updatedAt: number;
   theme: PanelTheme;
@@ -40,7 +47,7 @@ export interface PersistedPanelState {
 }
 
 const ACCENT_COLORS = ['#7aa2f7', '#9ece6a', '#e0af68', '#f7768e', '#7dcfff', '#bb9af7'];
-const DEFAULT_RAIL_WIDTH = 152;
+const DEFAULT_RAIL_WIDTH = 196;
 export const DEFAULT_CODEX_LAUNCH_ARGS = '-a never -s workspace-write';
 
 const defaultPanelText = getDefaultPanelLocale();
@@ -51,6 +58,9 @@ export function createStartupOptions(initialLaunchArgs = ''): AgentStartupOption
     workingDirectory: '',
     systemPromptMode: 'default',
     customSystemPrompt: '',
+    apiBaseUrl: '',
+    apiKey: '',
+    model: '',
   };
 }
 
@@ -74,6 +84,9 @@ export function cloneStartupOptions(options: AgentStartupOptions): AgentStartupO
     workingDirectory: options.workingDirectory,
     systemPromptMode: options.systemPromptMode,
     customSystemPrompt: options.customSystemPrompt,
+    apiBaseUrl: options.apiBaseUrl ?? '',
+    apiKey: options.apiKey ?? '',
+    model: options.model ?? '',
   };
 }
 
@@ -89,7 +102,10 @@ export function hasExplicitStartupOptions(options: AgentStartupOptions): boolean
     options.launchArgs.trim()
     || options.workingDirectory.trim()
     || options.systemPromptMode !== 'default'
-    || options.customSystemPrompt.trim(),
+    || options.customSystemPrompt.trim()
+    || options.apiBaseUrl?.trim()
+    || options.apiKey?.trim()
+    || options.model?.trim(),
   );
 }
 
@@ -97,7 +113,10 @@ export function startupOptionsEqual(left: AgentStartupOptions, right: AgentStart
   return left.launchArgs.trim() === right.launchArgs.trim()
     && left.workingDirectory.trim() === right.workingDirectory.trim()
     && left.systemPromptMode === right.systemPromptMode
-    && left.customSystemPrompt.trim() === right.customSystemPrompt.trim();
+    && left.customSystemPrompt.trim() === right.customSystemPrompt.trim()
+    && (left.apiBaseUrl ?? '').trim() === (right.apiBaseUrl ?? '').trim()
+    && (left.apiKey ?? '').trim() === (right.apiKey ?? '').trim()
+    && (left.model ?? '').trim() === (right.model ?? '').trim();
 }
 
 export function clearLaunchConfigAgent(config: AgentLaunchConfig, agentType: LaunchConfigAgentType): AgentLaunchConfig {
@@ -187,9 +206,35 @@ export function createPane(workspaceId: string, agentType: AgentType, index: num
     title: paneTitle(agentType, index),
     sizeRatio: 1,
     agentType,
+    agentViewMode: defaultAgentViewMode(agentType),
     bindingTabId: null,
     launchOverrides: createOverrideLaunchConfig(),
   };
+}
+
+export function defaultAgentViewMode(agentType: AgentType): AgentViewMode {
+  return agentType === 'claude' || agentType === 'codex' ? 'chat' : 'terminal';
+}
+
+export function defaultAgentViewModeForState(state: Pick<PersistedPanelState, 'claudeDefaultViewMode' | 'codexDefaultViewMode'>, agentType: AgentType): AgentViewMode {
+  if (agentType === 'claude') {
+    return normalizeAgentViewMode('claude', state.claudeDefaultViewMode);
+  }
+  return agentType === 'codex' ? normalizeAgentViewMode('codex', state.codexDefaultViewMode) : 'terminal';
+}
+
+export function normalizeAgentViewMode(agentType: AgentType, value: unknown): AgentViewMode {
+  if (agentType !== 'claude' && agentType !== 'codex') {
+    return 'terminal';
+  }
+  return value === 'terminal' ? 'terminal' : 'chat';
+}
+
+export function normalizePanelPageId(value: unknown): PanelPageId {
+  if (value === 'settings' || value === 'plugins') {
+    return value;
+  }
+  return 'workspace';
 }
 
 export function createDefaultState(wsPort: string): PersistedPanelState {
@@ -201,6 +246,9 @@ export function createDefaultState(wsPort: string): PersistedPanelState {
     workspaces: [workspace],
     panes: [pane],
     launchDefaults: createDefaultLaunchConfig(),
+    activePageId: 'workspace',
+    claudeDefaultViewMode: 'chat',
+    codexDefaultViewMode: 'chat',
     shellWorkingDirectory: '',
     updatedAt: 0,
     theme: 'dark',
@@ -282,9 +330,13 @@ export function ensureValidState(state: PersistedPanelState, fallbackPort: strin
     panes: state.panes.map((pane) => ({
       ...pane,
       title: localizeLegacyPaneTitle(pane.title),
+      agentViewMode: normalizeAgentViewMode(pane.agentType, (pane as any).agentViewMode),
       launchOverrides: migrateLaunchConfig(pane.launchOverrides, 'overrides'),
     })),
     launchDefaults: migrateLaunchConfig(state.launchDefaults, 'defaults'),
+    activePageId: normalizePanelPageId((state as any).activePageId),
+    claudeDefaultViewMode: normalizeAgentViewMode('claude', (state as any).claudeDefaultViewMode),
+    codexDefaultViewMode: normalizeAgentViewMode('codex', (state as any).codexDefaultViewMode),
     shellWorkingDirectory: typeof (state as any).shellWorkingDirectory === 'string'
       ? (state as any).shellWorkingDirectory
       : '',
@@ -339,6 +391,13 @@ function migrateLaunchConfig(config: any, kind: 'defaults' | 'overrides'): Agent
   } else if (config.codex && typeof config.codex === 'object') {
     base.codex = { ...base.codex, ...config.codex };
   }
+
+  base.claude.apiBaseUrl = typeof base.claude.apiBaseUrl === 'string' ? base.claude.apiBaseUrl : '';
+  base.claude.apiKey = typeof base.claude.apiKey === 'string' ? base.claude.apiKey : '';
+  base.claude.model = typeof base.claude.model === 'string' ? base.claude.model : '';
+  base.codex.apiBaseUrl = typeof base.codex.apiBaseUrl === 'string' ? base.codex.apiBaseUrl : '';
+  base.codex.apiKey = typeof base.codex.apiKey === 'string' ? base.codex.apiKey : '';
+  base.codex.model = typeof base.codex.model === 'string' ? base.codex.model : '';
 
   return base;
 }

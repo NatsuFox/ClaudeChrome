@@ -19,36 +19,43 @@
       <div class="toolbar-cluster toolbar-status-cluster">
         <span id="status-indicator" class="disconnected"></span>
         <span id="status-text">未连接</span>
+        <div id="toolbar-port-control" class="toolbar-port-control">
+          <label id="ws-port-label" for="ws-port">端口</label>
+          <input id="ws-port" type="number" min="1" max="65535" inputmode="numeric" value="9999">
+          <button id="btn-apply-port" class="toolbar-icon-button" type="button" title="保存端口并重新连接"></button>
+          <button id="btn-reconnect" class="toolbar-icon-button" type="button" title="重新连接"></button>
+        </div>
         <span id="focused-binding" class="toolbar-chip">未选中面板</span>
       </div>
 
       <div class="toolbar-cluster toolbar-action-cluster">
-        <button id="btn-launch-defaults" title="设置 Claude 和 Codex 面板的默认启动选项">默认启动项</button>
-        <button id="btn-toggle-body-capture" type="button" title="默认关闭响应体采集；开启后仅捕获受限文本响应体预览" aria-pressed="false">响应体:关</button>
-        <button id="btn-add-shell-pane" title="在当前工作区中添加一个终端面板">+ 终端</button>
-        <button id="btn-add-claude-pane" title="在当前工作区中添加一个 Claude 面板">+ Claude</button>
-        <button id="btn-add-codex-pane" title="在当前工作区中添加一个 Codex 面板">+ Codex</button>
-      </div>
-
-      <div class="toolbar-cluster toolbar-connection-cluster">
-        <label id="ws-port-label" for="ws-port">端口</label>
-        <input id="ws-port" type="number" min="1" max="65535" inputmode="numeric" value="9999">
-        <button id="btn-apply-port" title="保存端口并重新连接">应用</button>
-        <button id="btn-reconnect" title="重新连接">↻</button>
+        <button id="btn-add-shell-pane" class="toolbar-icon-button" type="button" title="在当前工作区中添加一个终端面板"></button>
+        <button id="btn-add-claude-pane" class="toolbar-icon-button" type="button" title="在当前工作区中添加一个 Claude 面板"></button>
+        <button id="btn-add-codex-pane" class="toolbar-icon-button" type="button" title="在当前工作区中添加一个 Codex 面板"></button>
       </div>
 
       <div class="toolbar-cluster toolbar-layout-cluster">
-        <button id="btn-language-toggle" type="button" title="切换语言">中文</button>
-        <button id="btn-theme-toggle" type="button" title="切换浅色或深色主题">&#9788;</button>
-        <button id="btn-toggle-panel" type="button" title="关闭当前窗口的侧边栏">关闭侧边栏</button>
+        <button id="btn-toggle-panel" class="toolbar-icon-button" type="button" title="关闭当前窗口的侧边栏"></button>
       </div>
     </div>
 
+    <div id="settings-control-source" hidden>
+      <button id="btn-launch-defaults" type="button" title="设置 Claude 和 Codex 面板的默认启动选项">默认启动项</button>
+      <button id="btn-toggle-body-capture" type="button" title="默认关闭响应体采集；开启后仅捕获受限文本响应体预览" aria-pressed="false">响应体:关</button>
+      <button id="btn-language-toggle" type="button" title="切换语言">中文</button>
+      <button id="btn-theme-toggle" type="button" title="切换浅色或深色主题">深色</button>
+    </div>
+
     <div id="shell">
-      <div id="workspace-stage"></div>
-      <button id="workspace-rail-edge-toggle" class="edge-toggle workspace-edge-toggle" type="button" title="展开工作区列表">
-        工作区
-      </button>
+      <nav id="activity-bar" aria-label="ClaudeChrome sections"></nav>
+      <main id="page-stage">
+        <section id="workspace-page" class="panel-page active" data-page="workspace">
+          <div id="workspace-stage"></div>
+        </section>
+        <section id="settings-page" class="panel-page" data-page="settings"></section>
+        <section id="plugins-page" class="panel-page" data-page="plugins"></section>
+      </main>
+      <button id="workspace-rail-edge-toggle" class="edge-toggle workspace-edge-toggle" type="button" title="展开工作区列表"></button>
       <div id="workspace-rail-resizer" aria-hidden="true"></div>
       <aside id="workspace-rail"></aside>
     </div>
@@ -133,6 +140,24 @@
               <label for="codex-launch-args">启动参数</label>
               <input type="text" id="codex-launch-args" placeholder="例如: -a never -s workspace-write">
               <span class="config-hint">Codex 面板的默认 CLI 启动参数</span>
+            </div>
+
+            <div class="config-field">
+              <label for="codex-api-base-url">内置 API Base URL</label>
+              <input type="url" id="codex-api-base-url" placeholder="https://api.openai.com/v1">
+              <span class="config-hint">仅用于内置聊天模式；留空则继承 host 环境变量、~/.codex/config.toml 或 OpenAI 默认地址</span>
+            </div>
+
+            <div class="config-field">
+              <label for="codex-api-key">内置 API Key</label>
+              <input type="password" id="codex-api-key" autocomplete="off" spellcheck="false" placeholder="sk-...">
+              <span class="config-hint">留空则继承 host 环境变量或 ~/.codex/auth.json；本机 CLI 模式仍使用用户自己的 CLI 配置</span>
+            </div>
+
+            <div class="config-field">
+              <label for="codex-model">内置模型</label>
+              <input type="text" id="codex-model" autocomplete="off" spellcheck="false" placeholder="gpt-5.1-codex">
+              <span class="config-hint">留空则继承 CLAUDECHROME_CODEX_MODEL、~/.codex/config.toml、OPENAI_MODEL 或内置默认值</span>
             </div>
 
             <div class="config-field">

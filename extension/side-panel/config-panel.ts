@@ -66,6 +66,9 @@ export class ConfigPanel {
   private claudePromptPreview: HTMLElement;
 
   private codexLaunchArgs: HTMLInputElement;
+  private codexApiBaseUrl: HTMLInputElement;
+  private codexApiKey: HTMLInputElement;
+  private codexModel: HTMLInputElement;
   private codexWorkingDir: HTMLInputElement;
   private codexPromptMode: HTMLSelectElement;
   private codexCustomPrompt: HTMLTextAreaElement;
@@ -115,6 +118,9 @@ export class ConfigPanel {
     this.claudePromptPreview = document.getElementById('claude-prompt-preview')!;
 
     this.codexLaunchArgs = document.getElementById('codex-launch-args') as HTMLInputElement;
+    this.codexApiBaseUrl = document.getElementById('codex-api-base-url') as HTMLInputElement;
+    this.codexApiKey = document.getElementById('codex-api-key') as HTMLInputElement;
+    this.codexModel = document.getElementById('codex-model') as HTMLInputElement;
     this.codexWorkingDir = document.getElementById('codex-working-dir') as HTMLInputElement;
     this.codexPromptMode = document.getElementById('codex-prompt-mode') as HTMLSelectElement;
     this.codexCustomPrompt = document.getElementById('codex-custom-prompt') as HTMLTextAreaElement;
@@ -245,6 +251,9 @@ export class ConfigPanel {
     this.setText('label[for="shell-working-dir"]', t.configWorkingDirLabel);
     this.setText('label[for="claude-launch-args"]', t.configLaunchArgsLabel);
     this.setText('label[for="codex-launch-args"]', t.configLaunchArgsLabel);
+    this.setText('label[for="codex-api-base-url"]', t.configCodexApiBaseUrlLabel);
+    this.setText('label[for="codex-api-key"]', t.configCodexApiKeyLabel);
+    this.setText('label[for="codex-model"]', t.configCodexModelLabel);
     this.setText('label[for="claude-working-dir"]', t.configWorkingDirLabel);
     this.setText('label[for="codex-working-dir"]', t.configWorkingDirLabel);
     this.setText('label[for="claude-prompt-mode"]', t.configPromptModeLabel);
@@ -254,6 +263,9 @@ export class ConfigPanel {
 
     this.claudeLaunchArgs.placeholder = t.configClaudeLaunchArgsPlaceholder;
     this.codexLaunchArgs.placeholder = t.configCodexLaunchArgsPlaceholder;
+    this.codexApiBaseUrl.placeholder = t.configCodexApiBaseUrlPlaceholder;
+    this.codexApiKey.placeholder = t.configCodexApiKeyPlaceholder;
+    this.codexModel.placeholder = t.configCodexModelPlaceholder;
     this.shellWorkingDir.placeholder = t.configWorkingDirPlaceholder;
     this.claudeWorkingDir.placeholder = t.configWorkingDirPlaceholder;
     this.codexWorkingDir.placeholder = t.configWorkingDirPlaceholder;
@@ -264,6 +276,9 @@ export class ConfigPanel {
     this.setHint(this.shellWorkingDir, t.configShellWorkingDirHint);
     this.setHint(this.claudeLaunchArgs, t.configClaudeLaunchArgsHint);
     this.setHint(this.codexLaunchArgs, t.configCodexLaunchArgsHint);
+    this.setHint(this.codexApiBaseUrl, t.configCodexApiBaseUrlHint);
+    this.setHint(this.codexApiKey, t.configCodexApiKeyHint);
+    this.setHint(this.codexModel, t.configCodexModelHint);
     this.setHint(this.claudeWorkingDir, t.configWorkingDirHint);
     this.setHint(this.codexWorkingDir, t.configWorkingDirHint);
     this.setHint(this.claudePromptMode, t.configClaudePromptHint);
@@ -462,6 +477,9 @@ export class ConfigPanel {
     this.toggleCustomPromptField('claude');
 
     this.codexLaunchArgs.value = config.codex.launchArgs;
+    this.codexApiBaseUrl.value = config.codex.apiBaseUrl ?? '';
+    this.codexApiKey.value = config.codex.apiKey ?? '';
+    this.codexModel.value = config.codex.model ?? '';
     this.codexWorkingDir.value = config.codex.workingDirectory;
     this.codexPromptMode.value = config.codex.systemPromptMode;
     this.codexCustomPrompt.value = config.codex.customSystemPrompt;
@@ -482,6 +500,9 @@ export class ConfigPanel {
       },
       codex: {
         launchArgs: this.codexLaunchArgs.value.trim(),
+        apiBaseUrl: this.codexApiBaseUrl.value.trim(),
+        apiKey: this.codexApiKey.value.trim(),
+        model: this.codexModel.value.trim(),
         workingDirectory: this.codexWorkingDir.value.trim(),
         systemPromptMode: this.codexPromptMode.value as AgentStartupOptions['systemPromptMode'],
         customSystemPrompt: this.codexCustomPrompt.value.trim(),

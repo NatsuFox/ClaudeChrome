@@ -4,6 +4,9 @@ import type {
   AgentLaunchConfig,
   AgentStartupOptions,
   AgentType,
+  AgentChatCancelMessage,
+  AgentChatRequestMessage,
+  AgentChatUpdateMessage,
   CollapseSidePanelResultMessage,
   GetCurrentWindowActiveTabResultMessage,
   LaunchConfigAgentType,
@@ -28,6 +31,8 @@ import {
   createStartupOptions,
   createWorkspace,
   DEFAULT_CODEX_LAUNCH_ARGS,
+  defaultAgentViewMode,
+  defaultAgentViewModeForState,
   ensureValidState,
   getPane,
   getPanesForWorkspace,
@@ -36,14 +41,20 @@ import {
   normalizeWorkspacePaneRatios,
   removePane,
   removeWorkspace,
+  normalizeAgentViewMode,
+  normalizePanelPageId,
   startupOptionsEqual,
+  type AgentViewMode,
+  type ChatAgentType,
   type PaneLayout,
+  type PanelPageId,
   type PanelLanguage,
   type PanelTheme,
   type PersistedPanelState,
 } from './state';
-import { encodeUtf8ToBase64 } from '../shared/base64';
+import { decodeBase64ToBytes, encodeUtf8ToBase64 } from '../shared/base64';
 import { TerminalView } from './terminal-view';
+import { AgentChatView } from './agent-chat-view';
 import { ConfigPanel } from './config-panel';
 import { formatPanelMessage, getPanelLocale, type PanelLocaleText } from './lexicon';
 
@@ -54,7 +65,7 @@ const WS_PORT_STORAGE_KEY = 'wsPort';
 const CAPTURE_SETTINGS_STORAGE_KEY = 'ccCaptureSettings';
 const MAX_PANES_PER_WORKSPACE = 6;
 const MIN_PANE_RATIO = 0.14;
-const MIN_RAIL_WIDTH = 96;
+const MIN_RAIL_WIDTH = 178;
 const MAX_RAIL_WIDTH = 320;
 const RAIL_AUTO_COLLAPSE_WIDTH = 56;
 const PANEL_AUTO_COLLAPSE_WIDTH = 72;
@@ -64,6 +75,11 @@ const PANEL_STATE_FILE_LOAD_TIMEOUT_MS = 3000;
 const statusIndicator = document.getElementById('status-indicator')!;
 const statusText = document.getElementById('status-text')!;
 const focusedBinding = document.getElementById('focused-binding')!;
+const activityBar = document.getElementById('activity-bar')!;
+const pageStage = document.getElementById('page-stage')!;
+const workspacePage = document.getElementById('workspace-page')!;
+const settingsPage = document.getElementById('settings-page')!;
+const pluginsPage = document.getElementById('plugins-page')!;
 const workspaceStage = document.getElementById('workspace-stage')!;
 const workspaceRailResizer = document.getElementById('workspace-rail-resizer')!;
 const workspaceRail = document.getElementById('workspace-rail')!;
@@ -84,11 +100,58 @@ const toolbarBrandName = document.querySelector<HTMLElement>('.toolbar-brand-nam
 
 const chunkAssembler = new ChunkAssembler();
 const terminalViews = new Map<string, TerminalView>();
+const agentChatViews = new Map<string, AgentChatView>();
 const sessionSnapshots = new Map<string, SessionSnapshot>();
+const terminalOutputDecoders = new Map<string, TextDecoder>();
 const pendingSessionCreates = new Set<string>();
 const pendingWorkingDirectoryValidations = new Map<string, PendingWorkingDirectoryValidation>();
 const pendingPanelStateFileLoads = new Map<string, PendingPanelStateFileLoad>();
 const configPanel = new ConfigPanel();
+
+const ICONS = {
+  shell: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="m6 8 4 4-4 4"></path><path d="M12 17h6"></path></svg>',
+  claude: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3.5 19.5 8v8L12 20.5 4.5 16V8L12 3.5Z"></path><path d="M12 8v8"></path><path d="m8 10.2 4-2.2 4 2.2"></path><path d="m8 13.8 4 2.2 4-2.2"></path></svg>',
+  codex: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 9 4.5 12 8 15"></path><path d="m16 9 3.5 3-3.5 3"></path><path d="m13.5 6-3 12"></path></svg>',
+  panelClose: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5h16v14H4z"></path><path d="M16 5v14"></path><path d="m9 9-3 3 3 3"></path></svg>',
+  reconnect: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 6v5h-5"></path><path d="M4 18v-5h5"></path><path d="M18.2 9A7 7 0 0 0 6.4 6.7L4 9"></path><path d="M5.8 15A7 7 0 0 0 17.6 17.3L20 15"></path></svg>',
+  apply: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12.5 10 17 19 7"></path></svg>',
+  debug: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 8h8v8a4 4 0 0 1-8 0V8Z"></path><path d="M9 4h6"></path><path d="M12 4v4"></path><path d="M4 13h4"></path><path d="M16 13h4"></path><path d="M6 20l2-2"></path><path d="m18 20-2-2"></path></svg>',
+  settings: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 15.5a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7Z"></path><path d="M19.4 15a1.8 1.8 0 0 0 .36 1.98l.03.03a2.1 2.1 0 0 1-2.97 2.97l-.03-.03a1.8 1.8 0 0 0-1.98-.36 1.8 1.8 0 0 0-1.1 1.66V21.3a2.1 2.1 0 0 1-4.2 0v-.05a1.8 1.8 0 0 0-1.1-1.66 1.8 1.8 0 0 0-1.98.36l-.03.03a2.1 2.1 0 0 1-2.97-2.97l.03-.03A1.8 1.8 0 0 0 3.8 15a1.8 1.8 0 0 0-1.66-1.1H2.1a2.1 2.1 0 0 1 0-4.2h.05A1.8 1.8 0 0 0 3.8 8.6a1.8 1.8 0 0 0-.36-1.98l-.03-.03a2.1 2.1 0 1 1 2.97-2.97l.03.03a1.8 1.8 0 0 0 1.98.36 1.8 1.8 0 0 0 1.1-1.66V2.3a2.1 2.1 0 0 1 4.2 0v.05a1.8 1.8 0 0 0 1.1 1.66 1.8 1.8 0 0 0 1.98-.36l.03-.03a2.1 2.1 0 1 1 2.97 2.97l-.03.03a1.8 1.8 0 0 0-.36 1.98 1.8 1.8 0 0 0 1.66 1.1h.05a2.1 2.1 0 0 1 0 4.2h-.05A1.8 1.8 0 0 0 19.4 15Z"></path></svg>',
+  palette: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4a8 8 0 0 0 0 16h1.3a1.7 1.7 0 0 0 1.2-2.9l-.2-.2a1.7 1.7 0 0 1 1.2-2.9H17a3 3 0 0 0 3-3c0-3.9-3.6-7-8-7Z"></path><path d="M7.8 11h.01"></path><path d="M10.2 7.8h.01"></path><path d="M14 8h.01"></path></svg>',
+  language: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5h9"></path><path d="M9 3v2"></path><path d="M5.5 17.5 11 7"></path><path d="M4 9h8"></path><path d="M13 19l3.5-8 3.5 8"></path><path d="M14.5 16h4"></path></svg>',
+  workspace: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5h16v14H4z"></path><path d="M8 5v14"></path><path d="m15 9 3 3-3 3"></path></svg>',
+  add: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14"></path><path d="M5 12h14"></path></svg>',
+  rename: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 20h4l10.5-10.5a2.1 2.1 0 0 0-3-3L5 17v3Z"></path><path d="m14 8 3 3"></path></svg>',
+  collapse: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M19 4v16"></path><path d="m14 8-4 4 4 4"></path><path d="M5 12h5"></path></svg>',
+  tab: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 5h14v14H5z"></path><path d="m10 9 5 3-5 3V9Z"></path></svg>',
+  bind: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7.1 0l1.4-1.4a5 5 0 0 0-7.1-7.1L10.6 5.3"></path><path d="M14 11a5 5 0 0 0-7.1 0l-1.4 1.4a5 5 0 1 0 7.1 7.1l.8-.8"></path></svg>',
+  restart: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 6v5h-5"></path><path d="M18.5 15.5A7 7 0 1 1 19.8 9"></path></svg>',
+  close: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12"></path><path d="M18 6 6 18"></path></svg>',
+  chat: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 6h14v10H8l-3 3V6Z"></path><path d="M8 10h8"></path><path d="M8 13h5"></path></svg>',
+  terminal: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5h16v14H4z"></path><path d="m8 9 3 3-3 3"></path><path d="M13 15h4"></path></svg>',
+} as const;
+
+function setIconButton(button: HTMLElement, icon: string, label: string, className?: string): void {
+  button.innerHTML = icon;
+  const accessibleLabel = document.createElement('span');
+  accessibleLabel.className = 'visually-hidden';
+  accessibleLabel.textContent = label;
+  button.appendChild(accessibleLabel);
+  button.setAttribute('aria-label', label);
+  button.title = label;
+  if (className) {
+    button.classList.add(className);
+  }
+}
+
+function setIconTextButton(button: HTMLElement, icon: string, text: string): void {
+  button.classList.add('icon-text-button');
+  button.innerHTML = icon;
+  const label = document.createElement('span');
+  label.className = 'icon-text-button-label';
+  label.textContent = text;
+  button.appendChild(label);
+}
 
 type LocalizableStatusSource = 'custom' | 'connection';
 type WorkingDirectoryValidationResult = {
@@ -122,6 +185,30 @@ let connectionStatusUrl: string | null = null;
 let captureSettings: CaptureSettings = { captureResponseBodies: false };
 let loadedPersistedPanelState = false;
 let hadStoredPanelState = false;
+
+type PanelPageDefinition = {
+  id: PanelPageId;
+  label: keyof PanelLocaleText;
+  icon: string;
+};
+
+const PANEL_PAGES: PanelPageDefinition[] = [
+  {
+    id: 'workspace',
+    label: 'activityWorkspace',
+    icon: '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="4" width="7" height="7" rx="1.5"></rect><rect x="14" y="4" width="7" height="7" rx="1.5"></rect><rect x="3" y="15" width="7" height="5" rx="1.5"></rect><rect x="14" y="15" width="7" height="5" rx="1.5"></rect></svg>',
+  },
+  {
+    id: 'settings',
+    label: 'activitySettings',
+    icon: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 15.5a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7Z"></path><path d="M19.4 15a1.8 1.8 0 0 0 .36 1.98l.03.03a2.1 2.1 0 0 1-2.97 2.97l-.03-.03a1.8 1.8 0 0 0-1.98-.36 1.8 1.8 0 0 0-1.1 1.66V21.3a2.1 2.1 0 0 1-4.2 0v-.05a1.8 1.8 0 0 0-1.1-1.66 1.8 1.8 0 0 0-1.98.36l-.03.03a2.1 2.1 0 0 1-2.97-2.97l.03-.03A1.8 1.8 0 0 0 3.8 15a1.8 1.8 0 0 0-1.66-1.1H2.1a2.1 2.1 0 0 1 0-4.2h.05A1.8 1.8 0 0 0 3.8 8.6a1.8 1.8 0 0 0-.36-1.98l-.03-.03a2.1 2.1 0 1 1 2.97-2.97l.03.03a1.8 1.8 0 0 0 1.98.36 1.8 1.8 0 0 0 1.1-1.66V2.3a2.1 2.1 0 0 1 4.2 0v.05a1.8 1.8 0 0 0 1.1 1.66 1.8 1.8 0 0 0 1.98-.36l.03-.03a2.1 2.1 0 1 1 2.97 2.97l-.03.03a1.8 1.8 0 0 0-.36 1.98 1.8 1.8 0 0 0 1.66 1.1h.05a2.1 2.1 0 0 1 0 4.2h-.05A1.8 1.8 0 0 0 19.4 15Z"></path></svg>',
+  },
+  {
+    id: 'plugins',
+    label: 'activityPlugins',
+    icon: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 3v4"></path><path d="M16 3v4"></path><path d="M7 7h10v5a5 5 0 0 1-10 0V7Z"></path><path d="M12 17v4"></path><path d="M9 21h6"></path></svg>',
+  },
+];
 
 function currentTranslations(): PanelLocaleText {
   return getPanelLocale(panelState.language);
@@ -162,6 +249,49 @@ function launchConfigAgentType(agentType: AgentType): LaunchConfigAgentType | nu
     return agentType;
   }
   return null;
+}
+
+function supportsBuiltInChat(agentType: AgentType): boolean {
+  return agentType === 'claude' || agentType === 'codex';
+}
+
+function agentTypeForSession(sessionId: string): AgentType | undefined {
+  return sessionSnapshots.get(sessionId)?.agentType
+    ?? panelState.panes.find((pane) => pane.sessionId === sessionId)?.agentType;
+}
+
+function decodeSessionOutputText(sessionId: string, data: string, reset = false): string {
+  try {
+    if (reset) {
+      terminalOutputDecoders.delete(sessionId);
+    }
+    let decoder = terminalOutputDecoders.get(sessionId);
+    if (!decoder) {
+      decoder = new TextDecoder();
+      terminalOutputDecoders.set(sessionId, decoder);
+    }
+    return decoder.decode(decodeBase64ToBytes(data), { stream: true });
+  } catch {
+    return '';
+  }
+}
+
+function getDefaultViewMode(agentType: AgentType): AgentViewMode {
+  if (agentType === 'claude') {
+    return panelState.claudeDefaultViewMode;
+  }
+  if (agentType === 'codex') {
+    return panelState.codexDefaultViewMode;
+  }
+  return 'terminal';
+}
+
+function setDefaultViewMode(agentType: AgentType, mode: AgentViewMode): void {
+  if (agentType === 'claude') {
+    panelState.claudeDefaultViewMode = mode;
+  } else if (agentType === 'codex') {
+    panelState.codexDefaultViewMode = mode;
+  }
 }
 
 function paneUsesStartupOverrides(pane: PaneLayout, launchAgent: LaunchConfigAgentType): boolean {
@@ -303,27 +433,22 @@ function updateUILanguage(): void {
   const portLabel = document.getElementById('ws-port-label');
   if (portLabel) portLabel.textContent = t.portLabel;
 
-  btnApplyPort.textContent = t.applyButton;
-  btnApplyPort.title = t.applyPortTitle;
-  btnApplyPort.setAttribute('aria-label', t.applyPortTitle);
-  btnReconnect.textContent = t.reconnectButton;
-  btnReconnect.title = t.reconnectTitle;
-  btnReconnect.setAttribute('aria-label', t.reconnectTitle);
-  btnLaunchDefaults.textContent = t.launchDefaultsButton;
+  setIconButton(btnApplyPort, ICONS.apply, t.applyPortTitle);
+  setIconButton(btnReconnect, ICONS.reconnect, t.reconnectTitle);
+  btnLaunchDefaults.textContent = t.settingsOpenDefaults;
   btnLaunchDefaults.title = t.launchDefaultsTitle;
-  btnAddShellPane.textContent = t.addShellButton;
-  btnAddShellPane.title = t.addShellTitle;
-  btnAddClaudePane.textContent = t.addClaudeButton;
-  btnAddClaudePane.title = t.addClaudeTitle;
-  btnAddCodexPane.textContent = t.addCodexButton;
-  btnAddCodexPane.title = t.addCodexTitle;
-  btnTogglePanel.textContent = t.closePanelButton;
-  btnTogglePanel.title = t.closePanelTitle;
+  setIconButton(btnAddShellPane, ICONS.shell, t.addShellTitle);
+  setIconButton(btnAddClaudePane, ICONS.claude, t.addClaudeTitle);
+  setIconButton(btnAddCodexPane, ICONS.codex, t.addCodexTitle);
+  setIconButton(btnTogglePanel, ICONS.panelClose, t.closePanelTitle);
 
   const workspaceToggle = document.getElementById('workspace-rail-edge-toggle');
   if (workspaceToggle) {
-    workspaceToggle.textContent = panelState.railCollapsed ? t.workspaceCollapsed : t.workspaceExpanded;
-    workspaceToggle.title = panelState.railCollapsed ? t.workspaceCollapsedTitle : t.workspaceExpandedTitle;
+    setIconButton(
+      workspaceToggle,
+      ICONS.workspace,
+      panelState.railCollapsed ? t.workspaceCollapsedTitle : t.workspaceExpandedTitle,
+    );
   }
 
   configPanel.setLanguage(panelState.language);
@@ -333,7 +458,7 @@ function updateThemeToggleButton(): void {
   const t = currentTranslations();
   const currentTheme = panelState.theme;
   const themeText = themeLabel(currentTheme);
-  btnThemeToggle.textContent = themeText;
+  setIconTextButton(btnThemeToggle, ICONS.palette, themeText);
   btnThemeToggle.title = formatMessage(t.currentThemeTitle, { theme: themeText });
   btnThemeToggle.setAttribute('aria-label', btnThemeToggle.title);
 }
@@ -368,7 +493,7 @@ function updateLanguageToggleButton(): void {
   const t = currentTranslations();
   const currentLanguage = panelState.language;
   const languageText = languageLabel(currentLanguage);
-  btnLanguageToggle.textContent = languageText;
+  setIconTextButton(btnLanguageToggle, ICONS.language, languageText);
   btnLanguageToggle.title = formatMessage(t.currentLanguageTitle, { language: languageText });
   btnLanguageToggle.setAttribute('aria-label', btnLanguageToggle.title);
 }
@@ -401,13 +526,152 @@ function normalizeCaptureSettings(value: unknown): CaptureSettings {
 function updateCaptureToggleButton(): void {
   const t = currentTranslations();
   const enabled = captureSettings.captureResponseBodies;
-  btnToggleBodyCapture.textContent = enabled ? t.captureToggleOn : t.captureToggleOff;
+  setIconTextButton(btnToggleBodyCapture, ICONS.debug, enabled ? t.captureToggleOn : t.captureToggleOff);
   btnToggleBodyCapture.title = enabled
     ? t.captureEnabledTitle
     : t.captureDisabledTitle;
   btnToggleBodyCapture.setAttribute('aria-label', btnToggleBodyCapture.title);
   btnToggleBodyCapture.setAttribute('aria-pressed', String(enabled));
   btnToggleBodyCapture.classList.toggle('capture-enabled', enabled);
+}
+
+function setActivePage(pageId: PanelPageId): void {
+  const normalized = normalizePanelPageId(pageId);
+  if (panelState.activePageId === normalized) {
+    return;
+  }
+  panelState.activePageId = normalized;
+  void saveState();
+  render();
+}
+
+function applyActivePageState(): void {
+  panelState.activePageId = normalizePanelPageId(panelState.activePageId);
+  document.body.classList.toggle('page-workspace', panelState.activePageId === 'workspace');
+  workspacePage.classList.toggle('active', panelState.activePageId === 'workspace');
+  settingsPage.classList.toggle('active', panelState.activePageId === 'settings');
+  pluginsPage.classList.toggle('active', panelState.activePageId === 'plugins');
+}
+
+function renderActivityBar(): void {
+  const t = currentTranslations();
+  activityBar.replaceChildren();
+  PANEL_PAGES.forEach((page) => {
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.className = `activity-button${panelState.activePageId === page.id ? ' active' : ''}`;
+    button.title = t[page.label] as string;
+    button.setAttribute('aria-label', button.title);
+    button.setAttribute('aria-current', panelState.activePageId === page.id ? 'page' : 'false');
+      button.innerHTML = page.icon;
+      const tooltip = document.createElement('span');
+      tooltip.className = 'visually-hidden';
+      tooltip.textContent = button.title;
+      button.appendChild(tooltip);
+      button.addEventListener('click', () => setActivePage(page.id));
+    activityBar.appendChild(button);
+  });
+}
+
+function appendSubpageText(parent: HTMLElement, tagName: keyof HTMLElementTagNameMap, className: string, text: string): HTMLElement {
+  const element = document.createElement(tagName);
+  element.className = className;
+  element.textContent = text;
+  parent.appendChild(element);
+  return element;
+}
+
+function appendSettingsCard(grid: HTMLElement, title: string, body: string): HTMLElement {
+  const card = document.createElement('section');
+  card.className = 'subpage-card settings-card';
+  appendSubpageText(card, 'h3', 'subpage-card-title', title);
+  appendSubpageText(card, 'p', 'subpage-card-body', body);
+  grid.appendChild(card);
+  return card;
+}
+
+function appendControlRow(parent: HTMLElement, className = 'settings-control-row'): HTMLElement {
+  const row = document.createElement('div');
+  row.className = className;
+  parent.appendChild(row);
+  return row;
+}
+
+function createAgentDefaultModeToggle(agentType: 'claude' | 'codex'): HTMLButtonElement {
+  const t = currentTranslations();
+  const mode = getDefaultViewMode(agentType);
+  const button = document.createElement('button');
+  button.type = 'button';
+  button.className = 'settings-agent-mode-toggle';
+  button.textContent = `${agentLabel(agentType)} · ${mode === 'chat' ? t.agentViewBuiltIn : t.agentViewTerminal}`;
+  button.title = mode === 'chat'
+    ? formatMessage(t.agentModeTerminalTitle, { agent: agentLabel(agentType) })
+    : formatMessage(t.agentModeBuiltInTitle, { agent: agentLabel(agentType) });
+  button.setAttribute('aria-pressed', String(mode === 'chat'));
+  button.addEventListener('click', () => {
+    setDefaultViewMode(agentType, mode === 'chat' ? 'terminal' : 'chat');
+    void saveState();
+    render();
+  });
+  return button;
+}
+
+function renderSettingsPage(): void {
+  const t = currentTranslations();
+  settingsPage.replaceChildren();
+
+  const shell = document.createElement('div');
+  shell.className = 'subpage-shell settings-subpage';
+
+  const header = document.createElement('div');
+  header.className = 'subpage-header';
+  const heading = document.createElement('div');
+  appendSubpageText(heading, 'h2', 'subpage-title', t.settingsPageTitle);
+  appendSubpageText(heading, 'p', 'subpage-description', t.settingsPageDescription);
+  header.appendChild(heading);
+  shell.appendChild(header);
+
+  const grid = document.createElement('div');
+  grid.className = 'subpage-grid';
+
+  const agents = appendSettingsCard(grid, t.settingsAgentTitle, t.settingsAgentBody);
+  const agentActions = appendControlRow(agents, 'settings-wide-control-row');
+  btnLaunchDefaults.textContent = t.settingsOpenDefaults;
+  btnLaunchDefaults.title = t.launchDefaultsTitle;
+  agentActions.appendChild(btnLaunchDefaults);
+  agentActions.appendChild(createAgentDefaultModeToggle('claude'));
+  agentActions.appendChild(createAgentDefaultModeToggle('codex'));
+
+  const appearance = appendSettingsCard(grid, t.settingsAppearanceTitle, t.settingsAppearanceBody);
+  const appearanceActions = appendControlRow(appearance, 'settings-wide-control-row');
+  appearanceActions.appendChild(btnToggleBodyCapture);
+  appearanceActions.appendChild(btnLanguageToggle);
+  appearanceActions.appendChild(btnThemeToggle);
+
+  shell.appendChild(grid);
+  settingsPage.appendChild(shell);
+}
+
+function renderPluginsPage(): void {
+  const t = currentTranslations();
+  pluginsPage.replaceChildren();
+
+  const shell = document.createElement('div');
+  shell.className = 'subpage-shell plugins-subpage';
+  const header = document.createElement('div');
+  header.className = 'subpage-header';
+  const heading = document.createElement('div');
+  appendSubpageText(heading, 'h2', 'subpage-title', t.pluginsPageTitle);
+  appendSubpageText(heading, 'p', 'subpage-description', t.pluginsPageDescription);
+  header.appendChild(heading);
+  shell.appendChild(header);
+
+  const placeholder = document.createElement('section');
+  placeholder.className = 'subpage-card';
+  appendSubpageText(placeholder, 'h3', 'subpage-card-title', t.pluginsPagePlaceholderTitle);
+  appendSubpageText(placeholder, 'p', 'subpage-card-body', t.pluginsPagePlaceholderBody);
+  shell.appendChild(placeholder);
+  pluginsPage.appendChild(shell);
 }
 
 async function saveCaptureSettings(): Promise<void> {
@@ -476,16 +740,17 @@ function applyRailWidth(): void {
 
 function applyLayoutState(): void {
   const t = currentTranslations();
+  applyActivePageState();
   document.body.classList.remove('panel-collapsed');
   document.body.classList.toggle('rail-collapsed', panelState.railCollapsed);
 
-  btnTogglePanel.textContent = t.closePanelButton;
-  btnTogglePanel.title = t.closePanelTitle;
+  setIconButton(btnTogglePanel, ICONS.panelClose, t.closePanelTitle);
 
-  workspaceRailEdgeToggle.textContent = panelState.railCollapsed ? t.workspaceCollapsed : t.workspaceExpanded;
-  workspaceRailEdgeToggle.title = panelState.railCollapsed
-    ? t.workspaceCollapsedTitle
-    : t.workspaceExpandedTitle;
+  setIconButton(
+    workspaceRailEdgeToggle,
+    ICONS.workspace,
+    panelState.railCollapsed ? t.workspaceCollapsedTitle : t.workspaceExpandedTitle,
+  );
   workspaceRailEdgeToggle.setAttribute('aria-expanded', String(!panelState.railCollapsed));
 }
 
@@ -606,11 +871,44 @@ function getOrCreateTerminalView(sessionId: string, agentType?: AgentType): Term
   return view;
 }
 
+function chatAgentType(agentType: AgentType | undefined): ChatAgentType {
+  return agentType === 'claude' ? 'claude' : 'codex';
+}
+
+function getOrCreateAgentChatView(sessionId: string, agentType?: AgentType): AgentChatView {
+  let view = agentChatViews.get(sessionId);
+  if (!view) {
+    view = new AgentChatView(sessionId, panelState.language, chatAgentType(agentType));
+    view.onSend((message: AgentChatRequestMessage) => {
+      sendToHost(message);
+    });
+    view.onCancel((requestId) => {
+      const message: AgentChatCancelMessage = {
+        type: 'agent_chat_cancel',
+        sessionId,
+        requestId: requestId ?? undefined,
+      };
+      sendToHost(message);
+    });
+    agentChatViews.set(sessionId, view);
+  }
+  view.setLanguage(panelState.language);
+  view.setAgentType(chatAgentType(agentType));
+  return view;
+}
+
 function disposeTerminalView(sessionId: string): void {
   const view = terminalViews.get(sessionId);
   if (!view) return;
   view.dispose();
   terminalViews.delete(sessionId);
+}
+
+function disposeAgentChatView(sessionId: string): void {
+  const view = agentChatViews.get(sessionId);
+  if (!view) return;
+  view.dispose();
+  agentChatViews.delete(sessionId);
 }
 
 function sendToHost(message: object): void {
@@ -775,14 +1073,25 @@ function connect(): void {
   }
 }
 
-function handleHostMessage(message: SessionOutputMessage | SessionSnapshotMessage | StatusMessage | any): void {
+function handleHostMessage(message: SessionOutputMessage | AgentChatUpdateMessage | SessionSnapshotMessage | StatusMessage | any): void {
   switch (message.type) {
     case 'session_output': {
-      const view = getOrCreateTerminalView(message.sessionId, sessionSnapshots.get(message.sessionId)?.agentType);
+      const agentType = agentTypeForSession(message.sessionId);
+      const view = getOrCreateTerminalView(message.sessionId, agentType);
       if (message.reset) {
         view.clear();
       }
       view.writeBase64(message.data);
+      if (agentType && supportsBuiltInChat(agentType)) {
+        getOrCreateAgentChatView(message.sessionId, agentType).applyTerminalOutput(
+          decodeSessionOutputText(message.sessionId, message.data, Boolean(message.reset)),
+          { reset: Boolean(message.reset) },
+        );
+      }
+      break;
+    }
+    case 'agent_chat_update': {
+      getOrCreateAgentChatView(message.sessionId, sessionSnapshots.get(message.sessionId)?.agentType).applyMessage(message as AgentChatUpdateMessage);
       break;
     }
     case 'session_snapshot': {
@@ -846,6 +1155,7 @@ function applySessionSnapshot(snapshots: SessionSnapshot[]): void {
     const pane = panelState.panes.find((entry) => entry.sessionId === snapshot.sessionId);
     if (pane) {
       pane.agentType = snapshot.agentType;
+      pane.agentViewMode = normalizeAgentViewMode(snapshot.agentType, snapshot.mode ?? pane.agentViewMode);
       pane.bindingTabId = snapshot.binding.tabId;
       getOrCreateTerminalView(pane.sessionId, snapshot.agentType);
       if (!pane.title) {
@@ -869,9 +1179,10 @@ function applySessionSnapshot(snapshots: SessionSnapshot[]): void {
     workspace.hint = t.workspaceHintRecovered;
 
     unknownSnapshots.forEach((snapshot, index) => {
-      const pane = createPane(workspace.workspaceId, snapshot.agentType, index);
+      const pane = createPaneForWorkspace(workspace.workspaceId, snapshot.agentType, index);
       pane.sessionId = snapshot.sessionId;
       pane.title = snapshot.title;
+      pane.agentViewMode = normalizeAgentViewMode(snapshot.agentType, snapshot.mode);
       pane.bindingTabId = snapshot.binding.tabId;
       panelState.panes.push(pane);
       workspace.paneIds.push(pane.paneId);
@@ -959,10 +1270,58 @@ function focusedTerminalSessionId(): string | null {
   return null;
 }
 
+function focusedChatSessionId(): string | null {
+  const activeElement = document.activeElement as HTMLElement | null;
+  if (!activeElement) {
+    return null;
+  }
+  for (const [sessionId, view] of agentChatViews) {
+    if (view.root.contains(activeElement)) {
+      return sessionId;
+    }
+  }
+  return null;
+}
+
 function focusTerminalSession(sessionId: string): void {
   requestAnimationFrame(() => {
     terminalViews.get(sessionId)?.focus();
   });
+}
+
+function focusChatSession(sessionId: string): void {
+  requestAnimationFrame(() => {
+    agentChatViews.get(sessionId)?.focus();
+  });
+}
+
+function normalizePaneViewMode(pane: PaneLayout): AgentViewMode {
+  pane.agentViewMode = normalizeAgentViewMode(pane.agentType, pane.agentViewMode);
+  return pane.agentViewMode;
+}
+
+function togglePaneViewMode(pane: PaneLayout): void {
+  if (!supportsBuiltInChat(pane.agentType)) {
+    pane.agentViewMode = 'terminal';
+    return;
+  }
+
+  pane.agentViewMode = normalizePaneViewMode(pane) === 'chat' ? 'terminal' : 'chat';
+  void saveState();
+  if (sessionSnapshots.has(pane.sessionId)) {
+    sendToHost({
+      type: 'session_set_mode',
+      sessionId: pane.sessionId,
+      mode: pane.agentViewMode,
+    });
+  }
+  render();
+}
+
+function createPaneForWorkspace(workspaceId: string, agentType: AgentType, index: number): PaneLayout {
+  const pane = createPane(workspaceId, agentType, index);
+  pane.agentViewMode = defaultAgentViewModeForState(panelState, agentType);
+  return pane;
 }
 
 function syncActivePaneUi(): void {
@@ -979,15 +1338,23 @@ function focusPane(paneId: string, shouldFocusTerminal = true): void {
   }
   if (activePaneId === paneId) {
     if (shouldFocusTerminal) {
-      focusTerminalSession(pane.sessionId);
+      focusPaneInput(pane);
     }
     return;
   }
   activePaneId = paneId;
   syncActivePaneUi();
   if (shouldFocusTerminal) {
-    focusTerminalSession(pane.sessionId);
+    focusPaneInput(pane);
   }
+}
+
+function focusPaneInput(pane: PaneLayout): void {
+  if (normalizePaneViewMode(pane) === 'chat') {
+    focusChatSession(pane.sessionId);
+    return;
+  }
+  focusTerminalSession(pane.sessionId);
 }
 
 function ensureActiveWorkspace() {
@@ -1038,10 +1405,14 @@ function restartPaneSession(pane: PaneLayout, agentType: AgentType = pane.agentT
   const view = getOrCreateTerminalView(pane.sessionId, agentType);
   const startupOptions = getEffectiveStartupOptions(pane, agentType);
   view.writeln(`\x1b[33m[ClaudeChrome] ${t.restartingAgent.replace('{agent}', agentLabel(agentType))}\x1b[0m`);
+  if (supportsBuiltInChat(agentType) && normalizePaneViewMode(pane) === 'chat') {
+    getOrCreateAgentChatView(pane.sessionId, agentType).clear();
+  }
   sendToHost({
     type: 'session_restart',
     sessionId: pane.sessionId,
     agentType,
+    mode: normalizeAgentViewMode(agentType, pane.agentViewMode),
     launchArgs: startupOptions?.launchArgs,
     startupOptions: startupOptions ?? undefined,
   });
@@ -1181,10 +1552,12 @@ async function ensurePaneSession(pane: PaneLayout): Promise<void> {
     const view = getOrCreateTerminalView(pane.sessionId, pane.agentType);
     const size = view.getSize();
     const startupOptions = getEffectiveStartupOptions(pane);
+    const mode = normalizePaneViewMode(pane);
     const createMessage: SessionCreateMessage = {
       type: 'session_create',
       sessionId: pane.sessionId,
       agentType: pane.agentType,
+      mode,
       title: pane.title,
       binding: {
         kind: 'tab',
@@ -1410,8 +1783,7 @@ function renderWorkspaceRail(): void {
   const addButton = document.createElement('button');
   addButton.className = 'workspace-rail-button';
   addButton.type = 'button';
-  addButton.textContent = t.addWorkspaceButton;
-  addButton.title = t.addWorkspaceTitle;
+  setIconButton(addButton, ICONS.add, t.addWorkspaceTitle);
   addButton.addEventListener('click', () => {
     addWorkspace();
   });
@@ -1419,8 +1791,7 @@ function renderWorkspaceRail(): void {
   const renameButton = document.createElement('button');
   renameButton.className = 'workspace-rail-button';
   renameButton.type = 'button';
-  renameButton.textContent = t.renameButton;
-  renameButton.title = t.renameWorkspaceTitle;
+  setIconButton(renameButton, ICONS.rename, t.renameWorkspaceTitle);
   renameButton.disabled = !activeWorkspace;
   renameButton.addEventListener('click', () => {
     renameActiveWorkspace();
@@ -1429,8 +1800,7 @@ function renderWorkspaceRail(): void {
   const colorButton = document.createElement('button');
   colorButton.className = 'workspace-rail-button workspace-rail-color';
   colorButton.type = 'button';
-  colorButton.textContent = t.colorButton;
-  colorButton.title = t.colorWorkspaceTitle;
+  setIconButton(colorButton, ICONS.palette, t.colorWorkspaceTitle);
   colorButton.disabled = !activeWorkspace;
   colorButton.style.setProperty('--workspace-accent', activeWorkspace?.accentColor || 'transparent');
   colorButton.addEventListener('click', () => {
@@ -1440,8 +1810,7 @@ function renderWorkspaceRail(): void {
   const collapseButton = document.createElement('button');
   collapseButton.className = 'workspace-rail-button workspace-rail-collapse';
   collapseButton.type = 'button';
-  collapseButton.textContent = t.collapseButton;
-  collapseButton.title = t.collapseWorkspaceTitle;
+  setIconButton(collapseButton, ICONS.collapse, t.collapseWorkspaceTitle);
   collapseButton.addEventListener('click', () => {
     setRailCollapsed(true);
   });
@@ -1512,7 +1881,7 @@ function renderWorkspaceStage(): void {
     main.className = 'pane-header-main';
 
     const badge = document.createElement('span');
-    badge.className = 'agent-badge';
+    badge.className = `agent-badge ${pane.agentType}`;
     badge.textContent = agentLabel(pane.agentType);
 
     const select = document.createElement('select');
@@ -1531,7 +1900,9 @@ function renderWorkspaceStage(): void {
         return;
       }
       pane.agentType = nextAgent;
+      pane.agentViewMode = defaultAgentViewModeForState(panelState, nextAgent);
       getOrCreateTerminalView(pane.sessionId, nextAgent).clear();
+      agentChatViews.get(pane.sessionId)?.clear();
       restartPaneSession(pane, nextAgent);
       void saveState();
       render();
@@ -1558,8 +1929,8 @@ function renderWorkspaceStage(): void {
     status.textContent = statusLabel.text;
 
     const btnGo = document.createElement('button');
-    btnGo.textContent = t.switchToTab;
-    btnGo.title = t.switchToTabTitle;
+    btnGo.className = 'pane-icon-button';
+    setIconButton(btnGo, ICONS.tab, t.switchToTabTitle);
     btnGo.disabled = pane.bindingTabId == null;
     btnGo.addEventListener('click', async (event) => {
       event.stopPropagation();
@@ -1572,8 +1943,8 @@ function renderWorkspaceStage(): void {
     });
 
     const btnBind = document.createElement('button');
-    btnBind.textContent = t.bindCurrentTab;
-    btnBind.title = t.bindCurrentTabTitle;
+    btnBind.className = 'pane-icon-button';
+    setIconButton(btnBind, ICONS.bind, t.bindCurrentTabTitle);
     btnBind.addEventListener('click', async (event) => {
       event.stopPropagation();
       try {
@@ -1606,10 +1977,10 @@ function renderWorkspaceStage(): void {
     if (launchAgent) {
       const hasPaneOverrides = paneUsesStartupOverrides(pane, launchAgent);
       btnArgs = document.createElement('button');
-      btnArgs.textContent = hasPaneOverrides ? t.settingsButtonCustom : t.settingsButton;
-      btnArgs.title = hasPaneOverrides
+      btnArgs.className = `pane-icon-button${hasPaneOverrides ? ' has-pane-overrides' : ''}`;
+      setIconButton(btnArgs, ICONS.settings, hasPaneOverrides
         ? t.settingsCustomTitle.replace('{agent}', agentLabel(pane.agentType))
-        : t.settingsDefaultTitle.replace('{agent}', agentLabel(pane.agentType));
+        : t.settingsDefaultTitle.replace('{agent}', agentLabel(pane.agentType)));
       btnArgs.addEventListener('click', (event) => {
         event.stopPropagation();
         editPaneStartupOptions(pane);
@@ -1617,14 +1988,16 @@ function renderWorkspaceStage(): void {
     }
 
     const btnRestart = document.createElement('button');
-    btnRestart.textContent = t.restartButton;
+    btnRestart.className = 'pane-icon-button';
+    setIconButton(btnRestart, ICONS.restart, t.restartButton);
     btnRestart.addEventListener('click', (event) => {
       event.stopPropagation();
       restartPaneSession(pane);
     });
 
     const btnClose = document.createElement('button');
-    btnClose.textContent = t.closeButton;
+    btnClose.className = 'pane-icon-button pane-close-button';
+    setIconButton(btnClose, ICONS.close, t.closeButton);
     btnClose.addEventListener('click', (event) => {
       event.stopPropagation();
       closePane(pane.paneId);
@@ -1632,6 +2005,29 @@ function renderWorkspaceStage(): void {
 
     actions.appendChild(binding);
     actions.appendChild(status);
+
+    if (supportsBuiltInChat(pane.agentType)) {
+      normalizePaneViewMode(pane);
+      const btnViewMode = document.createElement('button');
+      btnViewMode.className = 'pane-view-toggle';
+      btnViewMode.type = 'button';
+      setIconButton(
+        btnViewMode,
+        pane.agentViewMode === 'chat' ? ICONS.chat : ICONS.terminal,
+        pane.agentViewMode === 'chat'
+          ? formatMessage(t.agentModeTerminalTitle, { agent: agentLabel(pane.agentType) })
+          : formatMessage(t.agentModeBuiltInTitle, { agent: agentLabel(pane.agentType) }),
+      );
+      btnViewMode.setAttribute('aria-pressed', String(pane.agentViewMode === 'chat'));
+      btnViewMode.addEventListener('click', (event) => {
+        event.stopPropagation();
+        togglePaneViewMode(pane);
+      });
+      actions.appendChild(btnViewMode);
+    } else {
+      pane.agentViewMode = 'terminal';
+    }
+
     actions.appendChild(btnGo);
     actions.appendChild(btnBind);
     if (btnArgs) {
@@ -1647,7 +2043,12 @@ function renderWorkspaceStage(): void {
     body.className = 'pane-body';
 
     const view = getOrCreateTerminalView(pane.sessionId, pane.agentType);
-    view.mount(body);
+    if (pane.agentViewMode === 'chat' && supportsBuiltInChat(pane.agentType)) {
+      body.classList.add('pane-body-chat');
+      getOrCreateAgentChatView(pane.sessionId, pane.agentType).mount(body);
+    } else {
+      view.mount(body);
+    }
 
     paneEl.appendChild(header);
     paneEl.appendChild(body);
@@ -1666,18 +2067,24 @@ function renderWorkspaceStage(): void {
 
 function render(): void {
   const sessionIdToRefocus = focusedTerminalSessionId();
+  const chatSessionIdToRefocus = focusedChatSessionId();
   applyTheme();
   updateLanguageToggleButton();
   updateUILanguage();
   updateCaptureToggleButton();
   applyRailWidth();
   applyLayoutState();
+  renderActivityBar();
+  renderSettingsPage();
+  renderPluginsPage();
   renderWorkspaceRail();
   renderWorkspaceStage();
   updateFocusedBindingChip();
   scheduleFit();
   if (sessionIdToRefocus) {
     focusTerminalSession(sessionIdToRefocus);
+  } else if (chatSessionIdToRefocus) {
+    focusChatSession(chatSessionIdToRefocus);
   }
 }
 
@@ -1694,6 +2101,7 @@ function removePaneForSession(sessionId: string, notifyHost: boolean): void {
   }
 
   disposeTerminalView(pane.sessionId);
+  disposeAgentChatView(pane.sessionId);
   pendingSessionCreates.delete(pane.sessionId);
   sessionSnapshots.delete(pane.sessionId);
 
@@ -1723,7 +2131,7 @@ function addPane(agentType: AgentType): void {
     return;
   }
 
-  const pane = createPane(workspace.workspaceId, agentType, workspace.paneIds.length);
+  const pane = createPaneForWorkspace(workspace.workspaceId, agentType, workspace.paneIds.length);
   workspace.paneIds.push(pane.paneId);
   panelState.panes.push(pane);
   normalizeWorkspacePaneRatios(panelState, workspace.workspaceId);
@@ -1736,7 +2144,7 @@ function addPane(agentType: AgentType): void {
 function addWorkspace(): void {
   const sourceWorkspace = getWorkspace(panelState, panelState.activeWorkspaceId);
   const workspace = createWorkspace(panelState.workspaces.length, sourceWorkspace?.defaultAgentType ?? 'claude');
-  const pane = createPane(workspace.workspaceId, workspace.defaultAgentType, 0);
+  const pane = createPaneForWorkspace(workspace.workspaceId, workspace.defaultAgentType, 0);
   workspace.paneIds.push(pane.paneId);
   panelState.workspaces.push(workspace);
   panelState.panes.push(pane);
@@ -1775,7 +2183,7 @@ portInput.addEventListener('keydown', (event) => {
 });
 
 btnLaunchDefaults.addEventListener('click', () => {
-  editLaunchDefaults();
+  void editLaunchDefaults();
 });
 
 configPanel.onSave((config, context, workspaceDefaultAgentType, shellWorkingDirectory) => {
