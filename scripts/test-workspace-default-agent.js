@@ -70,11 +70,43 @@ test('createDefaultState uses the workspace default agent for the first pane', (
   assert.strictEqual(panelState.panes[0].agentType, panelState.workspaces[0].defaultAgentType);
 });
 
+test('claude and codex panes default to chat while shell stays terminal-only', () => {
+  const workspace = state.createWorkspace(0, 'claude');
+  assert.strictEqual(state.createPane(workspace.workspaceId, 'claude', 0).agentViewMode, 'chat');
+  assert.strictEqual(state.createPane(workspace.workspaceId, 'codex', 1).agentViewMode, 'chat');
+  assert.strictEqual(state.createPane(workspace.workspaceId, 'shell', 2).agentViewMode, 'terminal');
+  assert.strictEqual(state.normalizeAgentViewMode('shell', 'chat'), 'terminal');
+  assert.strictEqual(state.normalizeAgentViewMode('claude', 'terminal'), 'terminal');
+  assert.strictEqual(state.normalizeAgentViewMode('codex', 'terminal'), 'terminal');
+});
+
+test('panel state exposes page navigation and configurable Claude/Codex default modes', () => {
+  const panelState = state.createDefaultState('9999');
+  assert.strictEqual(panelState.activePageId, 'workspace');
+  assert.strictEqual(panelState.claudeDefaultViewMode, 'chat');
+  assert.strictEqual(panelState.codexDefaultViewMode, 'chat');
+  assert.strictEqual(state.normalizePanelPageId('settings'), 'settings');
+  assert.strictEqual(state.normalizePanelPageId('plugins'), 'plugins');
+  assert.strictEqual(state.normalizePanelPageId('unknown'), 'workspace');
+  panelState.claudeDefaultViewMode = 'terminal';
+  panelState.codexDefaultViewMode = 'terminal';
+  assert.strictEqual(state.defaultAgentViewModeForState(panelState, 'codex'), 'terminal');
+  assert.strictEqual(state.defaultAgentViewModeForState(panelState, 'claude'), 'terminal');
+});
+
 test('ensureValidState backfills missing workspace default agents to Claude', () => {
   const panelState = state.createDefaultState('9999');
   delete panelState.workspaces[0].defaultAgentType;
+  delete panelState.panes[0].agentViewMode;
+  delete panelState.activePageId;
+  delete panelState.claudeDefaultViewMode;
+  delete panelState.codexDefaultViewMode;
   const migrated = state.ensureValidState(panelState, '9999');
   assert.strictEqual(migrated.workspaces[0].defaultAgentType, 'claude');
+  assert.strictEqual(migrated.panes[0].agentViewMode, 'chat');
+  assert.strictEqual(migrated.activePageId, 'workspace');
+  assert.strictEqual(migrated.claudeDefaultViewMode, 'chat');
+  assert.strictEqual(migrated.codexDefaultViewMode, 'chat');
 });
 
 test('ensureValidState preserves stored workspace default agents', () => {

@@ -32,6 +32,7 @@ const TEST_PAGE_HTML = `<!doctype html>
 const CHILDREN = [];
 const TEMP_DIRS = [];
 let httpServer = null;
+const HTTP_SOCKETS = new Set();
 
 function makeError(message, details) {
   const error = new Error(message);
@@ -72,6 +73,10 @@ function reservePort() {
         if (typeof port !== 'number') return reject(makeError('Failed to reserve a TCP port'));
         resolve(port);
       });
+    });
+    server.on('connection', (socket) => {
+      HTTP_SOCKETS.add(socket);
+      socket.once('close', () => HTTP_SOCKETS.delete(socket));
     });
     server.on('error', reject);
   });
@@ -307,21 +312,37 @@ class CdpClient {
 
   close() {
     if (this.ws) {
-      this.ws.close();
+      this.ws.terminate();
       this.ws = null;
     }
   }
 }
 
-async function cleanup(observerWs, panelClient, existingDir) {
+async function cleanup(observerWs, panelClient, existingDir, sessionIds = new Set()) {
   if (observerWs && observerWs.readyState === WebSocket.OPEN) {
-    observerWs.close();
+    for (const sessionId of sessionIds) {
+      observerWs.send(JSON.stringify({ type: 'session_close', sessionId }));
+    }
+    await sleep(500);
+  }
+  if (observerWs && observerWs.readyState !== WebSocket.CLOSED) {
+    observerWs.terminate();
   }
   if (panelClient) {
     panelClient.close();
   }
   if (httpServer) {
-    await new Promise((resolve) => httpServer.close(() => resolve()));
+    for (const socket of HTTP_SOCKETS) {
+      socket.destroy();
+    }
+    HTTP_SOCKETS.clear();
+    await new Promise((resolve) => {
+      const timer = setTimeout(resolve, 2000);
+      httpServer.close(() => {
+        clearTimeout(timer);
+        resolve();
+      });
+    });
     httpServer = null;
   }
   for (const child of CHILDREN.reverse()) {
@@ -390,6 +411,7 @@ async function main() {
   let observerWs = null;
   let hostStderr = '';
   const observedOutputs = new Map();
+  const observedSessionIds = new Set();
 
   try {
     const hostProcess = spawnManaged('node', [HOST_ENTRY], {
@@ -427,6 +449,16 @@ async function main() {
       if (message.type === 'session_output') {
         const decoded = Buffer.from(message.data, 'base64').toString();
         observedOutputs.set(message.sessionId, (observedOutputs.get(message.sessionId) || '') + decoded);
+      }
+      if (message.type === 'session_snapshot' && Array.isArray(message.sessions)) {
+        message.sessions.forEach((session) => {
+          if (typeof session.sessionId === 'string') {
+            observedSessionIds.add(session.sessionId);
+          }
+        });
+      }
+      if (message.type === 'session_closed' && typeof message.sessionId === 'string') {
+        observedSessionIds.delete(message.sessionId);
       }
     });
 
@@ -523,7 +555,12 @@ async function main() {
     }
     record('active tab resolution', `tabId=${boundTabId}`);
 
-    await panelClient.evaluate(`window.__ccSentMessages = []; window.__ccConfirmCalls = []; document.getElementById('btn-launch-defaults')?.click();`);
+    await panelClient.evaluate(`(() => {
+      window.__ccSentMessages = [];
+      window.__ccConfirmCalls = [];
+      document.querySelector('.activity-button[aria-label="Settings"], .activity-button[aria-label="配置"]')?.click();
+      document.getElementById('btn-launch-defaults')?.click();
+    })()`);
     await waitFor(async () => {
       const overlayVisible = await panelClient.evaluate(`(() => {
         const overlay = document.getElementById('config-panel-overlay');
@@ -627,13 +664,13 @@ async function main() {
     record('codex session_create working directory', JSON.stringify({
       sessionId: codexCreateMessage.sessionId,
       workingDirectory: codexCreateMessage.startupOptions.workingDirectory,
+      mode: codexCreateMessage.mode,
     }));
 
-    await waitFor(() => {
-      const output = observedOutputs.get(codexCreateMessage.sessionId) || '';
-      return output.includes(existingDir) ? output : null;
-    }, 'codex launch diagnostics output', 15000, 150);
-    record('codex launch diagnostics', existingDir);
+    if (codexCreateMessage.mode !== 'chat') {
+      throw makeError(`Codex session_create should default to built-in chat mode: ${JSON.stringify(codexCreateMessage)}`);
+    }
+    record('codex built-in chat mode', codexCreateMessage.mode);
 
     await panelClient.evaluate(`document.getElementById('btn-add-shell-pane')?.click()`);
     const shellCreateMessage = await waitFor(async () => {
@@ -712,11 +749,15 @@ async function main() {
       console.log(`- ${entry.name}: ${entry.detail}`);
     });
   } finally {
-    await cleanup(observerWs, panelClient, existingDir);
+    await cleanup(observerWs, panelClient, existingDir, observedSessionIds);
   }
 }
 
-main().catch((error) => {
-  console.error(error.stack || error.message || String(error));
-  process.exit(1);
-});
+main()
+  .then(() => {
+    process.exit(0);
+  })
+  .catch((error) => {
+    console.error(error.stack || error.message || String(error));
+    process.exit(1);
+  });

@@ -475,7 +475,10 @@ async function main() {
     }, 'panel WebSocket connection', 30000, 250);
     record('panel relay connection', 'connected');
 
-    await panelClient.evaluate(`document.getElementById('btn-launch-defaults')?.click()`);
+    await panelClient.evaluate(`(() => {
+      document.querySelector('.activity-button[aria-label="Settings"], .activity-button[aria-label="配置"]')?.click();
+      document.getElementById('btn-launch-defaults')?.click();
+    })()`);
     await waitFor(async () => {
       const overlayVisible = await panelClient.evaluate(`(() => {
         const overlay = document.getElementById('config-panel-overlay');

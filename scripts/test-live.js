@@ -225,6 +225,61 @@ function collectOutput(child, label) {
   });
 }
 
+function collectDescendantPids(rootPids) {
+  const roots = new Set(rootPids.filter((pid) => Number.isInteger(pid) && pid > 0));
+  if (roots.size === 0) {
+    return [];
+  }
+  try {
+    const stat = fs.readFileSync('/proc/self/stat', 'utf8').trim();
+    const ownPid = Number(stat.slice(0, stat.indexOf(' ')));
+    const childrenByParent = new Map();
+    for (const entry of fs.readdirSync('/proc')) {
+      if (!/^\d+$/.test(entry)) continue;
+      const pid = Number(entry);
+      if (pid === ownPid) continue;
+      try {
+        const content = fs.readFileSync(`/proc/${entry}/stat`, 'utf8');
+        const closeParen = content.lastIndexOf(')');
+        if (closeParen < 0) continue;
+        const fields = content.slice(closeParen + 2).trim().split(/\s+/);
+        const ppid = Number(fields[1]);
+        if (!Number.isInteger(ppid) || ppid <= 0) continue;
+        const children = childrenByParent.get(ppid) || [];
+        children.push(pid);
+        childrenByParent.set(ppid, children);
+      } catch {
+        // Process exited while scanning.
+      }
+    }
+    const descendants = [];
+    const queue = [...roots];
+    const seen = new Set();
+    while (queue.length > 0) {
+      const pid = queue.shift();
+      for (const childPid of childrenByParent.get(pid) || []) {
+        if (seen.has(childPid)) continue;
+        seen.add(childPid);
+        descendants.push(childPid);
+        queue.push(childPid);
+      }
+    }
+    return descendants;
+  } catch {
+    return [];
+  }
+}
+
+function signalPids(pids, signal) {
+  for (const pid of pids) {
+    try {
+      process.kill(pid, signal);
+    } catch {
+      // Ignore already-exited descendants.
+    }
+  }
+}
+
 async function waitForPort(port, label, timeoutMs = 30000) {
   await waitFor(() => new Promise((resolve) => {
     const socket = net.createConnection({ host: '127.0.0.1', port }, () => {
@@ -285,6 +340,15 @@ async function openTarget(debugPort, url) {
     }
   }
   throw makeError(`Failed to open target for ${url}`);
+}
+
+async function closeTarget(debugPort, targetId) {
+  if (!targetId) return;
+  try {
+    await fetch(`http://127.0.0.1:${debugPort}/json/close/${encodeURIComponent(targetId)}`);
+  } catch {
+    // Closing a temporary DevTools target is best-effort.
+  }
 }
 
 function getExtensionIdFromProfile(preferencesPath) {
@@ -366,33 +430,127 @@ class CdpClient {
   }
 }
 
-function ipcRequest(storePort, payload) {
+function ipcRequest(storePort, payload, timeoutMs = 20000) {
   return new Promise((resolve, reject) => {
+    let settled = false;
     const client = net.createConnection({ host: '127.0.0.1', port: storePort }, () => {
       client.end(`${JSON.stringify(payload)}\n`);
     });
+    const timer = setTimeout(() => {
+      if (settled) return;
+      settled = true;
+      client.destroy();
+      reject(makeError(`IPC request timeout (${timeoutMs}ms): ${JSON.stringify(payload)}`));
+    }, timeoutMs);
+    const finish = (fn, value) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      fn(value);
+    };
     const chunks = [];
     client.on('data', (chunk) => chunks.push(chunk));
     client.on('end', () => {
       try {
-        resolve(JSON.parse(Buffer.concat(chunks).toString('utf8')));
+        finish(resolve, JSON.parse(Buffer.concat(chunks).toString('utf8')));
       } catch (error) {
-        reject(error);
+        finish(reject, error);
       }
     });
-    client.on('error', reject);
+    client.on('error', (error) => finish(reject, error));
   });
 }
 
-function ipcQuery(storePort, sessionId, tool, params = {}) {
-  return ipcRequest(storePort, { sessionId, tool, params });
+function ipcQuery(storePort, sessionId, tool, params = {}, timeoutMs = 20000) {
+  return ipcRequest(storePort, { sessionId, tool, params }, timeoutMs);
 }
 
 function ipcCommand(storePort, sessionId, command, params = {}, timeoutMs = 20000) {
-  return ipcRequest(storePort, { kind: 'command', sessionId, command, params, timeoutMs });
+  return ipcRequest(storePort, { kind: 'command', sessionId, command, params, timeoutMs }, timeoutMs + 2000);
 }
 
-async function createSession(hostWsPort, storePort, sessionId, tabId) {
+function makeFakeCodexBinary(runtimeDir) {
+  const binDir = path.join(runtimeDir, 'fake-agent-bin');
+  fs.mkdirSync(binDir, { recursive: true });
+  const scriptPath = path.join(binDir, process.platform === 'win32' ? 'codex.cmd' : 'codex');
+  const lines = process.platform === 'win32'
+    ? [
+        '@echo off',
+        'echo {"type":"event_msg","payload":{"type":"agent_message","message":"Live structured event from fake Codex"}}',
+        'echo {"type":"event_msg","payload":{"type":"browser_context","command":"browser__screenshot","message":"Live browser context event"}}',
+        'ping -n 11 127.0.0.1 >nul',
+      ]
+    : [
+        '#!/usr/bin/env node',
+        'console.log(JSON.stringify({ type: "event_msg", payload: { type: "agent_message", message: "Live structured event from fake Codex" } }));',
+        'console.log(JSON.stringify({ type: "event_msg", payload: { type: "browser_context", command: "browser__screenshot", message: "Live browser context event" } }));',
+        'setTimeout(() => process.exit(0), 20000);',
+      ];
+  fs.writeFileSync(scriptPath, `${lines.join('\n')}\n`, 'utf8');
+  if (process.platform !== 'win32') {
+    fs.chmodSync(scriptPath, 0o755);
+  }
+  return binDir;
+}
+
+function shellDoubleQuote(value) {
+  return `"${String(value).replace(/(["\\$`])/g, '\\$1')}"`;
+}
+
+function makeFakeAgentHome(runtimeDir, fakeAgentBinDir) {
+  const homeDir = path.join(runtimeDir, 'fake-agent-home');
+  fs.mkdirSync(homeDir, { recursive: true });
+  const profile = `export PATH=${shellDoubleQuote(fakeAgentBinDir)}:$PATH\n`;
+  fs.writeFileSync(path.join(homeDir, '.bash_profile'), profile, 'utf8');
+  fs.writeFileSync(path.join(homeDir, '.bashrc'), profile, 'utf8');
+  return homeDir;
+}
+
+function makeShellDefaultPanelState(wsPort) {
+  const workspaceId = 'live-workspace-shell';
+  const paneId = 'live-shell-pane';
+  const sessionId = 'live-initial-shell-session';
+  const emptyStartup = { launchArgs: '', workingDirectory: '', systemPromptMode: 'default', customSystemPrompt: '' };
+  return {
+    activeWorkspaceId: workspaceId,
+    workspaces: [{
+      workspaceId,
+      title: 'Workspace 1',
+      hint: 'Focused browser tab binding',
+      accentColor: '#7aa2f7',
+      defaultAgentType: 'shell',
+      paneIds: [paneId],
+    }],
+    panes: [{
+      paneId,
+      workspaceId,
+      sessionId,
+      title: 'Shell 1',
+      sizeRatio: 1,
+      agentType: 'shell',
+      agentViewMode: 'terminal',
+      bindingTabId: null,
+      launchOverrides: {
+        claude: { ...emptyStartup },
+        codex: { ...emptyStartup },
+      },
+    }],
+    launchDefaults: {
+      claude: { ...emptyStartup },
+      codex: { launchArgs: '', workingDirectory: '', systemPromptMode: 'none', customSystemPrompt: '' },
+    },
+    shellWorkingDirectory: '',
+    updatedAt: Date.now(),
+    theme: 'dark',
+    language: 'zh',
+    wsPort: String(wsPort),
+    railWidth: 196,
+    railCollapsed: false,
+    panelCollapsed: false,
+  };
+}
+
+async function createSession(hostWsPort, storePort, sessionId, tabId, agentType = 'shell') {
   const ws = new WebSocket(`ws://127.0.0.1:${hostWsPort}`);
   await new Promise((resolve, reject) => {
     ws.on('open', resolve);
@@ -401,7 +559,8 @@ async function createSession(hostWsPort, storePort, sessionId, tabId) {
   ws.send(JSON.stringify({
     type: 'session_create',
     sessionId,
-    agentType: 'shell',
+    agentType,
+    mode: 'terminal',
     title: 'Live Test Session',
     binding: { kind: 'tab', tabId },
     cols: 100,
@@ -467,20 +626,20 @@ async function cleanup(sessionWs, panelClient, mcpTransport) {
       sleep(1000),
     ]);
   }
-  if (httpServer) {
-    await new Promise((resolve) => httpServer.close(() => resolve()));
-    httpServer = null;
-  }
   for (const child of CHILDREN.reverse()) {
+    const descendantPids = collectDescendantPids([child.pid]);
     if (!child.killed && child.exitCode == null) {
       child.kill('SIGTERM');
     }
+    signalPids(descendantPids, 'SIGTERM');
   }
   for (const child of CHILDREN.reverse()) {
+    const descendantPids = collectDescendantPids([child.pid]);
     if (child.exitCode == null) {
       await new Promise((resolve) => {
         const timer = setTimeout(() => {
           if (child.exitCode == null) child.kill('SIGKILL');
+          signalPids(descendantPids, 'SIGKILL');
           resolve();
         }, 3000);
         child.once('exit', () => {
@@ -489,6 +648,14 @@ async function cleanup(sessionWs, panelClient, mcpTransport) {
         });
       });
     }
+    signalPids(descendantPids, 'SIGKILL');
+  }
+  if (httpServer) {
+    await Promise.race([
+      new Promise((resolve) => httpServer.close(() => resolve())),
+      sleep(1000),
+    ]);
+    httpServer = null;
   }
   while (TEMP_DIRS.length > 0) {
     const dir = TEMP_DIRS.pop();
@@ -522,6 +689,13 @@ async function main() {
   TEMP_DIRS.push(runtimeDir);
   const profileDir = path.join(runtimeDir, 'profile');
   fs.mkdirSync(profileDir, { recursive: true });
+  const fakeAgentBinDir = makeFakeCodexBinary(runtimeDir);
+  const fakeAgentHomeDir = makeFakeAgentHome(runtimeDir, fakeAgentBinDir);
+  const hostEnv = {
+    ...process.env,
+    HOME: fakeAgentHomeDir,
+    PATH: `${fakeAgentBinDir}${path.delimiter}${process.env.PATH || ''}`,
+  };
 
   const storePort = await reservePort();
   const preferencesPath = path.join(runtimeDir, PROFILE_PREFS_RELATIVE);
@@ -542,7 +716,7 @@ async function main() {
     const hostProcess = spawnManaged('node', [HOST_ENTRY], {
       cwd: HOST_DIR,
       env: {
-        ...process.env,
+        ...hostEnv,
         CLAUDECHROME_WS_PORT: String(hostWsPort),
         CLAUDECHROME_RUNTIME_DIR: runtimeDir,
         CLAUDECHROME_STORE_PORT: String(storePort),
@@ -571,10 +745,28 @@ async function main() {
     record('extension load', true, `extensionId=${extensionId}`);
 
     const panelUrl = `chrome-extension://${extensionId}/side-panel/panel.html`;
+    const seedTarget = await openTarget(debugPort, panelUrl);
+    const seedPanelClient = new CdpClient(seedTarget.webSocketDebuggerUrl);
+    await seedPanelClient.connect();
+    await seedPanelClient.send('Runtime.enable');
+    await waitFor(async () => {
+      const ready = await seedPanelClient.evaluate(`typeof chrome !== 'undefined' && !!chrome.storage?.local`);
+      return ready ? true : null;
+    }, 'seed panel storage ready', 30000, 100);
+    await seedPanelClient.evaluate(`new Promise((resolve) => {
+      chrome.storage.local.set({
+        panelStateV2: ${JSON.stringify(makeShellDefaultPanelState(hostWsPort))},
+        wsPort: String(${hostWsPort})
+      }, resolve);
+    })`);
+    seedPanelClient.close();
+    await closeTarget(debugPort, seedTarget.id);
+
     await openTarget(debugPort, panelUrl);
     const panelTarget = await waitFor(async () => {
       const targets = await listTargets(debugPort);
-      return targets.find((target) => target.url === panelUrl) || null;
+      const panelTargets = targets.filter((target) => target.url === panelUrl);
+      return panelTargets.length === 1 ? panelTargets[0] : null;
     }, 'panel page target', 30000, 250);
 
     panelClient = new CdpClient(panelTarget.webSocketDebuggerUrl);
@@ -586,13 +778,14 @@ async function main() {
     }, 'panel DOM ready', 30000, 100);
 
     const localizationCheck = await panelClient.evaluate(`(() => {
+      document.querySelector('.activity-button[aria-label="配置"], .activity-button[aria-label="Settings"]')?.click();
       const read = () => ({
         languageButton: document.getElementById('btn-language-toggle')?.textContent?.trim() || '',
         themeButton: document.getElementById('btn-theme-toggle')?.textContent?.trim() || '',
         themeTitle: document.getElementById('btn-theme-toggle')?.title || '',
-        closeButton: document.getElementById('btn-toggle-panel')?.textContent?.trim() || '',
-        addShellButton: document.getElementById('btn-add-shell-pane')?.textContent?.trim() || '',
-        workspaceEdge: document.getElementById('workspace-rail-edge-toggle')?.textContent?.trim() || '',
+        closeTitle: document.getElementById('btn-toggle-panel')?.title || '',
+        addShellTitle: document.getElementById('btn-add-shell-pane')?.title || '',
+        workspaceEdgeTitle: document.getElementById('workspace-rail-edge-toggle')?.title || '',
         workspaceTitle: document.querySelector('.workspace-tab-title')?.textContent?.trim() || '',
         workspaceHint: document.querySelector('.workspace-tab-hint')?.textContent?.trim() || '',
       });
@@ -604,17 +797,17 @@ async function main() {
     if (
       localizationCheck?.before?.languageButton !== '中文' ||
       localizationCheck?.before?.themeButton !== '深色' ||
-      localizationCheck?.before?.closeButton !== '关闭侧边栏' ||
-      localizationCheck?.before?.addShellButton !== '+ 终端' ||
-      localizationCheck?.before?.workspaceEdge !== '收起' ||
+      localizationCheck?.before?.closeTitle !== '关闭当前窗口的侧边栏' ||
+      localizationCheck?.before?.addShellTitle !== '在当前工作区中添加一个终端面板' ||
+      localizationCheck?.before?.workspaceEdgeTitle !== '收起工作区列表' ||
       localizationCheck?.before?.workspaceTitle !== '工作区 1' ||
       localizationCheck?.before?.workspaceHint !== '关联当前标签页' ||
       localizationCheck?.after?.languageButton !== 'English' ||
       localizationCheck?.after?.themeButton !== 'Dark' ||
       localizationCheck?.after?.themeTitle !== 'Current theme: Dark' ||
-      localizationCheck?.after?.closeButton !== 'Close Sidebar' ||
-      localizationCheck?.after?.addShellButton !== '+ Shell' ||
-      localizationCheck?.after?.workspaceEdge !== 'Collapse' ||
+      localizationCheck?.after?.closeTitle !== 'Close the sidebar for the current window' ||
+      localizationCheck?.after?.addShellTitle !== 'Add a terminal pane to the current workspace' ||
+      localizationCheck?.after?.workspaceEdgeTitle !== 'Collapse workspace list' ||
       localizationCheck?.after?.workspaceTitle !== 'Workspace 1' ||
       localizationCheck?.after?.workspaceHint !== 'Focused browser tab binding'
     ) {
@@ -634,6 +827,7 @@ async function main() {
         saveLabel: document.getElementById('config-save')?.textContent?.trim() || '',
         closeTitle: document.getElementById('config-close')?.getAttribute('title') || '',
       });
+      document.querySelector('.activity-button[aria-label="Settings"], .activity-button[aria-label="配置"]')?.click();
       document.getElementById('btn-launch-defaults')?.click();
       const english = readConfig();
       document.getElementById('btn-language-toggle')?.click();
@@ -704,6 +898,31 @@ async function main() {
     }
     record('active tab resolution', true, `tabId=${boundTabId}`);
 
+    const codexPaneCreated = await panelClient.evaluate(`(() => {
+      const button = document.getElementById('btn-add-codex-pane');
+      if (!button) return false;
+      button.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, view: window }));
+      return true;
+    })()`);
+    if (codexPaneCreated !== true) {
+      throw makeError('Could not create Codex pane from live panel UI');
+    }
+    const liveChatSurface = await waitFor(async () => {
+      const result = await panelClient.evaluate(`(() => {
+        const activePane = document.querySelector('.pane.focused') || document.querySelector('.pane');
+        const surface = activePane?.querySelector('.agent-chat-surface');
+        const input = activePane?.querySelector('.agent-chat-input');
+        const toggle = activePane?.querySelector('.pane-view-toggle');
+        return {
+          hasSurface: Boolean(surface),
+          hasInput: Boolean(input),
+          toggleText: toggle?.textContent?.trim() || '',
+          activeText: activePane?.textContent || '',
+        };
+      })()`);
+      return result?.hasSurface && result?.hasInput && /Built-in Chat|内置聊天|Chat/.test(result.toggleText) ? result : null;
+    }, 'live Codex chat surface', 30000, 250);
+    record('live Codex chat surface', true, JSON.stringify(liveChatSurface));
     sessionWs = await createSession(hostWsPort, storePort, sessionId, boundTabId);
     record('session create', true, `sessionId=${sessionId}, tabId=${boundTabId}`);
 
